@@ -1,0 +1,23 @@
+# secrets — NEVER commit
+.env
+.env.*
+!.env.example
+
+# node
+node_modules/
+*.log
+
+# flutter / dart
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+app/build/
+app/.dart_tool/
+
+# macOS
+.DS_Store
+
+# misc
+*.iml
+.idea/

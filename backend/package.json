@@ -1,0 +1,19 @@
+{
+  "name": "snapstyle-backend",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Snapstyle — Node.js orchestration layer (RevenueCat entitlement, Gemini proxy)",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "node --watch --env-file=.env src/server.js",
+    "start": "node --env-file=.env src/server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.109.0",
+    "express": "^4.19.2",
+    "pg": "^8.13.1"
+  }
+}

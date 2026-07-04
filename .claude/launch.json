@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "snapstyle-web",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["-m", "http.server", "8791", "--directory", "/Users/jvpetrov/Downloads/My Apps/Fitgestion AI product/web"],
+      "port": 8791
+    }
+  ]
+}

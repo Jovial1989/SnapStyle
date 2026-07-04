@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Snapstyle — Your AI Stylist</title>
+  <meta name="description" content="Snap your outfit. Get an honest, specific read on fit, proportion, footwear and layering — from one photo." />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='none' stroke='%230A0A0A' stroke-width='9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 34V22h12M78 34V22H66M22 66v12h12M78 66v12H66'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='16' fill='%230A0A0A'/%3E%3Ccircle cx='50' cy='50' r='7' fill='%232E5BFF'/%3E%3C/svg%3E" />
+  <style>
+    :root{
+      --bg:#F8F8F8; --surface:#EFEFEE; --ink:#0A0A0A; --muted:#8C8C88;
+      --line:#E4E4E1; --sig:#2E5BFF; --onink:#F8F8F8;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    html{scroll-behavior:smooth}
+    body{
+      background:var(--bg);color:var(--ink);
+      font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+      -webkit-font-smoothing:antialiased;line-height:1.5;
+      background-image:radial-gradient(rgba(0,0,0,.02) 1px,transparent 1px);
+      background-size:4px 4px;
+    }
+    .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+    a{color:inherit;text-decoration:none}
+
+    /* brand mark */
+    .mark{width:30px;height:30px;flex:none}
+    .logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:22px;letter-spacing:-1px}
+    .logo .thin{font-weight:300}
+
+    header{position:sticky;top:0;z-index:10;backdrop-filter:blur(10px);
+      background:rgba(248,248,248,.72);border-bottom:1px solid var(--line)}
+    nav{display:flex;align-items:center;justify-content:space-between;height:66px}
+
+    .btn{display:inline-flex;align-items:center;gap:8px;background:var(--ink);color:var(--onink);
+      padding:12px 20px;border-radius:12px;font-weight:600;font-size:14px;transition:transform .15s ease}
+    .btn:hover{transform:translateY(-1px)}
+    .btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--ink)}
+
+    /* hero */
+    .hero{padding:88px 0 64px}
+    .eyebrow{font-size:12px;font-weight:600;letter-spacing:3px;color:var(--muted);text-transform:uppercase}
+    h1{font-size:clamp(48px,9vw,104px);line-height:.96;letter-spacing:-.04em;font-weight:800;margin:18px 0 22px}
+    .sub{font-size:clamp(17px,2.2vw,21px);color:#3a3a3a;max-width:34ch}
+    .cta-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:32px}
+    .store{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--ink);border-radius:14px;
+      padding:12px 18px;font-weight:600}
+    .store small{display:block;font-size:10px;color:var(--muted);letter-spacing:1px;font-weight:600}
+    .store b{font-size:16px;letter-spacing:-.3px}
+
+    .dot{color:var(--sig)}
+
+    /* device mock */
+    .stage{margin-top:64px;display:grid;place-items:center}
+    .phone{width:280px;height:560px;border-radius:44px;background:#111;padding:12px;
+      box-shadow:0 40px 80px rgba(0,0,0,.18)}
+    .screen{width:100%;height:100%;border-radius:32px;background:var(--bg);position:relative;overflow:hidden}
+    .screen .figure{position:absolute;inset:0;background:
+      radial-gradient(120px 200px at 50% 40%, #e6e6e3, transparent 70%)}
+    .pin{position:absolute;width:16px;height:16px;border-radius:50%;background:var(--ink);
+      border:2px solid #fff;box-shadow:0 0 0 0 rgba(10,10,10,.35);animation:pulse 1.8s infinite}
+    @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(10,10,10,.30)}70%{box-shadow:0 0 0 16px rgba(10,10,10,0)}100%{box-shadow:0 0 0 0 rgba(10,10,10,0)}}
+    .badge{position:absolute;top:16px;right:16px;background:var(--ink);color:#fff;border-radius:999px;
+      padding:6px 12px;font-weight:800;font-size:15px}
+    .badge span{font-size:11px;color:#ffffff99;font-weight:600}
+    .callout{position:absolute;left:16px;right:16px;bottom:18px;background:#fff;border-radius:14px;padding:12px 14px;
+      box-shadow:0 10px 30px rgba(0,0,0,.12)}
+    .callout .tag{font-size:9px;font-weight:800;letter-spacing:.5px;color:#9B2C2C}
+    .callout .t{font-weight:700;margin-top:2px}
+
+    /* steps */
+    section.steps{padding:72px 0;border-top:1px solid var(--line)}
+    .steps h2{font-size:clamp(28px,4vw,40px);letter-spacing:-.03em;font-weight:800;max-width:16ch}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-top:40px}
+    .card{background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:24px}
+    .card .n{font-size:12px;font-weight:700;color:var(--sig);letter-spacing:1px}
+    .card h3{font-size:19px;margin:12px 0 8px;letter-spacing:-.02em}
+    .card p{color:var(--muted);font-size:15px}
+
+    /* closing */
+    .close{padding:80px 0;text-align:center;border-top:1px solid var(--line)}
+    .close h2{font-size:clamp(32px,6vw,64px);letter-spacing:-.04em;font-weight:800}
+    .close .cta-row{justify-content:center}
+
+    footer{border-top:1px solid var(--line);padding:28px 0;color:var(--muted);font-size:13px;
+      display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px}
+
+    @media(max-width:720px){.grid{grid-template-columns:1fr}.hero{padding:56px 0 40px}}
+  </style>
+</head>
+<body>
+  <!-- reusable SVG mark -->
+  <svg width="0" height="0" style="position:absolute"><symbol id="lens" viewBox="0 0 100 100">
+    <g fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 34V22h12M78 34V22H66M22 66v12h12M78 66v12H66"/></g>
+    <circle cx="50" cy="50" r="16" fill="currentColor"/><circle cx="50" cy="50" r="7" fill="#2E5BFF"/>
+  </symbol></svg>
+
+  <header><div class="wrap"><nav>
+    <a class="logo" href="#"><svg class="mark"><use href="#lens"/></svg>snap<span class="thin">style</span></a>
+    <a class="btn" href="#get">Get the app</a>
+  </nav></div></header>
+
+  <main class="wrap">
+    <section class="hero">
+      <div class="eyebrow">Your AI stylist</div>
+      <h1>How does<br>it really look<span class="dot">?</span></h1>
+      <p class="sub">Snap your outfit. Get an honest, specific read — fit, proportion, footwear, layering. Brand-agnostic. No fluff.</p>
+      <div class="cta-row" id="get">
+        <a class="store" href="#"><span>&#63743;</span><span><small>Download on the</small><b>App Store</b></span></a>
+        <a class="store" href="#"><span>&#9654;</span><span><small>Get it on</small><b>Google Play</b></span></a>
+      </div>
+
+      <div class="stage">
+        <div class="phone"><div class="screen">
+          <div class="figure"></div>
+          <div class="badge">7 <span>/10</span></div>
+          <div class="pin" style="top:34%;left:52%"></div>
+          <div class="pin" style="top:52%;left:44%"></div>
+          <div class="pin" style="top:74%;left:50%"></div>
+          <div class="callout"><div class="tag">ISSUE</div><div class="t">Pants too long</div></div>
+        </div></div>
+      </div>
+    </section>
+  </main>
+
+  <section class="steps"><div class="wrap">
+    <h2>One photo. A real read.</h2>
+    <div class="grid">
+      <div class="card"><div class="n">01</div><h3>Snap</h3><p>Take or upload a full-body shot of your outfit.</p></div>
+      <div class="card"><div class="n">02</div><h3>AI reads the fit</h3><p>Proportion, pant cut, footwear, layering — analyzed like a stylist would.</p></div>
+      <div class="card"><div class="n">03</div><h3>Tap the pins</h3><p>Specific, brand-agnostic fixes pinned right on your photo.</p></div>
+    </div>
+  </div></section>
+
+  <section class="close"><div class="wrap">
+    <h2>Dress like<br>someone told you the truth<span class="dot">.</span></h2>
+    <div class="cta-row">
+      <a class="store" href="#"><span>&#63743;</span><span><small>Download on the</small><b>App Store</b></span></a>
+      <a class="store" href="#"><span>&#9654;</span><span><small>Get it on</small><b>Google Play</b></span></a>
+    </div>
+  </div></section>
+
+  <footer><div class="wrap" style="display:flex;justify-content:space-between;width:100%;flex-wrap:wrap;gap:12px">
+    <a class="logo" style="font-size:18px" href="#"><svg class="mark" style="width:24px;height:24px"><use href="#lens"/></svg>snap<span class="thin">style</span></a>
+    <span>&copy; 2026 Snapstyle · Your AI stylist</span>
+  </div></footer>
+</body>
+</html>
