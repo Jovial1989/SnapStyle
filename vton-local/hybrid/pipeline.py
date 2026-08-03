@@ -275,6 +275,34 @@ def _garment_mask(p: Pose, kind: str) -> np.ndarray:
     box = np.zeros((h, w), np.uint8)
     box[max(0, int(y0)):int(y1) + 1, x0:x1 + 1] = 255
 
+    # ARM CORRIDOR. A torso band ending at hip+10% CUTS ACROSS THE ARMS, so a
+    # sleeve hanging past that line sits OUTSIDE the repaint zone. Swapping a
+    # sleeved top for a sleeveless one then left the old sleeves on the body and
+    # the new garment read as a second layer worn over them (reported from the
+    # phone: blue shirt sleeves under a dark vest). The model was not ignoring the
+    # instruction — those pixels were simply never up for redrawing.
+    #
+    # Only for zones that own the arms. 'lower' and 'shoes' must never touch them.
+    if kind in ("upper", "full"):
+        arm = np.zeros((h, w), np.uint8)
+        # Thick enough to cover a rolled cuff or a loose sleeve, scaled to the
+        # figure so it holds for any framing.
+        thick = max(6, round(span * 0.055))
+        for shoulder_i, elbow_i, wrist_i in ((2, 3, 4), (5, 6, 7)):
+            sh, el, wr = pts[shoulder_i], pts[elbow_i], pts[wrist_i]
+            if sh and el:
+                cv2.line(arm, sh, el, 255, thick)
+            if el and wr:
+                # STOP SHORT OF THE WRIST. Reaching the wrist pulled the HAND into
+                # the repaint zone, and hands are what diffusion mangles most
+                # visibly — a swapped top is not worth six fingers. A cuff sits
+                # above the wrist anyway, so 88% of the forearm covers the sleeve
+                # and leaves the hand as original pixels.
+                end = (round(el[0] + (wr[0] - el[0]) * 0.88),
+                       round(el[1] + (wr[1] - el[1]) * 0.88))
+                cv2.line(arm, el, end, 255, thick)
+        box = cv2.bitwise_or(box, arm)
+
     mask = cv2.bitwise_and(box, p.silhouette)
     # Dilate past the silhouette edge: garments sit OUTSIDE the body outline
     # (sleeves, drape, a coat's shoulder line). A mask clipped to the skin
@@ -282,6 +310,19 @@ def _garment_mask(p: Pose, kind: str) -> np.ndarray:
     k = max(5, round(span * dilate_frac)) | 1
     mask = cv2.dilate(mask, np.ones((k, k), np.uint8), iterations=1)
     mask = cv2.bitwise_and(mask, box)   # …but never past the slot's own band
+
+    # HANDS OUT, unconditionally and AFTER dilation. Shortening the arm corridor
+    # was not enough: dilation grows the mask by span*0.035 and won back most of
+    # what the shortening gave up, so the hands were still in the repaint zone.
+    # Tuning the percentage would be guesswork against a kernel size; carving the
+    # hands out at the end is deterministic. Hands are what diffusion mangles most
+    # visibly, and no sleeve is worth six fingers.
+    if kind in ("upper", "full"):
+        for wrist_i in (4, 7):
+            wr = pts[wrist_i]
+            if wr:
+                cv2.circle(mask, wr, max(8, round(span * 0.045)), 0, -1)
+
     return cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
 
 
