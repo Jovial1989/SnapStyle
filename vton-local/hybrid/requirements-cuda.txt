@@ -15,6 +15,12 @@ transformers>=4.44,<4.52     # CLIPVisionModelWithProjection for IP-Adapter Plus
 accelerate>=0.33             # device_map / offload backend
 safetensors>=0.4
 
+# Not optional on RunPod: their images export HF_HUB_ENABLE_HF_TRANSFER=1, and
+# huggingface_hub then HARD-FAILS if the package is missing rather than falling
+# back to plain HTTP. A fresh venv does not inherit the system python's copy.
+# It also genuinely helps — a parallel Rust downloader over a 7 GB pull.
+hf_transfer>=0.1.6
+
 # Same pin as the Mac list: the legacy `solutions` API (Pose + segmentation in
 # one model) is gone in mediapipe 1.0 and already in 0.10.35.
 mediapipe==0.10.21

@@ -154,6 +154,16 @@ EOF
 log "installing requirements-cuda.txt"
 pip install --quiet -r requirements-cuda.txt -c "$CONSTRAINTS"
 
+# hf_transfer is in requirements, but the host may export the flag while the
+# package fails to build on some platform. huggingface_hub treats that as fatal
+# instead of falling back to plain HTTP, so prove it imports or turn the flag
+# off — a slower download beats an aborted one.
+if [ "${HF_HUB_ENABLE_HF_TRANSFER:-0}" = "1" ] && ! python -c "import hf_transfer" 2>/dev/null; then
+  warn "hf_transfer unavailable — disabling accelerated download"
+  export HF_HUB_ENABLE_HF_TRANSFER=0
+  echo "export HF_HUB_ENABLE_HF_TRANSFER=0" >> "$ENV_FILE"
+fi
+
 # ── 7. verify before spending GPU time ───────────────────────────────────────
 # Fail here, loudly, rather than 20 minutes later inside a render.
 log "verifying the stack"
