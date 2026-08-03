@@ -17,7 +17,7 @@ Deno.serve(async (req) => {
   // `subject` = an ad-hoc body profile for someone who ISN'T the account owner
   // (guest flow, SDD §14.10). When present it overrides the owner's stored
   // profile for this read, and the saved review is tagged as a guest's.
-  const { image, profile, subject } = await req.json().catch(() => ({}));
+  const { image, brief, profile, subject } = await req.json().catch(() => ({}));
   if (!image?.data || !image?.mimeType) return json({ error: "image { data, mimeType } required" }, 400);
   const guest = subject && typeof subject === "object" && Object.keys(subject).length > 0;
 
@@ -38,7 +38,10 @@ Deno.serve(async (req) => {
     }
     const ctx = bodyProfile ? { ...(profile ?? {}), body_profile: bodyProfile } : profile;
 
-    const result = await analyzeFit(image, ctx);
+    // brief=true → verdict only (score + one line), ~60 tokens instead of the
+    // full hotspot set. The editor asks for this on entry and fetches the
+    // details only when someone taps for them.
+    const result = await analyzeFit(image, ctx, brief === true);
     await burnFree(db, user.id, ent); // success only; no-op if pro
 
     // Persist to history (best-effort — never fail the response on a storage hiccup).

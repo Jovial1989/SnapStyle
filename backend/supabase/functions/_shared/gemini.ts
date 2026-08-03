@@ -105,15 +105,48 @@ const CRITIQUE_SCHEMA = {
   required: ["analyzable", "overall", "hotspots"],
 };
 
-export async function analyzeFit(image: Inline, profile?: unknown) {
+// SCORE-FIRST. The full critique asks for 3-6 hotspots, each with a title,
+// detail, fix AND 2-3 visual suggestions carrying a prompt, caption and alt text
+// — two to three thousand tokens of generation, measured at 18.9s. The user waits
+// all of it before seeing a single pixel, for a number that is one integer.
+//
+// Brief mode asks for the verdict alone. Same model, same image, ~60 tokens out.
+// The details are a second call, made when someone actually asks for them.
+export const BRIEF_SYSTEM = `You are Looktok — an expert personal stylist judging a photo of someone's outfit.
+
+VOICE — a sharp friend who tells you the truth: specific, human, honest. Real praise when earned, direct only about what genuinely detracts. No exclamation marks, no marketing clichés ('elevate', 'effortless', 'versatile', 'staple').
+
+Return ONLY: overall.score as an INTEGER 1-10, and overall.summary as ONE short sentence that leads with what works and adds at most one change that genuinely matters. Do NOT pick a working outfit apart.
+If it is not a usable full-outfit photo: analyzable=false with a note on what is needed.
+Return ONLY JSON matching the schema.`;
+
+export const BRIEF_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    analyzable: { type: "BOOLEAN" },
+    note: { type: "STRING" },
+    overall: {
+      type: "OBJECT",
+      properties: { score: { type: "INTEGER" }, summary: { type: "STRING" } },
+      required: ["score", "summary"],
+    },
+  },
+  required: ["analyzable"],
+};
+
+export async function analyzeFit(image: Inline, profile?: unknown, brief = false) {
   const model = textModel();
   const ctx = profile && Object.keys(profile as object).length
     ? `User profile (factor into proportion/cut advice):\n${JSON.stringify(profile)}`
     : "No user profile provided. Analyze from the photo alone.";
   const analysis = await generate(model, {
-    systemInstruction: { parts: [{ text: CRITIQUE_SYSTEM }] },
+    systemInstruction: { parts: [{ text: brief ? BRIEF_SYSTEM : CRITIQUE_SYSTEM }] },
     contents: [{ role: "user", parts: [{ text: ctx }, { inlineData: { mimeType: image.mimeType, data: image.data } }] }],
-    generationConfig: { responseMimeType: "application/json", responseSchema: CRITIQUE_SCHEMA, temperature: 0.6 },
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseSchema: brief ? BRIEF_SCHEMA : CRITIQUE_SCHEMA,
+      temperature: 0.6,
+    },
   });
   return { analysis, model, promptVersion: CRITIQUE_PROMPT_VERSION };
 }

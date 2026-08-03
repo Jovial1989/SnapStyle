@@ -15,6 +15,8 @@
 import type { Inline } from "./gemini.ts";
 import { openaiJson } from "./openai_text.ts";
 import {
+  BRIEF_SCHEMA,
+  BRIEF_SYSTEM,
   CRITIQUE_SYSTEM,
   PLAN_SYSTEM,
   profileSystem,
@@ -191,13 +193,16 @@ const PLAN_JSON_SCHEMA = {
 
 // ── operations ───────────────────────────────────────────────────────────────
 
-export function analyzeFit(image: Inline, profile?: unknown) {
+export function analyzeFit(image: Inline, profile?: unknown, brief = false) {
   const ctx = profile && Object.keys(profile as object).length
     ? `User profile (factor into proportion/cut advice):\n${JSON.stringify(profile)}`
     : "No user profile provided. Analyze from the photo alone.";
   return route("critique", {
     openai: async () => ({
-      analysis: await openaiJson({ system: CRITIQUE_SYSTEM, user: ctx, images: [image], schema: CRITIQUE_SCHEMA }),
+      analysis: await openaiJson({
+        system: brief ? BRIEF_SYSTEM : CRITIQUE_SYSTEM,
+        user: ctx, images: [image], schema: brief ? BRIEF_SCHEMA : CRITIQUE_SCHEMA,
+      }),
       model: "openai-vision", promptVersion: "openai-critique-v1",
     }),
     local: async () => {
@@ -206,7 +211,7 @@ export function analyzeFit(image: Inline, profile?: unknown) {
       if (profile && Object.keys(profile as object).length) f.set("profile", JSON.stringify(profile));
       return { analysis: await post("/critique", f), model: "qwen3-vl-local", promptVersion: "qwen-critique-v1" };
     },
-    gemini: () => gemAnalyzeFit(image, profile),
+    gemini: () => gemAnalyzeFit(image, profile, brief),
   });
 }
 
