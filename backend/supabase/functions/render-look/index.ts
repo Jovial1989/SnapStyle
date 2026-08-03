@@ -66,6 +66,7 @@ Deno.serve(async (req) => {
       prompt?: string;
       reference_paths?: string[];
       dress?: { path: string; slot: string; label: string }[];
+      affiliate?: { category?: string; name?: string; imageUrl?: string }[];
       kept_from_photo?: string[];
     };
     // 768px transform of the body photo (Storage Image Transformation):
@@ -124,16 +125,28 @@ Deno.serve(async (req) => {
     // garment photo for the adapter to transfer, so those stay hosted; that is a
     // property of the approach, not a gap to paper over.
     let img: Awaited<ReturnType<typeof generateLookImage>> | null = null;
-    if (hybridEnabled() && (meta.dress ?? []).length) {
+    // AFFILIATE LOOKS COUNT TOO. `meta.dress` only ever covered closet looks, so
+    // looks matched to real catalogue SKUs fell through to the hosted renderer
+    // even though their garments have both a category and a product photo — the
+    // exact two things the engine needs. Observed on a live set: five looks, all
+    // dress=0, two of them tier=affiliate. Only `tier=inspiration` genuinely has
+    // nothing to reference, because a garment invented in a sentence has no
+    // photograph anywhere.
+    const affSteps = (meta.affiliate ?? [])
+      .map((a) => ({ kind: slotOf(a.category), url: String(a.imageUrl ?? ""), label: String(a.name ?? "") }))
+      .filter((a) => a.kind && /^https?:\/\//.test(a.url));
+    if (hybridEnabled() && ((meta.dress ?? []).length || affSteps.length)) {
       try {
         const steps: DressStep[] = [];
-        for (const d of meta.dress!) {
+        for (const d of meta.dress ?? []) {
           const kind = slotOf(d.slot);
           if (!kind) continue;   // accessories have no mask zone — skip, don't guess
           const { data: t } = await db.storage.from("wardrobe")
             .createSignedUrl(d.path, 900, { transform: { width: 768, quality: 85 } });
           if (t?.signedUrl) steps.push({ url: t.signedUrl, kind, hint: d.label });
         }
+        // Catalogue images are already public URLs — nothing to sign or copy.
+        for (const a of affSteps) steps.push({ url: a.url, kind: a.kind!, hint: a.label });
         if (steps.length) {
           // Start from the CANONICAL AVATAR (the person re-dressed in neutral
           // grey basics) for the same reason the hosted path prefers it: each
