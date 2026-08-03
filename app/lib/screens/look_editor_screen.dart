@@ -1276,7 +1276,19 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
     ];
   }
 
+  /// Background warming EXISTED TO HIDE A SLOW RENDERER. At 45-60s per hosted
+  /// render, pre-warming the combos a tap might need was the only way a swap ever
+  /// felt instant. On our own engine a render is 2.6s — and the worker renders
+  /// strictly one job at a time, so every warm sitting in the queue is a job the
+  /// user's actual tap waits behind. Measured: three jobs 8s apart, each 2.4-2.9s
+  /// of GPU, and a 22s wait for the tap that entered the queue last.
+  ///
+  /// So it is off. What it optimised no longer exists, and it now causes the delay
+  /// it was built to prevent. Flip to true only if renders get slow again.
+  static const bool _kPrefetchWarms = false;
+
   void _startPrefetchQueue() {
+    if (!_kPrefetchWarms) return;
     final slots = _slots;
     if (slots == null) return;
     final open = _combosFor(_sel, take: 2);
