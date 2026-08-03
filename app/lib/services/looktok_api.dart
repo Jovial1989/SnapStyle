@@ -550,6 +550,11 @@ class LooktokApi {
     List<String> targetZones = const [],
     List<String> lockedZones = const [],
     List<Uint8List> references = const [], // product shots of the garments to dress
+    // A garment that has a REAL product photo passes its URL instead of its
+    // bytes: the server hands the renderer a reference and nothing is downloaded,
+    // base64'd, POSTed, decoded and re-uploaded. Measured on the same swap:
+    // 2081 KB / 16.6s with bytes against 642 KB / 10.3s with the URL.
+    List<String> referenceUrls = const [],
     int attempt = 1,
   }) async {
     final refs = <Map<String, String>>[];
@@ -563,9 +568,10 @@ class LooktokApi {
     // re-tapping a seen swap paints instantly, even offline).
     final key = sha256
         .convert(utf8.encode([
-          'fix:v12', base64Image, instruction, // v11: QA full-body restore + bg hygiene
+          'fix:v14', base64Image, instruction, // v11: QA full-body restore + bg hygiene
           targetZones.join(','), lockedZones.join(','),
           for (final r in refs) r['data']!,
+          ...referenceUrls,
         ].join('|')))
         .toString();
     final cacheFile = await _tryonFile(key);
@@ -580,6 +586,7 @@ class LooktokApi {
       if (targetZones.isNotEmpty) 'target_zones': targetZones,
       if (lockedZones.isNotEmpty) 'locked_zones': lockedZones,
       if (refs.isNotEmpty) 'references': refs,
+      if (referenceUrls.isNotEmpty) 'reference_urls': referenceUrls,
       if (attempt > 1) 'attempt': attempt,
       // 100s, not 45: the hosted render measures 45-60s, so the old budget
       // failed a call that was about to succeed (every look_renders row for
@@ -603,6 +610,7 @@ class LooktokApi {
   /// v1 → silent QA replacement → done/failed. Replaces the long-held
   /// generateFix HTTP call in the editor.
   Future<({Uint8List? bytes, Uint8List? bytesTucked, String? renderId})> dispatchFix({
+    List<String> referenceUrls = const [],
     required String base64Image,
     required String mimeType,
     required String instruction,
@@ -627,6 +635,7 @@ class LooktokApi {
           'fix:v12', 'gemini', base64Image, instr, // v11: QA full-body restore + bg hygiene
           tz.join(','), lz.join(','),
           for (final r in refs) r['data']!,
+          ...referenceUrls,
         ].join('|')))
         .toString();
     final cacheFile =
@@ -653,6 +662,7 @@ class LooktokApi {
       if (targetZones.isNotEmpty) 'target_zones': targetZones,
       if (lockedZones.isNotEmpty) 'locked_zones': lockedZones,
       if (refs.isNotEmpty) 'references': refs,
+      if (referenceUrls.isNotEmpty) 'reference_urls': referenceUrls,
       if (identityB64 != null)
         'identity': {'data': identityB64, 'mimeType': 'image/jpeg'},
       if (tucked != null)

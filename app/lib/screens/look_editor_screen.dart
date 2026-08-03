@@ -607,6 +607,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
       {List<String> targetZones = const [],
       List<String> lockedZones = const [],
       List<Uint8List> references = const [],
+      List<String> referenceUrls = const [],
       String? comboKey,
       ({String instruction, List<String> targetZones, List<String> lockedZones})? tucked,
       String? tuckedKey,
@@ -659,6 +660,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
         targetZones: targetZones,
         lockedZones: lockedZones,
         references: references,
+        referenceUrls: referenceUrls,
         tucked: tucked,
         identityB64: identityB64);
     Completer<Uint8List>? twinC;
@@ -1125,7 +1127,8 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
       var bytes = await _gen(primary.instruction,
           targetZones: primary.targetZones,
           lockedZones: primary.lockedZones,
-          references: refs,
+          references: refs.bytes,
+          referenceUrls: refs.urls,
           comboKey: key,
           tucked: tuckedSpec,
           tuckedKey: dualTuck ? _keyFor(sel, tuck: 1) : null,
@@ -1145,7 +1148,8 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
           bytes = await _gen('${primary.instruction}${_retakeNote(attempt)}',
               targetZones: primary.targetZones,
               lockedZones: primary.lockedZones,
-              references: refs,
+              references: refs.bytes,
+              referenceUrls: refs.urls,
               comboKey: key,
               personOverride: base);
           cropped = await _feetCropped(bytes);
@@ -1199,20 +1203,32 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
   /// Build the per-item flat-lay references for a swap combo (the thumbs the
   /// model COPIES from). Thumbs are cached after first warm, so this is cheap
   /// on the second call — hence safe to run again for the Phase-2 upgrade.
-  Future<List<Uint8List>> _swapRefs(Map<int, int> sel) async {
+  Future<({List<Uint8List> bytes, List<String> urls})> _swapRefs(Map<int, int> sel) async {
     final refs = <Uint8List>[];
+    final urls = <String>[];
     for (final k in sel.keys.toList()..sort()) {
-      final desc = _slots![k].alts[sel[k]! - 1].instruction;
+      final alt = _slots![k].alts[sel[k]! - 1];
+      // PREFER THE REAL PRODUCT PHOTO. When an alternative was matched to an
+      // actual SKU it carries that garment's own image URL, and passing the URL
+      // beats generating a cut-out twice over: the renderer gets ground truth
+      // instead of an AI re-drawing of it, and nothing has to be downloaded,
+      // base64'd, POSTed and re-uploaded (2081 KB / 16.6s with bytes against
+      // 642 KB / 10.3s with the URL, same swap). It also skips the _itemImage
+      // render entirely — up to 12s of waiting before the swap even began.
+      final shopUrl = (alt.shop?['imageUrl'] ?? '').toString();
+      if (shopUrl.startsWith('http')) {
+        urls.add(shopUrl);
+        continue;
+      }
       try {
-        // 6s cap: on a cold tab the thumb itself is a full Gemini render —
-        // 15s of silent waiting BEFORE the swap even started was the hidden
-        // half of "долго". Past the cap the swap goes text-only; the thumb
-        // keeps warming for the next tap.
-        refs.add(await _itemImage(desc, _slots![k].slot)
+        // No product photo (a wardrobe piece, or an idea with no SKU match):
+        // fall back to the generated cut-out. 12s cap — past it the swap goes
+        // text-only and the thumb keeps warming for the next tap.
+        refs.add(await _itemImage(alt.instruction, _slots![k].slot)
             .timeout(const Duration(seconds: 12)));
       } catch (_) {/* text-only for this item */}
     }
-    return refs;
+    return (bytes: refs, urls: urls);
   }
 
   // ── Smart Prefetch Queue — cost-capped background warming ─────────────────
@@ -1451,7 +1467,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
                 wrongMime: imageMime(wrong),
                 personB64: clean != null ? base64Encode(clean) : null,
                 personMime: clean != null ? imageMime(clean) : null,
-                refs: [for (final r in refs) {'data': base64Encode(r), 'mimeType': imageMime(r)}],
+                refs: [for (final r in refs.bytes) {'data': base64Encode(r), 'mimeType': imageMime(r)}],
               );
         } catch (_) {/* best-effort */}
       }();
