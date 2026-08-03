@@ -1,0 +1,127 @@
+// CANONICAL AVATAR (the Zara lesson): build the "dressable mannequin" ONCE per
+// body photo — the person re-dressed in neutral grey basics on a clean studio
+// white — and let every Generate-my-look render start from it. Wins:
+//   • identity is anchored once (the avatar already passed samePerson QA),
+//     instead of being re-negotiated on every render;
+//   • the user's real outfit can't bleed into generated looks (the source
+//     garments are physically absent from the canvas);
+//   • the input bytes are stable across sessions → deterministic behavior.
+// Built fire-and-forget after the photo lands (never blocks onboarding);
+// consumers TRY `${photoPath}.avatar.png` and fall back to `.clean.png`/raw,
+// so a missing/failed avatar costs nothing.
+import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
+import { fetchInline } from "./gemini.ts";
+import { generateLookImage } from "./imagegen.ts";
+import { samePerson, validateLookImages } from "./vision.ts";
+
+const BUCKET = "body-photos";
+const b64ToBytes = (b64: string) => Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+
+const AVATAR_PROMPT = [
+  "MANDATORY EDIT: re-dress the person in this photo as a neutral fitting mannequin:",
+  "a plain fitted heather-grey SHORT-SLEEVE crew-neck t-shirt (short set-in sleeves clearly covering the shoulders, hem worn loose),",
+  "plain mid-grey straight-leg FULL-LENGTH trousers reaching down to the ankle,",
+  "and plain white low-top sneakers. No prints, no logos, no pockets, no accessories added or removed.",
+  "IDENTITY LOCK (absolute): the SAME person — same face, same hair, same skin tone, same body proportions, same pose. Rendering a different or generic model is a FAILED generation.",
+  "FRAMING: photorealistic, full body head-to-toe, feet and shoes fully visible with clear margin below, centered.",
+  "BACKGROUND: the ENTIRE frame is ONE flat, uniform, seamless PURE-WHITE (#FFFFFF) — no leftover scene, no halos, no grey patches.",
+  "No text, no watermarks.",
+].join(" ");
+
+/** Build (or rebuild) the canonical avatar for [photoPath]. Never throws —
+ * failures are logged and the avatar simply doesn't exist (consumers fall
+ * back). QA-gated: identity vs the source photo + the standard look validator;
+ * ONE retry, then give up (2 renders worst case, once per photo change). */
+export async function buildCanonicalAvatar(db: SupabaseClient, photoPath: string): Promise<void> {
+  try {
+    // Source: the clean cutout when it exists (halo-free), else the raw upload.
+    let person: Awaited<ReturnType<typeof fetchInline>> | undefined;
+    for (const p of [`${photoPath}.clean.png`, photoPath]) {
+      try {
+        const { data: t } = await db.storage.from(BUCKET)
+          .createSignedUrl(p, 300, { transform: { width: 768, quality: 80 } });
+        if (t?.signedUrl) { person = await fetchInline(t.signedUrl); break; }
+      } catch (_) {/* try next */}
+    }
+    if (!person) {
+      const { data: t } = await db.storage.from(BUCKET).createSignedUrl(photoPath, 300);
+      if (!t?.signedUrl) throw new Error("no source photo");
+      person = await fetchInline(t.signedUrl);
+    }
+
+    let avatar = await generateLookImage(person, AVATAR_PROMPT);
+    const ok = async (img: typeof avatar) => {
+      try {
+        if (!(await samePerson(img, person!))) return false;
+      } catch (_) {/* gate down → fall through to validator */}
+      try {
+        return (await validateLookImages([img]))[0] !== false;
+      } catch (_) { return true; /* validator down → accept */ }
+    };
+    if (!(await ok(avatar))) {
+      avatar = await generateLookImage(person, AVATAR_PROMPT +
+        " NOTE: a previous attempt FAILED — it changed the person or produced an invalid image. Keep the EXACT person from the photo, decisively.");
+      if (!(await ok(avatar))) throw new Error("avatar failed QA twice");
+    }
+
+    // PORTRAIT REFRAME (28.07 incident): Gemini inherits the SOURCE photo's
+    // orientation — a rotated selfie yielded a LANDSCAPE avatar with a tiny
+    // figure, and every downstream render lost the face. Normalize: crop to
+    // the figure's bounding box on a white 2:3 portrait canvas, 8% margins.
+    const framed = await portraitFrame(b64ToBytes(avatar.data));
+
+    const { error } = await db.storage.from(BUCKET).upload(
+      `${photoPath}.avatar.png`, framed,
+      { contentType: "image/png", upsert: true },
+    );
+    if (error) throw new Error(error.message);
+    console.log("[avatar] built", photoPath);
+  } catch (e) {
+    console.error("[avatar]", photoPath, (e as Error).message);
+  }
+}
+
+async function portraitFrame(png: Uint8Array): Promise<Uint8Array> {
+  const { Image } = await import("https://deno.land/x/imagescript@1.3.0/mod.ts");
+  const im = await Image.decode(png);
+  const w = im.width, h = im.height, bmp = im.bitmap;
+  // Occupancy, not "any non-white pixel": studio backgrounds are near-white and
+  // JPEG softens edges, so the naive test claimed the subject spanned the whole
+  // canvas. The crop then centred the WHOLE frame instead of the figure and the
+  // person ended up pushed against one edge (28.07.2026).
+  const rowN = new Uint32Array(h), colN = new Uint32Array(w);
+  for (let i = 0; i < w * h; i++) {
+    const mx = Math.max(bmp[i * 4], bmp[i * 4 + 1], bmp[i * 4 + 2]);
+    if (mx < 235) { rowN[(i / w) | 0]++; colN[i % w]++; }
+  }
+  const RUN = 5;
+  const span = (counts: Uint32Array, n: number, minHit: number) => {
+    const ok = (k: number) => counts[k] > minHit;
+    let lo = -1, hi = -1;
+    for (let k = 0; k + RUN <= n; k++) {
+      let all = true;
+      for (let j = 0; j < RUN; j++) if (!ok(k + j)) { all = false; break; }
+      if (all) { lo = k; break; }
+    }
+    for (let k = n - 1; k - RUN + 1 >= 0; k--) {
+      let all = true;
+      for (let j = 0; j < RUN; j++) if (!ok(k - j)) { all = false; break; }
+      if (all) { hi = k; break; }
+    }
+    return [lo, hi] as const;
+  };
+  const [y0, y1] = span(rowN, h, Math.max(3, Math.round(w * 0.02)));
+  const [x0, x1] = span(colN, w, Math.max(3, Math.round(h * 0.01)));
+  if (y0 < 0 || x0 < 0 || y1 <= y0 || x1 <= x0) return png;   // blank → keep as is
+  const m = Math.round((y1 - y0) * 0.08);
+  const H = (y1 - y0) + 2 * m, W = Math.round(H * 2 / 3);
+  const canvas = new Image(W, H).fill(0xffffffff);
+  const sy0 = Math.max(0, y0 - m), sy1 = Math.min(h, y1 + m);
+  const sx0 = Math.max(0, x0 - m), sx1 = Math.min(w, x1 + m);
+  const part = im.clone().crop(sx0, sy0, sx1 - sx0, sy1 - sy0);
+  canvas.composite(part, Math.round((W - part.width) / 2), m - (y0 - sy0));
+  const out = canvas.height < 1152
+    ? canvas.resize(Math.round(canvas.width * 1152 / canvas.height), 1152)
+    : canvas;
+  return await out.encode();
+}

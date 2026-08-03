@@ -69,6 +69,7 @@ class AnalysisResult {
   final List<Hotspot> hotspots;
   final String model;
   final String promptVersion;
+  final String? generationId; // history row id (for tagging a guest name on save)
 
   const AnalysisResult({
     required this.analyzable,
@@ -78,6 +79,7 @@ class AnalysisResult {
     required this.hotspots,
     required this.model,
     required this.promptVersion,
+    this.generationId,
   });
 
   /// Defensive: model should return 1–10, but if it emits a 0–100 value,
@@ -102,6 +104,7 @@ class AnalysisResult {
           .toList(),
       model: (res['model'] ?? '').toString(),
       promptVersion: (res['promptVersion'] ?? '').toString(),
+      generationId: res['generationId']?.toString(),
     );
   }
 }

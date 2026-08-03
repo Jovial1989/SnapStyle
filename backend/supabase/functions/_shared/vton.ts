@@ -42,7 +42,7 @@ const DONE = "_vton/done";
 // ~40s means the worker is down rather than slow. Failing fast lets the caller
 // fall back to the hosted provider inside the request the user is waiting on.
 const TIMEOUT_MS = Number(Deno.env.get("VTON_QUEUE_TIMEOUT_MS") ?? 40_000);
-const POLL_MS = Number(Deno.env.get("VTON_POLL_MS") ?? 350);
+const POLL_MS = Number(Deno.env.get("VTON_POLL_MS") ?? 200);
 
 export function hybridEnabled(): boolean {
   return (Deno.env.get("VTON_ENGINE") ?? "").toLowerCase() === "hybrid";
@@ -117,6 +117,61 @@ export async function hybridDress(
   // on a render nobody is waiting for.
   db.storage.from(BUCKET).remove([`${QUEUE}/${id}.json`]).catch(() => {});
   throw new Error(`vton timeout after ${TIMEOUT_MS}ms`);
+}
+
+/** Park a base64 image in Storage and hand back a URL the worker can fetch.
+ *
+ * The queue carries URLs, not bytes: the worker pulls its own inputs, so a job
+ * record stays a few hundred bytes however large the images are. Callers that
+ * already hold pixels inline (the editor posts the current look as base64) need
+ * this bridge. Objects land under a scratch prefix and are removed by
+ * [unstage] once the render is done — best-effort, since a leaked scratch file
+ * is harmless while a failed cleanup that threw would lose a good render. */
+export async function stageInline(
+  db: SupabaseClient,
+  img: Inline,
+  tag = "in",
+): Promise<{ url: string; path: string }> {
+  const path = `_vton/${tag}/${crypto.randomUUID()}.jpg`;
+  const bytes = await shrink(Uint8Array.from(atob(img.data), (c) => c.charCodeAt(0)));
+  const { error } = await db.storage.from(BUCKET).upload(
+    path, new Blob([bytes], { type: "image/jpeg" }),
+    { contentType: "image/jpeg", upsert: true },
+  );
+  if (error) throw new Error(`vton stage failed: ${error.message}`);
+  const { data, error: se } = await db.storage.from(BUCKET).createSignedUrl(path, 900);
+  if (se || !data?.signedUrl) throw new Error(`vton sign failed: ${se?.message}`);
+  return { url: data.signedUrl, path };
+}
+
+export function unstage(db: SupabaseClient, paths: string[]): void {
+  if (paths.length) db.storage.from(BUCKET).remove(paths).catch(() => {});
+}
+
+// Every staged byte is paid for three times: this upload, the worker's download,
+// and the storage itself. A 1 MB catalogue PNG cost ~3.5s of a 5.5s job while the
+// render was 2s — and it was waste, because the engine resamples to 512×768
+// regardless. JPEG at 768px is visually identical at the working resolution.
+const STAGE_MAX = Number(Deno.env.get("VTON_STAGE_PX") ?? 768);
+
+async function shrink(bytes: Uint8Array): Promise<Uint8Array> {
+  try {
+    const { Image } = await import("https://deno.land/x/imagescript@1.3.0/mod.ts");
+    const im = await Image.decode(bytes);
+    const longest = Math.max(im.width, im.height);
+    const out = longest > STAGE_MAX
+      ? im.resize(
+        im.width >= im.height ? STAGE_MAX : Image.RESIZE_AUTO,
+        im.height > im.width ? STAGE_MAX : Image.RESIZE_AUTO,
+      )
+      : im;
+    return await out.encodeJPEG(88);
+  } catch (e) {
+    // A decode failure must not fail the render — ship the original bytes and
+    // pay the transfer. Worth logging: it means an input format we cannot read.
+    console.error("[vton] shrink failed, staging original:", (e as Error).message);
+    return bytes;
+  }
 }
 
 /** Map the app's garment categories onto the engine's four mask zones.

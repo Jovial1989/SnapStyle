@@ -56,7 +56,7 @@ class _MarkPainter extends CustomPainter {
   bool shouldRepaint(covariant _MarkPainter old) => old.color != color;
 }
 
-/// `snapstyle` wordmark — split weight (heavy "snap" + light "style"), tightly
+/// `looktok` wordmark — split weight (heavy "look" + light "tok"), tightly
 /// tracked. Dependency-free (reverted from the Baloo 2 experiment).
 class Wordmark extends StatelessWidget {
   const Wordmark({super.key, this.size = 22, this.color = AppColors.ink});
@@ -75,8 +75,8 @@ class Wordmark extends StatelessWidget {
           height: 1.0,
         ),
         children: [
-          const TextSpan(text: 'snap'),
-          TextSpan(text: 'style', style: TextStyle(fontWeight: FontWeight.w300, color: color)),
+          const TextSpan(text: 'look'),
+          TextSpan(text: 'tok', style: TextStyle(fontWeight: FontWeight.w300, color: color)),
         ],
       ),
     );

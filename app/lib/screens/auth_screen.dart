@@ -1,10 +1,17 @@
+import 'dart:ui' show ImageFilter;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
+import '../services/auth.dart' as auth;
 import '../theme.dart';
 import '../widgets/wordmark.dart';
 import 'home_shell.dart';
+import 'onboarding_screen.dart';
+import 'vibe_check_screen.dart';
+import 'select_looks_screen.dart';
 
 /// First-run: "show, don't tell" onboarding (SDD §14.2 / §9.7).
 /// Each slide = top 60% rich media mockup + bottom 40% copy/CTA.
@@ -16,100 +23,190 @@ class AuthScreen extends ConsumerStatefulWidget {
 }
 
 class _AuthScreenState extends ConsumerState<AuthScreen> {
-  final _pager = PageController();
+  // 0..3 = story beats, 4 = the account form. One static scaffold, the
+  // content cross-fades inside it; swipe OR tap advances.
+  int _step = 0;
 
   Future<void> _finish() async {
+    // Dummy login → real anonymous Supabase session (idempotent, no-op if cloud off).
+    try {
+      await auth.ensureSession();
+    } catch (_) {/* offline / transient — proceed; cloud calls will retry */}
     await ref.read(profileStoreProvider).setSignedIn(true);
+
+    // Offer the body profile right after sign-up (skippable here; enforced later
+    // as a hard gate before any review/look flow — SDD §14).
+    var needsProfile = false;
+    if (ref.read(cloudEnabledProvider)) {
+      try {
+        needsProfile = !await ref.read(looktokApiProvider).hasBodyProfile();
+      } catch (_) {/* offline — offer anyway */ needsProfile = true;}
+    }
     if (!mounted) return;
+    if (needsProfile) {
+      await Navigator.of(context)
+          .push(MaterialPageRoute(builder: (_) => const OnboardingScreen(skippable: true)));
+      if (!mounted) return;
+      // Visual "Style DNA" (SDD §14.12) — skippable; falls back to a smart anchor.
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const VibeCheckScreen()));
+      if (!mounted) return;
+      // "Your looks" — optional 2–10 photos → silent personal lookbook (skippable).
+      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SelectLooksScreen()));
+      if (!mounted) return;
+    }
     Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const HomeShell()));
   }
 
-  void _next() =>
-      _pager.nextPage(duration: const Duration(milliseconds: 320), curve: Curves.easeOut);
-
-  @override
-  void dispose() {
-    _pager.dispose();
-    super.dispose();
+  void _next() {
+    if (_step < 4) {
+      HapticFeedback.selectionClick();
+      setState(() => _step++);
+    }
   }
+
+  void _prev() {
+    if (_step > 0 && _step < 4) {
+      HapticFeedback.selectionClick();
+      setState(() => _step--);
+    }
+  }
+
+  static const _story = [
+    (heading: 'Honest,\nnot flattering.', body: 'One mirror photo. A real read on how your fit actually lands — fit, proportion, colour, footwear.', cta: 'Next'),
+    (heading: 'Deep AI Analysis.', body: 'It maps your proportions, fit and style geometry — the same things a good stylist reads.', cta: 'Next'),
+    (heading: 'Your ultimate fit.', body: 'Every idea is rendered on YOUR photo — not a model. Swap any piece and see it instantly.', cta: 'Next'),
+    (heading: 'It learns\nyour taste.', body: 'Add your height and a few looks you love — yours or anyone\'s. The AI dresses you from them.', cta: 'Get Started'),
+  ];
+
+  Widget _stageFor(int step) => switch (step) {
+        0 => const _RawStage(),
+        1 => const _ScanStage(),
+        2 => const _RevealStage(),
+        _ => const _TasteStage(),
+      };
 
   @override
   Widget build(BuildContext context) {
+    final onStory = _step < 4;
     return Scaffold(
       body: SafeArea(
-        child: PageView(
-          controller: _pager,
-          children: [
-            _Slide(
-              media: const _ScanMock(),
-              dotIndex: 0,
-              heading: 'Honest,\nnot flattering.',
-              body: 'One photo. A real read on how your fit actually lands.',
-              cta: 'Next',
-              onCta: _next,
+        child: Column(children: [
+          // ── The living content: story beat or the account form, swapped by
+          // one 500ms fade + whisper of scale. The scaffold never moves. ──
+          Expanded(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onHorizontalDragEnd: onStory
+                  ? (d) {
+                      final v = d.primaryVelocity ?? 0;
+                      if (v < -200) _next();
+                      if (v > 200) _prev();
+                    }
+                  : null,
+              child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 500),
+              switchInCurve: Curves.easeOutCubic,
+              switchOutCurve: Curves.easeInCubic,
+              transitionBuilder: (child, anim) => FadeTransition(
+                opacity: anim,
+                child: ScaleTransition(
+                  scale: Tween(begin: 0.985, end: 1.0).animate(anim),
+                  child: child,
+                ),
+              ),
+              child: KeyedSubtree(
+                key: ValueKey(_step),
+                child: onStory
+                    ? _StoryContent(
+                        media: _stageFor(_step),
+                        heading: _story[_step].heading,
+                        body: _story[_step].body,
+                      )
+                    : _AuthPage(onDone: _finish),
+              ),
+              ),
             ),
-            _Slide(
-              media: const _PinsMock(),
-              dotIndex: 1,
-              heading: 'See the fix.',
-              body: 'Tap the pins to get actionable, brand-agnostic style upgrades.',
-              cta: 'Next',
-              onCta: _next,
+          ),
+          // ── Fixed footer: plain conditional (a transition wrapper once ate
+          // the button on-device — never again). ──
+          if (onStory)
+            SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(24, 4, 24, 14),
+                child: Row(children: [
+                  _Dots(index: _step),
+                  const Spacer(),
+                  SizedBox(
+                    height: 50,
+                    child: FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.ink,
+                        foregroundColor: Colors.white,
+                        // The app theme sets minimumSize.fromHeight(58) =
+                        // INFINITE width — inside this Row (unbounded after
+                        // Spacer) the button collapsed to nothing. Twice.
+                        minimumSize: const Size(0, 50),
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        padding: const EdgeInsets.symmetric(horizontal: 22),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(999)),
+                      ),
+                      onPressed: _next,
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Text(_story[_step].cta,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.w800, fontSize: 15)),
+                        const SizedBox(width: 8),
+                        const Icon(Icons.arrow_forward, size: 17),
+                      ]),
+                    ),
+                  ),
+                ]),
+              ),
             ),
-            _AuthPage(onDone: _finish),
-          ],
-        ),
+        ]),
       ),
     );
   }
 }
 
-/// 60/40 layout: media on top, copy + CTA + page dots on the bottom.
-class _Slide extends StatelessWidget {
-  const _Slide({
-    required this.media,
-    required this.heading,
-    required this.body,
-    required this.cta,
-    required this.onCta,
-    required this.dotIndex,
-  });
+/// One story beat: stage + copy. The footer lives OUTSIDE (fixed) — this
+/// widget is what the AnimatedSwitcher cross-fades.
+class _StoryContent extends StatelessWidget {
+  const _StoryContent({required this.media, required this.heading, required this.body});
   final Widget media;
-  final String heading, body, cta;
-  final VoidCallback onCta;
-  final int dotIndex;
+  final String heading, body;
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          flex: 6,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-            child: ClipRRect(borderRadius: BorderRadius.circular(24), child: media),
+    return Column(children: [
+      Expanded(
+        flex: 11,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Container(
+            clipBehavior: Clip.antiAlias,
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(24)),
+            child: media,
           ),
         ),
-        Expanded(
-          flex: 4,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(heading, style: AppType.display),
-                const SizedBox(height: 12),
-                Text(body, style: AppType.body),
-                const Spacer(),
-                _Dots(index: dotIndex),
-                const SizedBox(height: 14),
-                FilledButton(onPressed: onCta, child: Text(cta)),
-              ],
-            ),
+      ),
+      Expanded(
+        flex: 6,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 18, 24, 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(heading, style: AppType.display),
+              const SizedBox(height: 10),
+              Text(body, style: AppType.body),
+            ],
           ),
         ),
-      ],
-    );
+      ),
+    ]);
   }
 }
 
@@ -119,15 +216,17 @@ class _Dots extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
-      children: List.generate(3, (i) {
+      children: List.generate(4, (i) {
         final on = i == index;
-        return Container(
-          margin: const EdgeInsets.only(right: 6),
-          width: on ? 20 : 6,
-          height: 6,
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeOutCubic,
+          margin: const EdgeInsets.only(right: 7),
+          width: on ? 26 : 7,
+          height: 7,
           decoration: BoxDecoration(
-            color: on ? AppColors.ink : AppColors.line,
-            borderRadius: BorderRadius.circular(3),
+            color: on ? AppColors.ink : const Color(0xFFE2E2DE),
+            borderRadius: BorderRadius.circular(4),
           ),
         );
       }),
@@ -135,16 +234,67 @@ class _Dots extends StatelessWidget {
   }
 }
 
-// ── Media mock 1: AI scanning ──────────────────────────────────────────────
-class _ScanMock extends StatefulWidget {
-  const _ScanMock();
+/// First-existing-asset image: lets wife/founder shots slot in by filename
+/// with zero code changes (drop wife_1.jpg / wife_2.jpg into
+/// assets/onboarding/ and rebuild).
+class _SmartAsset extends StatelessWidget {
+  const _SmartAsset({required this.candidates});
+  final List<String> candidates;
+
+  Future<String> _resolve(BuildContext context) async {
+    for (final c in candidates) {
+      try {
+        await DefaultAssetBundle.of(context).load(c);
+        return c;
+      } catch (_) {/* next candidate */}
+    }
+    return candidates.last;
+  }
+
   @override
-  State<_ScanMock> createState() => _ScanMockState();
+  Widget build(BuildContext context) {
+    return FutureBuilder<String>(
+      future: _resolve(context),
+      builder: (_, s) => s.hasData
+          ? Image(image: AssetImage(s.data!), fit: BoxFit.cover)
+          : const ColoredBox(color: Color(0xFFF0F0F3)),
+    );
+  }
 }
 
-class _ScanMockState extends State<_ScanMock> with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))..repeat();
+// ── Stage 1: honest reality — the founder's real mirror photo ─────────────
+class _RawStage extends StatelessWidget {
+  const _RawStage();
+  @override
+  Widget build(BuildContext context) => const _SmartAsset(
+      candidates: ['assets/onboarding/story_real.jpg']);
+}
+
+// ── Stage 4: taste — looks you love teach the model (wife's shots when
+// present; the founder's restyle otherwise) ────────────────────────────────
+class _TasteStage extends StatelessWidget {
+  const _TasteStage();
+  @override
+  Widget build(BuildContext context) => const _SmartAsset(candidates: [
+        'assets/onboarding/wife_1.jpg',
+        'assets/onboarding/story_taste.jpg',
+      ]);
+}
+
+// ── Stage 2: the magic — a volumetric scanner breathes over the SAME photo,
+// with a glassmorphic AI SCAN badge. No hard scan lines, no frames. ─────────
+class _ScanStage extends StatefulWidget {
+  const _ScanStage();
+  @override
+  State<_ScanStage> createState() => _ScanStageState();
+}
+
+class _ScanStageState extends State<_ScanStage>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(
+      vsync: this, duration: const Duration(milliseconds: 2600))
+    ..repeat(reverse: true);
+
   @override
   void dispose() {
     _c.dispose();
@@ -153,200 +303,255 @@ class _ScanMockState extends State<_ScanMock> with SingleTickerProviderStateMixi
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (_, _) => CustomPaint(painter: _ScanMockPainter(_c.value), size: Size.infinite),
-    );
-  }
-}
-
-class _ScanMockPainter extends CustomPainter {
-  _ScanMockPainter(this.t);
-  final double t;
-  @override
-  void paint(Canvas canvas, Size s) {
-    canvas.drawRect(Offset.zero & s, Paint()..color = AppColors.surface);
-    _paintFigure(canvas, s);
-
-    // One calm detection frame around the subject.
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(
-        Rect.fromLTWH(s.width * 0.24, s.height * 0.06, s.width * 0.52, s.height * 0.86),
-        const Radius.circular(18),
-      ),
-      Paint()
-        ..color = AppColors.signature.withValues(alpha: 0.35)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5,
-    );
-
-    // Slow scan line + soft glow band.
-    final y = t * s.height;
-    final band = Rect.fromLTWH(0, y - 26, s.width, 52);
-    canvas.drawRect(
-      band,
-      Paint()
-        ..shader = LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.signature.withValues(alpha: 0),
-            AppColors.signature.withValues(alpha: 0.18),
-            AppColors.signature.withValues(alpha: 0),
-          ],
-        ).createShader(band),
-    );
-    canvas.drawLine(Offset(0, y), Offset(s.width, y),
-        Paint()..color = AppColors.signature..strokeWidth = 2);
-  }
-
-  @override
-  bool shouldRepaint(covariant _ScanMockPainter old) => old.t != t;
-}
-
-// ── Media mock 2: interactive pins + peeking sheet ─────────────────────────
-class _PinsMock extends StatefulWidget {
-  const _PinsMock();
-  @override
-  State<_PinsMock> createState() => _PinsMockState();
-}
-
-class _PinsMockState extends State<_PinsMock> with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 1500))..repeat();
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        AnimatedBuilder(
-          animation: _c,
-          builder: (_, _) => CustomPaint(painter: _PinsMockPainter(_c.value), size: Size.infinite),
-        ),
-        // Peeking bottom sheet with a suggestion row.
-        Align(
-          alignment: Alignment.bottomCenter,
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 10),
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 18),
-            decoration: const BoxDecoration(
-              color: AppColors.bg,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                    decoration: BoxDecoration(
-                        color: AppColors.flag.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(5)),
-                    child: const Text('ISSUE',
-                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w700, color: AppColors.flag))),
-                const SizedBox(height: 6),
-                const Text('Pants too long',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                const SizedBox(height: 10),
-                Row(
-                  children: List.generate(
-                    3,
-                    (_) => Container(
-                      width: 46,
-                      height: 56,
-                      margin: const EdgeInsets.only(right: 8),
-                      decoration: BoxDecoration(
-                          color: AppColors.surface, borderRadius: BorderRadius.circular(8)),
-                      child: const Icon(Icons.auto_awesome_outlined, size: 16, color: AppColors.muted),
-                    ),
+    return Stack(fit: StackFit.expand, children: [
+      const _SmartAsset(candidates: [
+        'assets/onboarding/wife_2.jpg',
+        'assets/onboarding/story_real.jpg',
+      ]),
+      // Soft volumetric band gliding up and down — pure gradient, no edges.
+      AnimatedBuilder(
+        animation: _c,
+        builder: (_, _) {
+          final y = -1.25 + 2.5 * Curves.easeInOut.transform(_c.value);
+          return Align(
+            alignment: Alignment(0, y),
+            child: FractionallySizedBox(
+              widthFactor: 1,
+              heightFactor: 0.42,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      AppColors.signature.withValues(alpha: 0),
+                      AppColors.signature.withValues(alpha: 0.16),
+                      Colors.white.withValues(alpha: 0.22),
+                      AppColors.signature.withValues(alpha: 0.16),
+                      AppColors.signature.withValues(alpha: 0),
+                    ],
                   ),
                 ),
-              ],
+              ),
+            ),
+          );
+        },
+      ),
+      // Glassmorphic badge — frosted, hairline white border.
+      Positioned(
+        top: 14, left: 14,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(999),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.45)),
+              ),
+              child: const Text('AI SCAN',
+                  style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 1.6)),
             ),
           ),
         ),
-      ],
+      ),
+    ]);
+  }
+}
+
+// ── Stage 3: the transformation — the fixed fit, revealed with a soft
+// scale-in. Scanner gone; the result speaks alone. ──────────────────────────
+class _RevealStage extends StatelessWidget {
+  const _RevealStage();
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0.94, end: 1),
+      duration: const Duration(milliseconds: 640),
+      curve: Curves.easeOutCubic,
+      builder: (_, sc, child) => Transform.scale(scale: sc, child: child),
+      child: const _SmartAsset(
+          candidates: ['assets/onboarding/story_fix.jpg']),
     );
   }
 }
 
-class _PinsMockPainter extends CustomPainter {
-  _PinsMockPainter(this.t);
-  final double t;
-  @override
-  void paint(Canvas canvas, Size s) {
-    canvas.drawRect(Offset.zero & s, Paint()..color = AppColors.surface);
-    _paintFigure(canvas, s);
-
-    // Calm pins at shoulder / waist / ankle (subtle breathing halo).
-    const spots = [Offset(0.62, 0.30), Offset(0.44, 0.52), Offset(0.52, 0.80)];
-    for (final sp in spots) {
-      final c = Offset(sp.dx * s.width, sp.dy * s.height);
-      canvas.drawCircle(c, 6 + t * 9,
-          Paint()..color = AppColors.ink.withValues(alpha: (1 - t) * 0.18));
-      canvas.drawCircle(c, 6, Paint()..color = AppColors.ink);
-      canvas.drawCircle(c, 6,
-          Paint()..color = Colors.white..style = PaintingStyle.stroke..strokeWidth = 2);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _PinsMockPainter old) => old.t != t;
-}
-
-/// Shared minimal grey figure (stylized "photo" placeholder).
-void _paintFigure(Canvas canvas, Size s) {
-  final c = Offset(s.width / 2, s.height * 0.14);
-  final grey = Paint()..color = const Color(0xFFDBDBD8);
-  final headR = s.width * 0.09;
-  canvas.drawCircle(c, headR, grey);
-  final bodyTop = c.dy + headR * 1.5;
-  canvas.drawRRect(
-    RRect.fromRectAndCorners(
-      Rect.fromLTRB(s.width * 0.30, bodyTop, s.width * 0.70, s.height * 0.92),
-      topLeft: Radius.circular(s.width * 0.20),
-      topRight: Radius.circular(s.width * 0.20),
-      bottomLeft: const Radius.circular(24),
-      bottomRight: const Radius.circular(24),
-    ),
-    grey,
-  );
-}
-
-class _AuthPage extends StatelessWidget {
+class _AuthPage extends StatefulWidget {
   const _AuthPage({required this.onDone});
   final VoidCallback onDone;
   @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Logo(size: 20),
-          const Spacer(),
-          const Text('Create your\naccount', style: AppType.display),
-          const SizedBox(height: 20),
-          const TextField(decoration: InputDecoration(labelText: 'Email')),
-          const SizedBox(height: 12),
-          const TextField(obscureText: true, decoration: InputDecoration(labelText: 'Password')),
-          const SizedBox(height: 20),
-          FilledButton(onPressed: onDone, child: const Text('Continue')),
-          const SizedBox(height: 10),
-          OutlinedButton.icon(
-            onPressed: onDone, // Google OAuth stub (SDD §14.2)
-            icon: const Icon(Icons.g_mobiledata, size: 26),
-            label: const Text('Continue with Google'),
-          ),
-          const Spacer(),
+  State<_AuthPage> createState() => _AuthPageState();
+}
+
+class _AuthPageState extends State<_AuthPage> {
+  final _email = TextEditingController();
+  final _password = TextEditingController();
+  bool _signIn = false; // false = create account, true = welcome back
+  bool _busy = false;
+
+  @override
+  void dispose() {
+    _email.dispose();
+    _password.dispose();
+    super.dispose();
+  }
+
+  Future<void> _submit() async {
+    final email = _email.text.trim();
+    final pass = _password.text;
+    if (email.isEmpty || pass.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Enter your email and password.')));
+      return;
+    }
+    setState(() => _busy = true);
+    try {
+      if (_signIn) {
+        await auth.signIn(email, pass);
+      } else {
+        await auth.signUp(email, pass);
+      }
+      if (!mounted) return;
+      widget.onDone();
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _busy = false);
+      final msg = e.toString().contains('Invalid login')
+          ? 'Wrong email or password.'
+          : e.toString().contains('already registered')
+              ? 'This email already has an account — sign in instead.'
+              : 'Couldn\'t ${_signIn ? 'sign you in' : 'create the account'} — try again.';
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+    }
+  }
+
+  /// Tactile input: soft fill, 16px radius, whisper of shadow — no hard
+  /// borders anywhere (the quiet-luxury register of the story steps).
+  Widget _field({required String hint, bool obscure = false, TextEditingController? controller}) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: const [
+          BoxShadow(color: Color(0x0A000000), blurRadius: 14, offset: Offset(0, 5)),
         ],
       ),
+      child: TextField(
+        controller: controller,
+        obscureText: obscure,
+        keyboardType: obscure ? TextInputType.text : TextInputType.emailAddress,
+        autocorrect: false,
+        style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w600),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(
+              color: AppColors.muted, fontWeight: FontWeight.w500),
+          filled: true,
+          fillColor: const Color(0xFFF4F4F2),
+          contentPadding:
+              const EdgeInsets.symmetric(horizontal: 18, vertical: 17),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16),
+            borderSide: const BorderSide(color: AppColors.signature, width: 1.4),
+          ),
+        ),
+      ),
     );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Scroll-safe: when the keyboard opens the Spacers used to squeeze the
+    // bottom CTA off-screen. LayoutBuilder + scroll + IntrinsicHeight keeps the
+    // spaced layout when there's room and scrolls (nothing clipped) when tight.
+    return LayoutBuilder(builder: (context, c) {
+      return SingleChildScrollView(
+        padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minHeight: c.maxHeight),
+          child: IntrinsicHeight(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Logo(size: 20),
+                  const Spacer(),
+                  Text(_signIn ? 'Welcome\nback.' : 'Create your\naccount',
+                      style: AppType.display),
+          const SizedBox(height: 24),
+          _field(hint: 'Email', controller: _email),
+          const SizedBox(height: 12),
+          _field(hint: 'Password', obscure: true, controller: _password),
+          const SizedBox(height: 22),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: AppColors.ink,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999)),
+              ),
+              onPressed: _busy ? null : _submit,
+              child: _busy
+                  ? const SizedBox(
+                      width: 18, height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : Text(_signIn ? 'Sign in' : 'Continue',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800, fontSize: 15.5)),
+            ),
+          ),
+          const SizedBox(height: 10),
+          SizedBox(
+            width: double.infinity,
+            height: 52,
+            child: TextButton.icon(
+              style: TextButton.styleFrom(
+                backgroundColor: const Color(0xFFF4F4F2),
+                foregroundColor: AppColors.ink,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(999)),
+              ),
+              onPressed: widget.onDone, // Google OAuth stub (SDD §14.2)
+              icon: const Icon(Icons.g_mobiledata, size: 26),
+              label: const Text('Continue with Google',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15)),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Center(
+            child: TextButton(
+              onPressed: () => setState(() => _signIn = !_signIn),
+              child: Text(
+                _signIn
+                    ? 'New here? Create an account'
+                    : 'Already have an account? Sign in',
+                style: const TextStyle(
+                    color: AppColors.inkSoft,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13.5),
+              ),
+            ),
+          ),
+                  const Spacer(),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    });
   }
 }

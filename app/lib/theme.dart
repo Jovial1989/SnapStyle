@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Snapstyle design tokens — black & white editorial (2026 redesign).
+/// Looktok design tokens — black & white editorial (2026 redesign).
 /// Palette is monochrome: ink on near-white, thin hairlines, generous space.
 /// Primary action = solid black (SHEIN/aesthetic register). No color accent.
 class AppColors {
@@ -21,8 +21,45 @@ class AppColors {
   static const accent = ink;
   static const accentPressed = Color(0xFF000000);
 
-  // Functional only (priority flags) — desaturated, not brand color.
-  static const flag = Color(0xFF9B2C2C);
+  // Functional only (severity flags) — used on result zones, not brand color.
+  static const flag = Color(0xFF9B2C2C); // issue
+  static const good = Color(0xFF1E9E6A); // works / keep
+}
+
+/// Geometry system — ONE radius scale app-wide (SDD D-3). Circles are reserved
+/// for pins and icon dots.
+class AppRadius {
+  static const double hero = 28; // sheets + hero action cards
+  static const double card = 20; // default cards
+  static const double control = 12; // inputs, thumbnails, small chips
+  // Primary ACTION buttons are full pills — the app-wide standard set by the
+  // try-on screen's "Style my whole look" / "Wear this" CTAs. Every primary
+  // button matches this so buttons don't read differently screen-to-screen.
+  static const double pill = 999;
+}
+
+/// Exactly two surface treatments (SDD D-2): pure white + one soft diffused
+/// shadow (default), or stark black (high-emphasis). No gray blocks, no blur
+/// on regular cards — glass only over photos.
+class AppShadows {
+  static const soft = [
+    BoxShadow(color: Color(0x0D000000), blurRadius: 30, offset: Offset(0, 10)),
+  ];
+}
+
+class AppSurfaces {
+  static BoxDecoration card = BoxDecoration(
+    color: Colors.white,
+    borderRadius: BorderRadius.circular(AppRadius.card),
+    boxShadow: AppShadows.soft,
+  );
+  static BoxDecoration ink = BoxDecoration(
+    color: AppColors.ink,
+    borderRadius: BorderRadius.circular(AppRadius.card),
+    boxShadow: const [
+      BoxShadow(color: Color(0x33000000), blurRadius: 30, offset: Offset(0, 12)),
+    ],
+  );
 }
 
 /// Reusable surface decorations.
@@ -69,42 +106,53 @@ ThemeData buildTheme() {
       elevation: 0,
       scrolledUnderElevation: 0,
       centerTitle: true,
+      // One consistent title style across every screen (matches AppType.h2 used
+      // on My Looks). No colour → each screen's foregroundColor applies.
+      titleTextStyle: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, letterSpacing: -0.4),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: AppColors.ink,
         foregroundColor: AppColors.onInk,
-        minimumSize: const Size.fromHeight(54),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        minimumSize: const Size.fromHeight(58),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
         textStyle: const TextStyle(
           fontSize: 15,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.2,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.3,
         ),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.ink,
-        minimumSize: const Size.fromHeight(54),
+        minimumSize: const Size.fromHeight(58),
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
         side: const BorderSide(color: AppColors.ink, width: 1),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
+        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, letterSpacing: 0.3),
       ),
+    ),
+    chipTheme: base.chipTheme.copyWith(
+      backgroundColor: Colors.white,
+      side: const BorderSide(color: AppColors.line),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.control)),
+      labelStyle: const TextStyle(fontWeight: FontWeight.w600, color: AppColors.ink),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: AppColors.surface,
+      fillColor: Colors.white,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide.none,
+        borderRadius: BorderRadius.circular(AppRadius.control),
+        borderSide: const BorderSide(color: AppColors.line),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: const BorderSide(color: AppColors.line),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppRadius.control),
         borderSide: const BorderSide(color: AppColors.ink, width: 1.5),
       ),
     ),

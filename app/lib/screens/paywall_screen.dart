@@ -1,18 +1,144 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../providers.dart';
+import '../services/analytics.dart';
+import '../services/api_client.dart' show ApiException;
 import '../theme.dart';
 import '../widgets/wordmark.dart';
 
 /// Subscription paywall. Two tiers (Monthly $12.99 / Yearly $89.99). Presented
 /// when the 10-review free trial is exhausted (SDD §8). Purchase is stubbed —
 /// real IAP runs through RevenueCat (SDD §8.1) once wired.
-class PaywallScreen extends StatefulWidget {
-  const PaywallScreen({super.key});
+class PaywallScreen extends ConsumerStatefulWidget {
+  const PaywallScreen({super.key, this.initialPlan = 1});
+  /// 0 = Premium monthly, 1 = Pro yearly (default: best value), 2 = Pro
+  /// monthly. Premium-feature upsells (fit controls) open with 0 preselected.
+  final int initialPlan;
   @override
-  State<PaywallScreen> createState() => _PaywallScreenState();
+  ConsumerState<PaywallScreen> createState() => _PaywallScreenState();
 }
 
-class _PaywallScreenState extends State<PaywallScreen> {
-  bool _yearly = true; // default to the better-value plan
+class _PaywallScreenState extends ConsumerState<PaywallScreen> {
+  // 0 = Premium monthly, 1 = Pro yearly (default: best value), 2 = Pro monthly.
+  late int _plan = widget.initialPlan;
+  bool _promoOpen = false;
+
+  @override
+  void initState() {
+    super.initState();
+    Analytics.paywallViewed();
+  }
+
+  bool _redeeming = false;
+  final _promoCtl = TextEditingController();
+
+  @override
+  void dispose() {
+    _promoCtl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _redeem() async {
+    final code = _promoCtl.text.trim();
+    if (code.isEmpty || _redeeming) return;
+    setState(() => _redeeming = true);
+    try {
+      final ent = await ref.read(looktokApiProvider).redeemPromoCode(code);
+      Analytics.promoRedeemed(code: code.toUpperCase());
+      ref.invalidate(entitlementProvider); // paywall gate re-reads the server
+      if (!mounted) return;
+      final pro = ent['pro'] == true;
+      final left = ent['freeRemaining'];
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(pro
+            ? 'Code applied — unlimited unlocked. Welcome aboard!'
+            : 'Code applied — $left free looks on your account.'),
+      ));
+      Navigator.pop(context);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _redeeming = false);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _redeeming = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Couldn\'t redeem the code — check your connection.')),
+      );
+    }
+  }
+
+  /// "Have a promo code?" → a sleek inline field, no extra screen.
+  Widget _promoSection() {
+    if (!_promoOpen) {
+      return Center(
+        child: TextButton(
+          onPressed: () => setState(() => _promoOpen = true),
+          child: const Text('Have a promo code?',
+              style: TextStyle(color: AppColors.muted, fontSize: 13)),
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(children: [
+        Expanded(
+          child: TextField(
+            controller: _promoCtl,
+            autofocus: true,
+            enabled: !_redeeming,
+            textCapitalization: TextCapitalization.characters,
+            textInputAction: TextInputAction.done,
+            onSubmitted: (_) => _redeem(),
+            style: const TextStyle(
+                fontWeight: FontWeight.w700, letterSpacing: 1.5, fontSize: 14),
+            decoration: InputDecoration(
+              hintText: 'PROMO CODE',
+              hintStyle: const TextStyle(
+                  color: AppColors.muted, letterSpacing: 1.5, fontSize: 13),
+              isDense: true,
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              filled: true,
+              fillColor: AppColors.bg,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.line),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: const BorderSide(color: AppColors.line),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide:
+                    const BorderSide(color: AppColors.signature, width: 1.5),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        SizedBox(
+          height: 42,
+          child: FilledButton(
+            onPressed: _redeeming ? null : _redeem,
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.pill)),
+            ),
+            child: _redeeming
+                ? const SizedBox(
+                    width: 16, height: 16,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Text('Apply'),
+          ),
+        ),
+      ]),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -34,37 +160,56 @@ class _PaywallScreenState extends State<PaywallScreen> {
               const SizedBox(height: 28),
               const Text('Unlimited\nstyle reviews.', style: AppType.display),
               const SizedBox(height: 14),
-              const _Perk(text: 'Honest AI reviews on every outfit'),
-              const _Perk(text: 'Look suggestions & body-profile advice'),
-              const _Perk(text: 'Build outfits from your wardrobe'),
+              const _Perk(text: 'Unlimited honest reviews & looks'),
+              const _Perk(text: 'Compare two looks side by side'),
+              const _Perk(text: 'Brand picks to shop later'),
               const Spacer(),
               _PlanTile(
-                selected: _yearly,
-                title: 'Yearly',
-                price: '\$89.99',
-                unit: '/year',
-                note: 'Best value · ~\$7.50/mo',
-                onTap: () => setState(() => _yearly = true),
+                selected: _plan == 0,
+                title: 'Premium',
+                price: '\$19.99',
+                unit: '/mo',
+                note: 'Fit controls + accessory studio + everything in Pro',
+                onTap: () => setState(() => _plan = 0),
               ),
               const SizedBox(height: 10),
               _PlanTile(
-                selected: !_yearly,
-                title: 'Monthly',
+                selected: _plan == 1,
+                title: 'Pro · Yearly',
+                price: '\$89.99',
+                unit: '/year',
+                note: 'Best value · ~\$7.50/mo',
+                onTap: () => setState(() => _plan = 1),
+              ),
+              const SizedBox(height: 10),
+              _PlanTile(
+                selected: _plan == 2,
+                title: 'Pro · Monthly',
                 price: '\$12.99',
                 unit: '/mo',
-                onTap: () => setState(() => _yearly = false),
+                onTap: () => setState(() => _plan = 2),
               ),
               const SizedBox(height: 16),
               FilledButton(
                 onPressed: () {
                   // Stub — RevenueCat purchase flow lands here (SDD §8.1).
+                  // When it does, fire this AFTER the store confirms:
+                  const plans = ['premium_monthly', 'pro_yearly', 'pro_monthly'];
+                  const prices = [19.99, 89.99, 12.99];
+                  Analytics.subscriptionPurchased(
+                      plan: plans[_plan], revenue: prices[_plan]);
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Subscribe ${_yearly ? "Yearly" : "Monthly"} — coming soon')),
+                    SnackBar(content: Text('Subscribe ${plans[_plan]} — coming soon')),
                   );
                 },
-                child: Text(_yearly ? 'Start — \$89.99/year' : 'Start — \$12.99/mo'),
+                child: Text(switch (_plan) {
+                  0 => 'Start Premium — \$19.99/mo',
+                  1 => 'Start Pro — \$89.99/year',
+                  _ => 'Start Pro — \$12.99/mo',
+                }),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 6),
+              _promoSection(),
               Center(
                 child: TextButton(
                   onPressed: () {},

@@ -18,6 +18,14 @@ class ApiException implements Exception {
   String toString() => message;
 }
 
+/// Compare identity guard tripped: some uploaded selfies show a DIFFERENT
+/// person than the account's reference photo. No credit was burned.
+class IdentityMismatchException extends ApiException {
+  IdentityMismatchException(this.mismatchedIndexes)
+      : super('These photos don’t look like you.');
+  final List<int> mismatchedIndexes;
+}
+
 /// Talks to the Node orchestration layer (SDD §4.2).
 /// Base URL overridable at build time: --dart-define=API_BASE=...
 /// Default targets the Android emulator host (10.0.2.2); iOS sim uses localhost.
@@ -69,7 +77,7 @@ class ApiClient {
   }
 
   /// Local onboarding body profiling (base64, no auth/Supabase). Mirrors the
-  /// critique transport; production uses the Supabase path in SnapstyleApi.
+  /// critique transport; production uses the Supabase path in LooktokApi.
   Future<BodyProfile> onboardingProfileLocal({
     required String base64Image,
     required String mimeType,

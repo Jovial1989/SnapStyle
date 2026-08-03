@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers.dart';
+import '../services/auth.dart' as auth;
 import '../theme.dart';
 import '../widgets/wordmark.dart';
 import 'auth_screen.dart';
@@ -28,7 +29,15 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
     super.initState();
     _t = Timer(const Duration(milliseconds: 1500), () {
       if (!mounted) return;
-      final signedIn = ref.read(profileStoreProvider).signedIn();
+      // Ghost-state guard: the local flag alone is NOT auth. In cloud mode a
+      // live Supabase session must back it — flag-without-session is demoted
+      // to signed-out (flag reset) and lands on onboarding, never on Home.
+      final store = ref.read(profileStoreProvider);
+      var signedIn = store.signedIn();
+      if (signedIn && auth.cloudReady() && !auth.hasSession()) {
+        signedIn = false;
+        store.setSignedIn(false);
+      }
       Navigator.of(context).pushReplacement(
         MaterialPageRoute(builder: (_) => signedIn ? const HomeShell() : const AuthScreen()),
       );

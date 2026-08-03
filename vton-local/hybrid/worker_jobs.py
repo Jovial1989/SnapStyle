@@ -42,7 +42,7 @@ SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 BUCKET = os.getenv("VTON_BUCKET", "generations")
 QUEUE, CLAIMED, DONE = "_vton/queue", "_vton/claimed", "_vton/done"
 # Idle poll interval: one small list call per tick, p50 dispatch under ~0.5s.
-IDLE_SLEEP = float(os.getenv("VTON_POLL_SEC", "0.4"))
+IDLE_SLEEP = float(os.getenv("VTON_POLL_SEC", "0.2"))
 MAX_STEPS = int(os.getenv("VTON_MAX_STEPS_PER_JOB", "4"))
 
 engine = HybridVTONPipeline()

@@ -14,8 +14,25 @@ class ProfileStore {
   static const _kProfile = 'style_profile';
   static const _kUserId = 'app_user_id';
   static const _kSignedIn = 'signed_in';
+  static const _kRecent = 'recent_occasions';
+
+  /// Last few occasions the user styled for — quick chips in the portal (P2).
+  List<String> recentOccasions() => _prefs.getStringList(_kRecent) ?? const [];
+  Future<void> addRecentOccasion(String s) async {
+    final t = s.trim();
+    if (t.isEmpty) return;
+    final list = [t, ...recentOccasions().where((e) => e.toLowerCase() != t.toLowerCase())].take(4).toList();
+    await _prefs.setStringList(_kRecent, list);
+  }
 
   /// Interim local auth flag. Real auth = Supabase (email/pass + Google OAuth), SDD §14.
+  /// DEV RESET: wipe ALL local storage — onboarding flags, cached profile,
+  /// recent occasions, user id, signed-in flag. Auth/session is cleared
+  /// separately via Supabase signOut.
+  Future<void> resetAll() async {
+    await _prefs.clear();
+  }
+
   bool signedIn() => _prefs.getBool(_kSignedIn) ?? false;
   Future<void> setSignedIn(bool v) => _prefs.setBool(_kSignedIn, v);
 

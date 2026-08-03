@@ -33,11 +33,11 @@ class _HomeShellState extends State<HomeShell> {
             NavigationDestination(
                 icon: Icon(Icons.auto_awesome_outlined),
                 selectedIcon: Icon(Icons.auto_awesome),
-                label: 'Style'),
+                label: 'Style me'),
             NavigationDestination(
                 icon: Icon(Icons.grid_view_outlined),
                 selectedIcon: Icon(Icons.grid_view),
-                label: 'Wardrobe'),
+                label: 'My Looks'),
             NavigationDestination(
                 icon: Icon(Icons.person_outline),
                 selectedIcon: Icon(Icons.person),
