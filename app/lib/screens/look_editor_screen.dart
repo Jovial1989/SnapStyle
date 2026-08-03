@@ -1551,10 +1551,15 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
     return _items[desc] = _generateItemImage(desc, slot);
   }
 
-  /// LOOKS-FIRST (владельческое решение 28.07): вместо по-вещевых свапов —
-  /// готовые луки. Борды = флэт-лей карточки (одна сетка ≈ \$0.01/лук), тап =
-  /// ОДИН рендер целого лука на юзере (\$0.039, сразу в My Looks). Флаг = откат.
-  static const bool _kLooksFirst = true;
+  /// LOOKS-FIRST was an owner decision on 28.07 taken for ONE reason: a hosted
+  /// render cost \$0.039 and 45-60s, so showing four ready looks was cheaper and
+  /// less painful than letting anyone swap items freely.
+  ///
+  /// Both halves of that reasoning are gone. A dressing pass on our own engine is
+  /// ~\$0.0003 and a single-garment swap is its BEST case — one pass instead of
+  /// three, measured 10-12s end to end. Per-item browsing is now the cheaper mode,
+  /// not the expensive one, so it goes back on. Flip to true to revert.
+  static const bool _kLooksFirst = false;
   // Pre-render engine: ONE gpt-image-1 grid (real face via pixel composite,
   // 1 credit for all 4) instead of 4 parallel Gemini singles. false = revert.
   static const bool _kGridPrerender = true;
