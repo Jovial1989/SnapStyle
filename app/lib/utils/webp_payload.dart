@@ -27,7 +27,13 @@ Future<Uint8List> toWebPPayload(Uint8List bytes, {int quality = 85}) async {
   return bytes;
 }
 
-/// TRY-ON transport payload: hard-capped near 768×1024 (never upscaled).
+/// TRY-ON transport payload: hard-capped near 576×768 (never upscaled).
+///
+/// Sized to the RENDERER, not to the screen. The engine works at 512×768 and
+/// resamples whatever it is given, so every pixel above that is uploaded from
+/// the phone, staged into Storage, downloaded again by the worker — and then
+/// thrown away. 768×1024 cost ~640 KB per request against ~200 KB here, on a
+/// mobile uplink, for output that is identical.
 /// Prefers WebP; falls back to a RESIZED PNG — load-bearing on iOS, which
 /// ships no system WebP encoder, so [toWebPPayload] silently returned the
 /// raw full-size cutout there. A 768px PNG is ~4× lighter than the 1600px
@@ -47,8 +53,8 @@ Future<Uint8List> toTryonPayload(Uint8List bytes, {int quality = 85}) async {
   try {
     final out = await FlutterImageCompress.compressWithList(
       src,
-      minWidth: 768,
-      minHeight: 1024,
+      minWidth: 576,
+      minHeight: 768,
       format: CompressFormat.webp,
       quality: quality,
       keepExif: false,
@@ -60,8 +66,8 @@ Future<Uint8List> toTryonPayload(Uint8List bytes, {int quality = 85}) async {
   try {
     final out = await FlutterImageCompress.compressWithList(
       src,
-      minWidth: 768,
-      minHeight: 1024,
+      minWidth: 576,
+      minHeight: 768,
       format: CompressFormat.jpeg,
       quality: 90,
       keepExif: false,
