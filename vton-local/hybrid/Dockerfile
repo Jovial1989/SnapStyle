@@ -48,7 +48,7 @@ COPY pipeline.py main.py ./
 # throughput tax when everything already fits) and xformers is on.
 ENV VTON_OFFLOAD=0 \
     VTON_XFORMERS=1 \
-    VTON_STEPS=28 \
+    VTON_STEPS=20 \
     PORT=8000
 
 EXPOSE 8000

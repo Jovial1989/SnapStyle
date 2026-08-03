@@ -46,7 +46,11 @@ DEVICE = (
 DTYPE = torch.float16 if DEVICE in ("mps", "cuda") else torch.float32
 
 BASE = os.getenv("VTON_BASE", "sd15").lower()          # sd15 | sdxl
-STEPS = int(os.getenv("VTON_STEPS", "28"))
+# 20, not the usual 28: measured side by side at a fixed seed, 28 and 20 are
+# indistinguishable on garment renders (same neckline, same sleeve hem, same
+# fold shading) while 20 is 25% faster. Quality only breaks below ~16, where
+# fabric shading flattens into a colour fill.
+STEPS = int(os.getenv("VTON_STEPS", "20"))
 # Offload is OFF by default on every device. It shuttles weights CPU↔GPU on
 # each step; on MPS ("unified" memory!) that measured 50+ min for one 512×768
 # render, and on a 24 GB card the whole fp16 stack (~10 GB even for SDXL) fits

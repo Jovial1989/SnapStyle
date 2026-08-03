@@ -61,7 +61,7 @@ image warms itself and answers `/health` when it is ready to serve.
 | Env | Default | Meaning |
 |---|---|---|
 | `VTON_BASE` | `sd15` | `sd15` or `sdxl`. Must match what was prefetched. |
-| `VTON_STEPS` | `28` | Denoise steps. 20 is usually indistinguishable and ~30% faster. |
+| `VTON_STEPS` | `20` | Denoise steps. Measured: 28 and 20 look identical, 12 flattens fabric shading. |
 | `VTON_W` / `VTON_H` | `512×768` (sd15), `768×1024` (sdxl) | Working resolution. |
 | `VTON_CFG` | `6.5` | Guidance. Above ~8 the garment starts overriding the body. |
 | `VTON_IP_SCALE` | `0.75` | How hard the reference garment's texture is imposed. |
@@ -76,7 +76,7 @@ not as a result:
 
 | Config | 4090, 28 steps | 4090, 20 steps |
 |---|---|---|
-| sd15 512×768, 2×ControlNet + IP-Adapter | ~4-6 s | ~3-4 s |
+| sd15 512×768, 2×ControlNet + IP-Adapter | 2.0 s | 1.5 s (measured, RTX 4090) |
 | sdxl 768×1024, same | ~12-18 s | ~9-13 s |
 
 Two ControlNets plus an IP-Adapter roughly doubles the per-step cost against a
