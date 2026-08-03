@@ -1,0 +1,29 @@
+# CUDA/Linux dependency set. The Mac list (requirements.txt) stays as-is for
+# local Stage A/B work; this one is what ships to RunPod / Vast.ai.
+#
+# torch and torchvision are NOT pinned here — they come preinstalled in the
+# pytorch/pytorch base image, correctly matched to its CUDA runtime. Listing
+# them again invites pip to pull a different build over a working one.
+
+# xformers must match the base image's torch EXACTLY (2.5.1 → 0.0.28.post3).
+# A mismatched pair still imports and then fails at the first attention call
+# with an undefined-symbol error, so it is pinned, not ranged.
+xformers==0.0.28.post3
+
+diffusers>=0.31,<0.34        # MultiControlNet inpaint + load_ip_adapter
+transformers>=4.44,<4.52     # CLIPVisionModelWithProjection for IP-Adapter Plus
+accelerate>=0.33             # device_map / offload backend
+safetensors>=0.4
+
+# Same pin as the Mac list: the legacy `solutions` API (Pose + segmentation in
+# one model) is gone in mediapipe 1.0 and already in 0.10.35.
+mediapipe==0.10.21
+protobuf>=4.25,<5
+
+opencv-python-headless>=4.9  # headless: no GUI libs needed in the container
+numpy>=1.26,<2               # mediapipe is not numpy-2 clean yet
+pillow>=10.3
+
+fastapi>=0.111
+uvicorn[standard]>=0.30      # [standard] adds httptools+uvloop: real throughput
+python-multipart>=0.0.9      # multipart/form-data parsing

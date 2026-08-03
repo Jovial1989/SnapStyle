@@ -1,0 +1,7 @@
+.venv/
+__pycache__/
+*.pyc
+requirements.txt
+fixtures/
+out_*
+*.log

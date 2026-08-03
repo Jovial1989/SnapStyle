@@ -1,0 +1,25 @@
+# Hybrid VTON worker — Apple Silicon (MPS) and CUDA from the same list.
+# torch>=2.3 has mature MPS fp16; on CUDA servers pip resolves the same range
+# to a cu12x wheel automatically.
+torch>=2.3,<2.6
+torchvision>=0.18,<0.21
+
+diffusers>=0.31,<0.34        # MultiControlNet inpaint + load_ip_adapter + MPS offload
+transformers>=4.44,<4.52     # CLIPVisionModelWithProjection for IP-Adapter Plus
+accelerate>=0.33             # enable_model_cpu_offload backend
+safetensors>=0.4
+
+# The legacy `solutions` API (Pose with segmentation in one model) is gone in
+# mediapipe 1.0 AND in late 0.10.x (0.10.35 already lacks it) — 0.10.21 is the
+# last verified-good build. Ships universal2 wheels for macOS-arm64. protobuf
+# pin avoids the mediapipe/transformers proto4-vs-proto5 clash.
+mediapipe==0.10.21
+protobuf>=4.25,<5
+
+opencv-python-headless>=4.9
+numpy>=1.26,<2               # mediapipe is not numpy-2 clean yet
+pillow>=10.3
+
+fastapi>=0.111
+uvicorn>=0.30
+python-multipart>=0.0.9      # multipart/form-data parsing
