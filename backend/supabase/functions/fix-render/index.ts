@@ -122,6 +122,7 @@ Deno.serve(async (req) => {
   /// DETERMINISTIC FRAMING GATE: model-QA kept missing cut-off feet, but a
   /// zoom-crop can't hide from arithmetic — an output whose aspect drifts
   /// >12% from the person photo IS a reframe. One silent retry.
+  let hybridUsed = false;
   const renderFramed = async (p: string) => {
     renders++;
     // Self-hosted engine when the swap resolves to (zone, garment) pairs. The
@@ -143,6 +144,7 @@ Deno.serve(async (req) => {
           steps.push({ url, kind: g.kind, hint: String(instruction).slice(0, 200) });
         }
         const img = await hybridDress(db, String(row.user_id), pr.url, steps);
+        hybridUsed = true;
         console.log("[fix-render] hybrid:", steps.length, "steps");
         return img;
       } catch (e) {
@@ -228,13 +230,25 @@ Deno.serve(async (req) => {
     // inheritance / framing checks compare against the worn source, so a head
     // crop would blind them. IDENTITY is judged separately below by
     // samePerson(final, idRef) against the real face — the right tool per job.
-    try {
-      const v = await verifyEditApplied(v1, String(instruction), refs, person);
-      applied = v.applied;
-      failReason = v.reason;
-    } catch {
-      verified = false;
+    // SKIP IT ENTIRELY on our engine — do not merely ignore the verdict. The call
+    // itself is a Gemini vision round trip, 10-15s against a 2.7s render, so
+    // running it and discarding the answer would leave the whole cost in place.
+    if (!hybridUsed) {
+      try {
+        const v = await verifyEditApplied(v1, String(instruction), refs, person);
+        applied = v.applied;
+        failReason = v.reason;
+      } catch {
+        verified = false;
+      }
     }
+    // THE VERIFIER IS FOR THE HOSTED PATH. It exists because gpt-image could
+    // silently return the input unchanged. Our engine resamples the masked region
+    // by construction, so "the edit did not take" is not one of its failure modes
+    // — and running it anyway cost 10-15s against a 2.7s render AND returned
+    // applied=false on correct output, which fired a second paid render. Six jobs
+    // and 25s for one tap, with the GPU idle between them.
+    if (hybridUsed) applied = true;
     let didRetry = false; // cap the server at ONE re-render total (QA or identity)
     if (!applied && renders < BUDGET) {
       didRetry = true;
