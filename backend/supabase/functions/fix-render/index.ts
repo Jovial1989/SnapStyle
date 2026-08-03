@@ -337,7 +337,13 @@ Deno.serve(async (req) => {
     // Twin only when the primary path stayed within budget — a struggling swap
     // must not spend two MORE renders on a toggle asset (the client renders the
     // tucked state on demand when the user actually flips it).
-    if (tucked?.instruction && renders < BUDGET) {
+    // NOT on our engine. This twin is a HOSTED render (generateLookImage) run
+    // INLINE on every swap — 20-45s and a paid call, to pre-bake a toggle asset.
+    // That made sense when rendering on demand also cost 45s. It no longer does:
+    // a dressing pass is ~3s, so the client renders the tucked state when the
+    // user actually flips FIT, exactly as the comment above already claims.
+    // Measured: swaps completing in ~11s with one 41.2s outlier — this was it.
+    if (!hybridUsed && tucked?.instruction && renders < BUDGET) {
       try {
         renders++;
         const TUCK_EDIT = [
