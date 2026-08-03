@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import io
 import os
+import secrets
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import Response
 from PIL import Image, UnidentifiedImageError
 
@@ -44,6 +45,19 @@ app = FastAPI(title="hybrid-vton", docs_url=None, redoc_url=None, lifespan=lifes
 
 _KINDS = {"upper", "lower", "full", "shoes"}
 _MAX_BYTES = 25 * 1024 * 1024
+
+# A GPU render endpoint on a guessable public hostname is someone else's free
+# compute. When VTON_SECRET is set every render call must present it; /health
+# stays open so an orchestrator can probe without holding the secret.
+_SECRET = os.getenv("VTON_SECRET", "")
+
+
+def _authorize(token: str | None) -> None:
+    if not _SECRET:
+        return
+    # Constant-time: a length-or-prefix leak here is a free oracle.
+    if not token or not secrets.compare_digest(token, _SECRET):
+        raise HTTPException(401, "bad or missing x-vton-secret")
 
 
 async def _read_image(f: UploadFile, name: str) -> Image.Image:
@@ -76,7 +90,9 @@ async def generate_hybrid(
     prompt_hint: str = Form("the garment in the reference image"),
     steps: int | None = Form(None),
     seed: int | None = Form(None),
+    x_vton_secret: str | None = Header(None),
 ) -> Response:
+    _authorize(x_vton_secret)
     if kind not in _KINDS:
         raise HTTPException(422, f"kind must be one of {sorted(_KINDS)}")
     person = await _read_image(avatar, "avatar")
