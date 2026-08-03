@@ -24,8 +24,22 @@ Deno.serve(async (req) => {
   const user = await getUser(req, db);
   if (!user) return json({ error: "unauthorized" }, 401);
 
-  const { image, instruction, target_zones, locked_zones, references, attempt } = await req.json().catch(() => ({}));
-  if (!image?.data || !image?.mimeType) return json({ error: "image { data, mimeType } required" }, 400);
+  const { image, instruction, target_zones, locked_zones, references, attempt,
+          reference_urls, person_path } = await req.json().catch(() => ({}));
+  // BYTES ARE THE EXPENSIVE PART, and most of them never needed to move. A
+  // catalogue garment already lives at a public URL and the current look already
+  // lives in Storage, yet the client was downloading them, base64-encoding them,
+  // POSTing ~2 MB, and we were decoding and re-uploading the same pixels. Measured
+  // cost of that round trip: ~2s on the wire, 0.8s hashing it, 1.5s restaging it.
+  // Given a URL or a Storage path we hand the worker a reference and touch no
+  // pixels at all. `references`/`image` remain for callers that genuinely only
+  // hold bytes (a freshly rendered look that was never persisted).
+  const refUrls: string[] = (Array.isArray(reference_urls) ? reference_urls : [])
+    .filter((u) => typeof u === "string" && /^https?:\/\//.test(u)).slice(0, 4);
+  const personPath = typeof person_path === "string" ? person_path : null;
+  if (!personPath && (!image?.data || !image?.mimeType)) {
+    return json({ error: "image { data, mimeType } or person_path required" }, 400);
+  }
   if (!instruction) return json({ error: "instruction required" }, 400);
   // Image-grounded swaps: product shots of the garment(s) to dress. Text-only
   // descriptions kept drifting (white trousers rendered for "denim shorts");
@@ -51,7 +65,8 @@ Deno.serve(async (req) => {
   // rollback would look like it had no effect.
   const engineTag = hybridEnabled() ? "hybrid" : "hosted";
   const cacheKey = await sha256Hex([
-    "fix:v13", engineTag, model, image.data, instruction,
+    "fix:v14", engineTag, model, personPath ?? image.data, instruction,
+    refUrls.join(","),
     targetZones.join(","), lockedZones.join(","),
     ...refs.map((r) => r.data),
   ].join("|"));
@@ -75,17 +90,33 @@ Deno.serve(async (req) => {
     let out: { data: string; mimeType: string } | null = null;
     let hybridUsed = false;
     let engineError: string | null = null;
-    if (hybridEnabled() && slot && refs.length) {
+    if (hybridEnabled() && slot && (refs.length || refUrls.length)) {
       const staged: string[] = [];
       try {
-        const person = await stageInline(db, { data: image.data, mimeType: image.mimeType });
-        staged.push(person.path);
+        let personUrl: string;
+        if (personPath) {
+          // Already in Storage: a signed URL costs one round trip, not an upload.
+          const { data: t } = await db.storage.from("generations")
+            .createSignedUrl(personPath, 900, { transform: { width: 768, quality: 85 } });
+          if (!t?.signedUrl) throw new Error(`person_path unreadable: ${personPath}`);
+          personUrl = t.signedUrl;
+        } else {
+          const person = await stageInline(db, { data: image.data, mimeType: image.mimeType });
+          staged.push(person.path);
+          personUrl = person.url;
+        }
         mark("stage_person");
-        const ref = await stageInline(db, refs[0], "ref");
-        staged.push(ref.path);
+        let refUrl: string;
+        if (refUrls.length) {
+          refUrl = refUrls[0];          // public catalogue image — nothing to copy
+        } else {
+          const ref = await stageInline(db, refs[0], "ref");
+          staged.push(ref.path);
+          refUrl = ref.url;
+        }
         mark("stage_ref");
-        out = await hybridDress(db, user.id, person.url, [
-          { url: ref.url, kind: slot, hint: String(instruction).slice(0, 200) },
+        out = await hybridDress(db, user.id, personUrl, [
+          { url: refUrl, kind: slot, hint: String(instruction).slice(0, 200) },
         ]);
         hybridUsed = true;
         mark("render");
