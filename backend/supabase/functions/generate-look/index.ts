@@ -55,6 +55,7 @@ type ClosetItem = { label: string; category: string; image_path: string | null }
 function planCloset(items: ClosetItem[], dir: string, occasion: string): {
   garments: string[];
   reference_paths: string[];
+  dress: { path: string; slot: string; label: string }[];
   wardrobe_used: string[];
   kept_from_photo: string[];
 } {
@@ -89,9 +90,23 @@ function planCloset(items: ClosetItem[], dir: string, occasion: string): {
   const garments = pieces.map((p) => `${p.label} (${CATEGORY_TO_SLOT[(p.category ?? "").toLowerCase().trim()] ?? "accessory"})`);
   const reference_paths = pieces.map((p) => p.image_path).filter((p): p is string => !!p);
   const kept_from_photo = ESSENTIAL_SLOTS.filter((s) => !covered.has(s));
+  // ALIGNED (path, slot, label) triples for the self-hosted renderer, which
+  // dresses one zone at a time and therefore needs to know which zone each
+  // reference photo belongs to. `garments` and `reference_paths` cannot supply
+  // that: the latter drops pieces with no image, so their indices diverge the
+  // moment one wardrobe item lacks a photo. Built from the same `pieces` in one
+  // pass so the two can never disagree.
+  const dress = pieces
+    .filter((p) => !!p.image_path)
+    .map((p) => ({
+      path: p.image_path as string,
+      slot: CATEGORY_TO_SLOT[(p.category ?? "").toLowerCase().trim()] ?? "accessory",
+      label: p.label,
+    }));
   return {
     garments,
     reference_paths,
+    dress,
     wardrobe_used: pieces.map((p) => p.label),
     kept_from_photo,
   };
@@ -295,8 +310,9 @@ Deno.serve(async (req) => {
           wardrobe_used: c.wardrobe_used,
           // carried into row.meta below (not part of the planner contract)
           reference_paths: c.reference_paths,
+          dress: c.dress,
           kept_from_photo: c.kept_from_photo,
-        } as PlannedLook & { reference_paths: string[]; kept_from_photo: string[] };
+        } as PlannedLook & { reference_paths: string[]; dress: typeof c.dress; kept_from_photo: string[] };
       });
     } else {
       const q = tierQuotas();
@@ -359,7 +375,13 @@ Deno.serve(async (req) => {
           // worker attaches as references; the slots kept from the photo so the
           // client can say "no shoes in your wardrobe — kept your own".
           ...(isCloset
-            ? { reference_paths: closet.reference_paths ?? [], kept_from_photo: closet.kept_from_photo ?? [] }
+            ? {
+              reference_paths: closet.reference_paths ?? [],
+              // Aligned (path, slot) pairs — the ONLY reliable way the renderer
+              // learns which zone each reference dresses.
+              dress: closet.dress ?? [],
+              kept_from_photo: closet.kept_from_photo ?? [],
+            }
             : {}),
           affiliate: (l.affiliate_ids ?? []).map((id) => affById.get(id)).filter(Boolean).map((a) => ({
             id: a!.id, brand: a!.brand_name, name: a!.name, category: a!.category, price: a!.price, currency: a!.currency, buyUrl: a!.buy_url, imageUrl: a!.image_url,

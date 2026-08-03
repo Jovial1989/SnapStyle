@@ -8,6 +8,7 @@
 import { admin, getUser, signedUrl } from "../_shared/supabase.ts";
 import { fetchInline, IDENTITY_RETRY_NOTE } from "../_shared/gemini.ts";
 import { generateLookImage } from "../_shared/imagegen.ts";
+import { type DressStep, hybridDress, hybridEnabled, slotOf } from "../_shared/vton.ts";
 import { samePerson, validateLookImages } from "../_shared/vision.ts";
 import { finalizeGeneration, refreshGenerationOutput } from "../_shared/renders.ts";
 import { logTrainingPair } from "../_shared/training.ts";
@@ -61,7 +62,12 @@ Deno.serve(async (req) => {
     const photoPath = (gen?.input as { photoPath?: string } | null)?.photoPath;
     if (!photoPath) throw new Error("parent generation has no photoPath");
 
-    const meta = (row.meta ?? {}) as { prompt?: string; reference_paths?: string[]; kept_from_photo?: string[] };
+    const meta = (row.meta ?? {}) as {
+      prompt?: string;
+      reference_paths?: string[];
+      dress?: { path: string; slot: string; label: string }[];
+      kept_from_photo?: string[];
+    };
     // 768px transform of the body photo (Storage Image Transformation):
     // smaller input = fewer input tokens = a visibly faster Gemini response.
     // Raw-URL fallback keeps working if the transform endpoint rejects.
@@ -112,7 +118,46 @@ Deno.serve(async (req) => {
       }
     }
 
-    let img = await generateLookImage(person, prompt, references);
+    // SELF-HOSTED ENGINE for looks built from REAL garments. It dresses one
+    // zone at a time from a photo of the piece, so it needs (image, zone) pairs
+    // — `meta.dress`, written by the planner. A look INVENTED from text has no
+    // garment photo for the adapter to transfer, so those stay hosted; that is a
+    // property of the approach, not a gap to paper over.
+    let img: Awaited<ReturnType<typeof generateLookImage>> | null = null;
+    if (hybridEnabled() && (meta.dress ?? []).length) {
+      try {
+        const steps: DressStep[] = [];
+        for (const d of meta.dress!) {
+          const kind = slotOf(d.slot);
+          if (!kind) continue;   // accessories have no mask zone — skip, don't guess
+          const { data: t } = await db.storage.from("wardrobe")
+            .createSignedUrl(d.path, 900, { transform: { width: 768, quality: 85 } });
+          if (t?.signedUrl) steps.push({ url: t.signedUrl, kind, hint: d.label });
+        }
+        if (steps.length) {
+          // Start from the CANONICAL AVATAR (the person re-dressed in neutral
+          // grey basics) for the same reason the hosted path prefers it: each
+          // dressing pass repaints one zone, so any garment still on the body in
+          // an uncovered zone survives into the result. Grey basics are the
+          // neutral base; the raw photo would leave the old outfit showing.
+          // Skipped when the look deliberately keeps garments from the photo.
+          let personUrl: string | null = null;
+          for (const cand of keepsPhotoGarments ? [photoPath] : [`${photoPath}.avatar.png`, photoPath]) {
+            try {
+              const { data: t } = await db.storage.from(IN_BUCKET)
+                .createSignedUrl(cand, 900, { transform: { width: 768, quality: 85 } });
+              if (t?.signedUrl) { personUrl = t.signedUrl; break; }
+            } catch (_) {/* try the next source */}
+          }
+          if (!personUrl) throw new Error("no person image for hybrid render");
+          img = await hybridDress(db, row.user_id, personUrl, steps);
+          console.log("[render-look]", row.id, `hybrid: ${steps.length} steps`);
+        }
+      } catch (e) {
+        console.error("[render-look] hybrid failed, using hosted:", (e as Error).message);
+      }
+    }
+    img ??= await generateLookImage(person, prompt, references);
     // PRE-PAINT IDENTITY GATE: never let a different human reach the grid.
     try {
       if (!(await samePerson(img, person))) {
