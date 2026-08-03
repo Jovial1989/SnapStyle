@@ -42,7 +42,7 @@ async def lifespan(_app: FastAPI):
 
 app = FastAPI(title="hybrid-vton", docs_url=None, redoc_url=None, lifespan=lifespan)
 
-_KINDS = {"upper", "lower", "full"}
+_KINDS = {"upper", "lower", "full", "shoes"}
 _MAX_BYTES = 25 * 1024 * 1024
 
 

@@ -236,23 +236,46 @@ def _garment_mask(p: Pose, kind: str) -> np.ndarray:
     hip = max(y_of(8, top_body + span * 0.55), y_of(11, top_body + span * 0.55))
     ankle = max(y_of(10, bot_body), y_of(13, bot_body))
 
+    # Horizontal extent: the whole figure for body slots, but only the legs'
+    # own column for shoes — a full-width band would let the model treat the
+    # trousers as part of the footwear (it repainted them leather-brown when
+    # shoes had no zone of their own).
+    xpad = max(6, round((max(xs) - min(xs)) * 0.14))
+    x0, x1 = max(0, min(xs) - xpad), min(w - 1, max(xs) + xpad)
+    dilate_frac = 0.035
+
     if kind == "lower":
         y0, y1 = hip - span * 0.06, min(h - 1, ankle + span * 0.03)
     elif kind == "full":
         y0, y1 = shoulder - span * 0.07, min(h - 1, ankle + span * 0.03)
+    elif kind == "shoes":
+        # The FEET LIE BELOW THE LAST KEYPOINT: COCO-18 stops at the ankle, so
+        # the ankle cannot define the bottom edge. The silhouette's lowest
+        # occupied row can — it already contains the feet, whatever their pose.
+        rows = np.flatnonzero(p.silhouette.any(axis=1))
+        foot_bottom = int(rows[-1]) if rows.size else bot_body
+        # Start above the ankle so a boot shaft has room to exist; a mask that
+        # begins at the ankle can only ever produce a low-top.
+        y0 = ankle - span * 0.075
+        y1 = min(h - 1, foot_bottom + span * 0.015)
+        ax = [pts[i][0] for i in (10, 13) if pts[i]]
+        if ax:
+            # Generous sideways: a shoe is longer than the ankle is wide, and
+            # the toe box may point away from the leg's axis.
+            fpad = max(10, round(span * 0.09))
+            x0, x1 = max(0, min(ax) - fpad), min(w - 1, max(ax) + fpad)
+        dilate_frac = 0.018   # a foot-sized kernel, not a torso-sized one
     else:  # upper
         y0, y1 = shoulder - span * 0.07, hip + span * 0.10
 
     box = np.zeros((h, w), np.uint8)
-    pad = max(6, round((max(xs) - min(xs)) * 0.14))
-    x0, x1 = max(0, min(xs) - pad), min(w - 1, max(xs) + pad)
     box[max(0, int(y0)):int(y1) + 1, x0:x1 + 1] = 255
 
     mask = cv2.bitwise_and(box, p.silhouette)
     # Dilate past the silhouette edge: garments sit OUTSIDE the body outline
     # (sleeves, drape, a coat's shoulder line). A mask clipped to the skin
     # cannot grow one.
-    k = max(5, round(span * 0.035)) | 1
+    k = max(5, round(span * dilate_frac)) | 1
     mask = cv2.dilate(mask, np.ones((k, k), np.uint8), iterations=1)
     mask = cv2.bitwise_and(mask, box)   # …but never past the slot's own band
     return cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
