@@ -10,6 +10,7 @@
 import { admin } from "../_shared/supabase.ts";
 import { verifyEditApplied, IDENTITY_RETRY_NOTE, type Inline } from "../_shared/gemini.ts";
 import { generateLookImage } from "../_shared/imagegen.ts";
+import { hybridDress, hybridEnabled, type Slot, slotOf, stageInline, unstage } from "../_shared/vton.ts";
 import { samePerson } from "../_shared/vision.ts";
 import { kolorsTryOn } from "../_shared/kolors.ts";
 import { cachePut } from "../_shared/tryon_cache.ts";
@@ -61,7 +62,8 @@ Deno.serve(async (req) => {
     return json({ error: "forbidden" }, 403);
   }
 
-  const { render_id, image, instruction, target_zones, locked_zones, references, identity, tucked, cache_key_tucked } =
+  const { render_id, image, instruction, target_zones, locked_zones, references, identity, tucked, cache_key_tucked,
+          reference_urls, reference_zones } =
     await req.json().catch(() => ({}));
   if (!render_id || !image?.data || !instruction) return json({ error: "bad_payload" }, 400);
 
@@ -73,6 +75,24 @@ Deno.serve(async (req) => {
 
   const refs: { data: string; mimeType: string }[] = Array.isArray(references) ? references : [];
   const targetZones: string[] = Array.isArray(target_zones) ? target_zones.map(String) : [];
+  // THIS is the function the editor's swaps actually reach — fix-dispatch queues
+  // and fix-render renders. Wiring the engine into generate-fix left every real
+  // per-item swap on the hosted path (nothing in vton_jobs for a whole session
+  // while a warm GPU sat idle), because generate-fix is only used by callers that
+  // want a synchronous preview.
+  const refUrls: string[] = Array.isArray(reference_urls) ? reference_urls.map(String) : [];
+  const refZones: string[] = Array.isArray(reference_zones) ? reference_zones.map(String) : [];
+  const pairs: { kind: Slot; url?: string; bytes?: { data: string; mimeType: string } }[] = [];
+  {
+    let byteAt = 0;
+    for (let i = 0; i < refZones.length; i++) {
+      const kind = slotOf(refZones[i]);
+      const url = refUrls[i] ?? "";
+      const bytes = url ? undefined : refs[byteAt++];
+      if (!kind || (!url && !bytes)) continue;
+      pairs.push({ kind, url: url || undefined, bytes });
+    }
+  }
   const lockedZones: string[] = Array.isArray(locked_zones) ? locked_zones.map(String) : [];
   // FACE IDENTITY ANCHOR: a head crop travels as the LAST reference image —
   // a photographic anchor beats any text clause.
@@ -104,6 +124,33 @@ Deno.serve(async (req) => {
   /// >12% from the person photo IS a reframe. One silent retry.
   const renderFramed = async (p: string) => {
     renders++;
+    // Self-hosted engine when the swap resolves to (zone, garment) pairs. The
+    // framing gate below is a no-op for it — it repaints inside a mask and
+    // composites back over the original, so the aspect cannot drift.
+    if (hybridEnabled() && pairs.length) {
+      const staged: string[] = [];
+      try {
+        const pr = await stageInline(db, { data: person.data, mimeType: person.mimeType });
+        staged.push(pr.path);
+        const steps = [];
+        for (const g of pairs) {
+          let url = g.url;
+          if (!url) {
+            const ref = await stageInline(db, g.bytes!, "ref");
+            staged.push(ref.path);
+            url = ref.url;
+          }
+          steps.push({ url, kind: g.kind, hint: String(instruction).slice(0, 200) });
+        }
+        const img = await hybridDress(db, String(row.user_id), pr.url, steps);
+        console.log("[fix-render] hybrid:", steps.length, "steps");
+        return img;
+      } catch (e) {
+        console.error("[fix-render] hybrid failed, using hosted:", (e as Error).message);
+      } finally {
+        unstage(db, staged);
+      }
+    }
     let out = await generateLookImage(person, p, genRefs, { fallbackPrompt: compact });
     try {
       const din = imgDims(person.data);

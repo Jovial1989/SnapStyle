@@ -20,7 +20,8 @@ Deno.serve(async (req) => {
   const user = await getUser(req, db);
   if (!user) return json({ error: "unauthorized" }, 401);
 
-  const { image, instruction, target_zones, locked_zones, references, tucked, identity } = await req.json().catch(() => ({}));
+  const { image, instruction, target_zones, locked_zones, references, tucked, identity,
+          reference_urls, reference_zones } = await req.json().catch(() => ({}));
   if (!image?.data || !image?.mimeType) return json({ error: "image { data, mimeType } required" }, 400);
   if (!instruction) return json({ error: "instruction required" }, 400);
   const refs: { data: string; mimeType: string }[] =
@@ -79,6 +80,10 @@ Deno.serve(async (req) => {
     body: JSON.stringify({
       render_id: row.id, image, instruction,
       target_zones: targetZones, locked_zones: lockedZones, references: refs,
+      // Pass-through for the self-hosted renderer: (zone, garment) pairs, where
+      // an empty URL means "take the next entry from references".
+      reference_urls: Array.isArray(reference_urls) ? reference_urls : [],
+      reference_zones: Array.isArray(reference_zones) ? reference_zones : [],
       identity: identity?.data && identity?.mimeType ? identity : undefined,
       tucked: tk, cache_key_tucked: cacheKeyTucked,
     }),
