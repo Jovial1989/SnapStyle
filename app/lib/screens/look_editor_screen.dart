@@ -608,6 +608,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
       List<String> lockedZones = const [],
       List<Uint8List> references = const [],
       List<String> referenceUrls = const [],
+      List<String> referenceZones = const [],
       String? comboKey,
       ({String instruction, List<String> targetZones, List<String> lockedZones})? tucked,
       String? tuckedKey,
@@ -661,6 +662,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
         lockedZones: lockedZones,
         references: references,
         referenceUrls: referenceUrls,
+        referenceZones: referenceZones,
         tucked: tucked,
         identityB64: identityB64);
     Completer<Uint8List>? twinC;
@@ -1129,6 +1131,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
           lockedZones: primary.lockedZones,
           references: refs.bytes,
           referenceUrls: refs.urls,
+          referenceZones: refs.zones,
           comboKey: key,
           tucked: tuckedSpec,
           tuckedKey: dualTuck ? _keyFor(sel, tuck: 1) : null,
@@ -1150,6 +1153,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
               lockedZones: primary.lockedZones,
               references: refs.bytes,
               referenceUrls: refs.urls,
+              referenceZones: refs.zones,
               comboKey: key,
               personOverride: base);
           cropped = await _feetCropped(bytes);
@@ -1203,9 +1207,17 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
   /// Build the per-item flat-lay references for a swap combo (the thumbs the
   /// model COPIES from). Thumbs are cached after first warm, so this is cheap
   /// on the second call — hence safe to run again for the Phase-2 upgrade.
-  Future<({List<Uint8List> bytes, List<String> urls})> _swapRefs(Map<int, int> sel) async {
+  /// Returns garments in the SAME order buildSpec lists the zones (both walk
+  /// `sel.keys..sort()`), plus that zone per garment — so the server can pair
+  /// each reference with the body area it dresses. Without the zones the pairing
+  /// was positional across two separate lists and broke as soon as one garment
+  /// had a product photo and another did not, which sent every multi-zone swap
+  /// to the hosted renderer.
+  Future<({List<Uint8List> bytes, List<String> urls, List<String> zones})> _swapRefs(
+      Map<int, int> sel) async {
     final refs = <Uint8List>[];
     final urls = <String>[];
+    final zones = <String>[];
     for (final k in sel.keys.toList()..sort()) {
       final alt = _slots![k].alts[sel[k]! - 1];
       // PREFER THE REAL PRODUCT PHOTO. When an alternative was matched to an
@@ -1218,6 +1230,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
       final shopUrl = (alt.shop?['imageUrl'] ?? '').toString();
       if (shopUrl.startsWith('http')) {
         urls.add(shopUrl);
+        zones.add(_slots![k].slot);
         continue;
       }
       try {
@@ -1226,9 +1239,11 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
         // text-only and the thumb keeps warming for the next tap.
         refs.add(await _itemImage(alt.instruction, _slots![k].slot)
             .timeout(const Duration(seconds: 12)));
+        urls.add('');                     // placeholder keeps zones aligned
+        zones.add(_slots![k].slot);
       } catch (_) {/* text-only for this item */}
     }
-    return (bytes: refs, urls: urls);
+    return (bytes: refs, urls: urls, zones: zones);
   }
 
   // ── Smart Prefetch Queue — cost-capped background warming ─────────────────

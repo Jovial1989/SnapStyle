@@ -555,6 +555,7 @@ class LooktokApi {
     // base64'd, POSTed, decoded and re-uploaded. Measured on the same swap:
     // 2081 KB / 16.6s with bytes against 642 KB / 10.3s with the URL.
     List<String> referenceUrls = const [],
+    List<String> referenceZones = const [],
     int attempt = 1,
   }) async {
     final refs = <Map<String, String>>[];
@@ -568,10 +569,11 @@ class LooktokApi {
     // re-tapping a seen swap paints instantly, even offline).
     final key = sha256
         .convert(utf8.encode([
-          'fix:v14', base64Image, instruction, // v11: QA full-body restore + bg hygiene
+          'fix:v15', base64Image, instruction, // v11: QA full-body restore + bg hygiene
           targetZones.join(','), lockedZones.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,
+          ...referenceZones,
         ].join('|')))
         .toString();
     final cacheFile = await _tryonFile(key);
@@ -587,6 +589,7 @@ class LooktokApi {
       if (lockedZones.isNotEmpty) 'locked_zones': lockedZones,
       if (refs.isNotEmpty) 'references': refs,
       if (referenceUrls.isNotEmpty) 'reference_urls': referenceUrls,
+      if (referenceZones.isNotEmpty) 'reference_zones': referenceZones,
       if (attempt > 1) 'attempt': attempt,
       // 100s, not 45: the hosted render measures 45-60s, so the old budget
       // failed a call that was about to succeed (every look_renders row for
@@ -611,6 +614,7 @@ class LooktokApi {
   /// generateFix HTTP call in the editor.
   Future<({Uint8List? bytes, Uint8List? bytesTucked, String? renderId})> dispatchFix({
     List<String> referenceUrls = const [],
+    List<String> referenceZones = const [],
     required String base64Image,
     required String mimeType,
     required String instruction,
@@ -636,6 +640,7 @@ class LooktokApi {
           tz.join(','), lz.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,
+          ...referenceZones,
         ].join('|')))
         .toString();
     final cacheFile =
@@ -663,6 +668,7 @@ class LooktokApi {
       if (lockedZones.isNotEmpty) 'locked_zones': lockedZones,
       if (refs.isNotEmpty) 'references': refs,
       if (referenceUrls.isNotEmpty) 'reference_urls': referenceUrls,
+      if (referenceZones.isNotEmpty) 'reference_zones': referenceZones,
       if (identityB64 != null)
         'identity': {'data': identityB64, 'mimeType': 'image/jpeg'},
       if (tucked != null)

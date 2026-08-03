@@ -5,7 +5,7 @@
 import { admin, getUser } from "../_shared/supabase.ts";
 import { verifyEditApplied } from "../_shared/gemini.ts";
 import { generateLookImage } from "../_shared/imagegen.ts";
-import { hybridDress, hybridEnabled, slotOf, stageInline, unstage } from "../_shared/vton.ts";
+import { hybridDress, hybridEnabled, type Slot, slotOf, stageInline, unstage } from "../_shared/vton.ts";
 import { cacheGet, cachePut, sha256Hex } from "../_shared/tryon_cache.ts";
 import { buildCompactFixPrompt, buildFixPrompt, FIX_RETRY_NOTE } from "../_shared/fix_prompt.ts";
 import { json, preflight } from "../_shared/http.ts";
@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
   if (!user) return json({ error: "unauthorized" }, 401);
 
   const { image, instruction, target_zones, locked_zones, references, attempt,
-          reference_urls, person_path } = await req.json().catch(() => ({}));
+          reference_urls, reference_zones, person_path } = await req.json().catch(() => ({}));
   // BYTES ARE THE EXPENSIVE PART, and most of them never needed to move. A
   // catalogue garment already lives at a public URL and the current look already
   // lives in Storage, yet the client was downloading them, base64-encoding them,
@@ -37,6 +37,14 @@ Deno.serve(async (req) => {
   const refUrls: string[] = (Array.isArray(reference_urls) ? reference_urls : [])
     .filter((u) => typeof u === "string" && /^https?:\/\//.test(u)).slice(0, 4);
   const personPath = typeof person_path === "string" ? person_path : null;
+  // EXPLICIT (zone, garment) PAIRS. `target_zones` and the reference arrays are
+  // built from the same sorted slot order client-side, but once a garment with a
+  // product photo sits next to one without, the two arrays no longer line up
+  // positionally — so a swap touching several zones had no way to say which photo
+  // dresses which area, and every one of them fell through to the hosted
+  // renderer. `reference_zones` is 1:1 with `reference_urls`, and an empty URL
+  // means "take the next entry from `references`".
+  const refZones: string[] = Array.isArray(reference_zones) ? reference_zones.map(String) : [];
   if (!personPath && (!image?.data || !image?.mimeType)) {
     return json({ error: "image { data, mimeType } or person_path required" }, 400);
   }
@@ -65,8 +73,8 @@ Deno.serve(async (req) => {
   // rollback would look like it had no effect.
   const engineTag = hybridEnabled() ? "hybrid" : "hosted";
   const cacheKey = await sha256Hex([
-    "fix:v14", engineTag, model, personPath ?? image.data, instruction,
-    refUrls.join(","),
+    "fix:v15", engineTag, model, personPath ?? image.data, instruction,
+    refUrls.join(","), refZones.join(","),
     targetZones.join(","), lockedZones.join(","),
     ...refs.map((r) => r.data),
   ].join("|"));
@@ -86,11 +94,30 @@ Deno.serve(async (req) => {
     // hosted path produced cannot happen. Anything else — an accessory swap,
     // several zones at once, no reference image — has no mask zone and stays on
     // the hosted provider rather than being forced into the nearest one.
-    const slot = targetZones.length === 1 ? slotOf(targetZones[0]) : null;
+    // Build one dressing step per zone. Multi-zone swaps are the engine's
+    // natural shape — it repaints one area per pass — so there is no reason to
+    // hand them to the hosted renderer.
+    const pairs: { kind: Slot; url?: string; bytes?: { data: string; mimeType: string } }[] = [];
+    if (refZones.length) {
+      let byteAt = 0;
+      for (let i = 0; i < refZones.length; i++) {
+        const kind = slotOf(refZones[i]);
+        const url = refUrls[i] ?? "";
+        const bytes = url ? undefined : refs[byteAt++];
+        if (!kind || (!url && !bytes)) continue;  // no zone or no pixels — skip
+        pairs.push({ kind, url: url || undefined, bytes });
+      }
+    } else if (targetZones.length === 1) {
+      // Older clients send no zones: the single-zone case is unambiguous.
+      const kind = slotOf(targetZones[0]);
+      if (kind && (refUrls[0] || refs[0])) {
+        pairs.push({ kind, url: refUrls[0] || undefined, bytes: refUrls[0] ? undefined : refs[0] });
+      }
+    }
     let out: { data: string; mimeType: string } | null = null;
     let hybridUsed = false;
     let engineError: string | null = null;
-    if (hybridEnabled() && slot && (refs.length || refUrls.length)) {
+    if (hybridEnabled() && pairs.length) {
       const staged: string[] = [];
       try {
         let personUrl: string;
@@ -106,18 +133,18 @@ Deno.serve(async (req) => {
           personUrl = person.url;
         }
         mark("stage_person");
-        let refUrl: string;
-        if (refUrls.length) {
-          refUrl = refUrls[0];          // public catalogue image — nothing to copy
-        } else {
-          const ref = await stageInline(db, refs[0], "ref");
-          staged.push(ref.path);
-          refUrl = ref.url;
+        const steps = [];
+        for (const pr of pairs) {
+          let url = pr.url;
+          if (!url) {                    // only bytes need copying into Storage
+            const ref = await stageInline(db, pr.bytes!, "ref");
+            staged.push(ref.path);
+            url = ref.url;
+          }
+          steps.push({ url, kind: pr.kind, hint: String(instruction).slice(0, 200) });
         }
         mark("stage_ref");
-        out = await hybridDress(db, user.id, personUrl, [
-          { url: refUrl, kind: slot, hint: String(instruction).slice(0, 200) },
-        ]);
+        out = await hybridDress(db, user.id, personUrl, steps);
         hybridUsed = true;
         mark("render");
       } catch (e) {
