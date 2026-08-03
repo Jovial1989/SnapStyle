@@ -1,5 +1,5 @@
-# Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# ML Kit selfie segmentation (on-device silhouettes) requires iOS 15.5+.
+platform :ios, '15.5'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -39,5 +39,15 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      # GoogleToolboxForMac and FBLPromises (pulled in by ML Kit / Firebase)
+      # use double-quoted includes in their framework umbrella headers. Xcode
+      # promotes that to an ERROR by default, so the whole build dies inside
+      # third-party pods we do not control — and it surfaces the moment Xcode
+      # regenerates the Pods project, which is why a build that worked an hour
+      # earlier suddenly fails. Ours is not the code to fix; silence it for
+      # pod targets only, leaving the app target's warnings intact.
+      config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
+    end
   end
 end
