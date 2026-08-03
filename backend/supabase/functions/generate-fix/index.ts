@@ -15,6 +15,11 @@ Deno.serve(async (req) => {
   if (pre) return pre;
   if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
 
+  // Phase timings, because "12s for a 4s render" is unanswerable from the
+  // outside and Edge Function logs are not reachable from our CLI.
+  const T0 = Date.now();
+  const marks: Record<string, number> = {};
+  const mark = (k: string) => { marks[k] = Date.now() - T0; };
   const db = admin();
   const user = await getUser(req, db);
   if (!user) return json({ error: "unauthorized" }, 401);
@@ -50,6 +55,7 @@ Deno.serve(async (req) => {
     targetZones.join(","), lockedZones.join(","),
     ...refs.map((r) => r.data),
   ].join("|"));
+  mark("hash");
   const cached = await cacheGet(db, cacheKey);
   if (cached) return json({ image: cached, cached: true, applied: true });
 
@@ -74,12 +80,15 @@ Deno.serve(async (req) => {
       try {
         const person = await stageInline(db, { data: image.data, mimeType: image.mimeType });
         staged.push(person.path);
+        mark("stage_person");
         const ref = await stageInline(db, refs[0], "ref");
         staged.push(ref.path);
+        mark("stage_ref");
         out = await hybridDress(db, user.id, person.url, [
           { url: ref.url, kind: slot, hint: String(instruction).slice(0, 200) },
         ]);
         hybridUsed = true;
+        mark("render");
       } catch (e) {
         // Falling back is the whole point of the flag: a cold worker, a full
         // queue or a pose the detector cannot read must not fail the request.
@@ -125,6 +134,7 @@ Deno.serve(async (req) => {
       image: out,
       applied,
       engine: hybridUsed ? "hybrid" : "hosted",
+      timings: { ...marks, total: Date.now() - T0 },
       ...(engineError ? { engine_error: engineError } : {}),
     });
   } catch (err) {

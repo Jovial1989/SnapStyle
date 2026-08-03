@@ -19,6 +19,12 @@
 // Callers keep their synchronous contract — this returns pixels — so nothing
 // downstream or client-side knows the transport changed.
 import type { SupabaseClient } from "jsr:@supabase/supabase-js@2";
+// STATIC import, deliberately. Behind a dynamic import() this module was
+// fetched and compiled INSIDE the first request that needed it: measured
+// 3.3s for the first staged image against 0.9s for the second and larger
+// one. A static import moves that cost to cold start, where it is paid once
+// per instance instead of once per warm-up of every new isolate.
+import { Image } from "https://deno.land/x/imagescript@1.3.0/mod.ts";
 
 export type Slot = "upper" | "lower" | "full" | "shoes";
 
@@ -156,7 +162,6 @@ const STAGE_MAX = Number(Deno.env.get("VTON_STAGE_PX") ?? 768);
 
 async function shrink(bytes: Uint8Array): Promise<Uint8Array> {
   try {
-    const { Image } = await import("https://deno.land/x/imagescript@1.3.0/mod.ts");
     const im = await Image.decode(bytes);
     const longest = Math.max(im.width, im.height);
     const out = longest > STAGE_MAX
