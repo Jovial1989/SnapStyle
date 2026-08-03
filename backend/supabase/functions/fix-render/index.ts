@@ -279,7 +279,13 @@ Deno.serve(async (req) => {
     // regenerate ONCE against the real face crop. If it still looks off we
     // SHIP anyway rather than hard-failing — a rare slip beats a constant
     // "Couldn't render" from a face-crop comparison that's only ~reliable.
-    if (idRef && !didRetry && renders < BUDGET) {
+    // …and NOT on our engine, for the same structural reason. The face sits
+    // ABOVE the mask, so those pixels are composited back from the original
+    // untouched: identity cannot drift, and there is nothing for a face-crop
+    // comparison to catch. Keeping it here was another Gemini vision round trip
+    // per swap — the last big chunk of a tap that measured 18s while the render
+    // itself took 2.9s and the queue 0.3s.
+    if (!hybridUsed && idRef && !didRetry && renders < BUDGET) {
       try {
         if (!(await samePerson(final, idRef))) {
           await touch({ phase: "refining", applied: false });
