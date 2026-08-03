@@ -33,6 +33,7 @@ import {
 import { promptSafeName } from "../_shared/garment_names.ts";
 import { buildCanonicalAvatar } from "../_shared/avatar.ts";
 import { gridRender } from "../_shared/grid.ts";
+import { type DressStep, hybridDress, hybridEnabled, slotOf } from "../_shared/vton.ts";
 
 const ID = /^[A-Za-z0-9_-]{1,64}$/;
 
@@ -48,8 +49,11 @@ Deno.serve(async (req) => {
   const ent = await getEntitlement(db, user.id);
   if (!canAnalyze(ent)) return json({ error: "quota_exhausted", ...entitlementView(ent) }, 402);
 
+  // The OpenAI key is only needed for the GRID FALLBACK. Refusing the request
+  // without it would make the self-hosted engine unusable on its own — the whole
+  // point of building it was not needing that key.
   const key = Deno.env.get("OPENAI_API_KEY");
-  if (!key) return json({ error: "grid engine not configured" }, 501);
+  if (!key && !hybridEnabled()) return json({ error: "grid engine not configured" }, 501);
 
   const { looks } = await req.json().catch(() => ({}));
   if (!Array.isArray(looks) || looks.length < 1 || looks.length > 4) {
@@ -137,13 +141,60 @@ Deno.serve(async (req) => {
     const descriptions = misses.map((ids) =>
       ids.map((id) => promptSafeName(byId.get(id)!.name as string)).join(" + "));
 
-    const { cells } = await gridRender({
-      avatar: avatarBytes,
-      descriptions,
-      refsPerCell,
-      note: "Full body head-to-toe in every panel, feet visible, plain seamless " +
-            "pure-white background.",
-    });
+    // WHY THE GRID IS NO LONGER THE DEFAULT: packing four looks into one image
+    // never improved anything except the BILL. gpt-image charges per call, so
+    // four looks in one 1024x1536 canvas cost a quarter of four calls — and we
+    // paid for that discount in cells cropped to 510x766, a mask/composite stage
+    // that had to be reinvented, and the grey-collar band that shipped to the
+    // phone. At $0.0003 a render the discount is worth nothing, so each look is
+    // simply rendered on its own, at full frame, by the self-hosted engine.
+    //
+    // The grid stays as the fallback for exactly the case the engine cannot
+    // serve: a garment with no usable photo or a category with no mask zone.
+    let cells: Uint8Array[] | null = null;
+    let usedHybrid = false;
+    if (hybridEnabled()) {
+      try {
+        const perLook: DressStep[][] = misses.map((ids) => {
+          const steps: DressStep[] = [];
+          for (const id of ids) {
+            const g = byId.get(id)!;
+            const kind = slotOf(String(g.category ?? ""));
+            const url = String(g.image_url ?? "");
+            // No zone or no photo → this look cannot be dressed piece by piece.
+            if (!kind || !url) return [];
+            steps.push({ url, kind, hint: promptSafeName(String(g.name ?? "")) });
+          }
+          return steps;
+        });
+        if (perLook.every((st) => st.length)) {
+          const personUrl = await signedUrl(db, "body-photos", `${humanPath}.avatar.png`, 900);
+          // Sequential, not parallel: the worker renders one job at a time
+          // (measured — throughput is flat against concurrency, the GPU is
+          // already saturated by a single stream), so firing them together
+          // would only deepen the queue and add nothing.
+          const out: Uint8Array[] = [];
+          for (const steps of perLook) {
+            const img = await hybridDress(db, user.id, personUrl, steps);
+            out.push(Uint8Array.from(atob(img.data), (c) => c.charCodeAt(0)));
+          }
+          cells = out;
+          usedHybrid = true;
+          console.log("[grid-vton] hybrid:", out.length, "looks rendered individually");
+        }
+      } catch (e) {
+        console.error("[grid-vton] hybrid failed, using the grid:", (e as Error).message);
+      }
+    }
+    if (!cells) {
+      ({ cells } = await gridRender({
+        avatar: avatarBytes,
+        descriptions,
+        refsPerCell,
+        note: "Full body head-to-toe in every panel, feet visible, plain seamless " +
+              "pure-white background.",
+      }));
+    }
 
     // ── slice per look, store, ledger (same rows the Gemini path writes) ──
     for (let i = 0; i < misses.length && i < cells.length; i++) {
@@ -166,7 +217,9 @@ Deno.serve(async (req) => {
         ? "upper_body" : "lower_body";
       const { error: ledErr } = await db.from("look_generations").insert({
         user_id: user.id, garment_id: misses[i].join("+"), image_url: path,
-        provider: "gpt-image-1-grid", category,
+        // Which engine actually rendered it, so cost analysis and a
+        // rollback can both be reasoned about from the ledger alone.
+        provider: usedHybrid ? "hybrid-sd15" : "gpt-image-1-grid", category,
         duration_ms: Date.now() - started,
       });
       // A missing ledger row means no cache: the next tap re-renders and
