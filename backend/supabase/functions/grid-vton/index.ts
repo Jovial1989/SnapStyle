@@ -169,16 +169,17 @@ Deno.serve(async (req) => {
         });
         if (perLook.every((st) => st.length)) {
           const personUrl = await signedUrl(db, "body-photos", `${humanPath}.avatar.png`, 900);
-          // Sequential, not parallel: the worker renders one job at a time
-          // (measured — throughput is flat against concurrency, the GPU is
-          // already saturated by a single stream), so firing them together
-          // would only deepen the queue and add nothing.
-          const out: Uint8Array[] = [];
-          for (const steps of perLook) {
-            const img = await hybridDress(db, user.id, personUrl, steps);
-            out.push(Uint8Array.from(atob(img.data), (c) => c.charCodeAt(0)));
-          }
-          cells = out;
+          // ENQUEUE ALL LOOKS AT ONCE. An earlier version did these one after
+          // another, reasoning that throughput is flat against concurrency —
+          // true of the GPU, and beside the point. The card accounts for ~1.5s
+          // of a ~5s job; the rest is Storage round trips from another
+          // continent. Queued together, look N+1's transfers overlap look N's
+          // render instead of starting after it. The worker still renders
+          // strictly one at a time, so nothing here competes for the GPU.
+          const imgs = await Promise.all(
+            perLook.map((steps) => hybridDress(db, user.id, personUrl, steps)),
+          );
+          cells = imgs.map((img) => Uint8Array.from(atob(img.data), (c) => c.charCodeAt(0)));
           usedHybrid = true;
           console.log("[grid-vton] hybrid:", out.length, "looks rendered individually");
         }

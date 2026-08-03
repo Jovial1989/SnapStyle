@@ -26,6 +26,7 @@ must be detected by a missing id rather than by falsiness of the response.
 """
 from __future__ import annotations
 
+import concurrent.futures as cf
 import io
 import json
 import os
@@ -83,19 +84,28 @@ def _fetch_image(url: str) -> Image.Image:
 
 
 def render(job: dict) -> str:
-    person = _fetch_image(job["person_url"])
-    steps = job.get("steps") or []
+    steps = (job.get("steps") or [])[:MAX_STEPS]
     if not steps:
         raise ValueError("job has no steps")
+
+    # PREFETCH EVERY INPUT AT ONCE. Downloading each garment just before its own
+    # render put N-1 round trips on the critical path, and this box is a
+    # continent away from Storage — 200-300ms each. The GPU accounts for ~1.5s of
+    # a ~5s job, so the win here is not the card going faster, it is the waiting
+    # overlapping. (Rendering itself stays serial: one stream already saturates
+    # the GPU, so concurrent diffusions would only trade order for nothing.)
+    urls = [job["person_url"]] + [st["url"] for st in steps]
+    with cf.ThreadPoolExecutor(min(8, len(urls))) as ex:
+        imgs = list(ex.map(_fetch_image, urls))
+    current, garments = imgs[0], imgs[1:]
 
     # SEQUENTIAL DRESSING: each render's output is the next one's input. That is
     # how a full outfit is built from single-slot masks — top, then bottom, then
     # shoes — and why order matters. Each pass repaints only its own slot, so an
     # earlier garment cannot be undone by a later one.
-    current = person
-    for i, st in enumerate(steps[:MAX_STEPS]):
+    for i, (st, garment) in enumerate(zip(steps, garments)):
         current = engine.generate(
-            current, _fetch_image(st["url"]),
+            current, garment,
             kind=st.get("kind", "upper"),
             prompt_hint=st.get("hint", "the garment in the reference image"),
             seed=st.get("seed"),

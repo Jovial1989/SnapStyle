@@ -45,7 +45,10 @@ const BUCKET = "generations";
 // A dressing step is ~1.5s and a look is at most 3-4 steps, so anything past
 // ~40s means the worker is down rather than slow. Failing fast lets the caller
 // fall back to the hosted provider inside the request the user is waiting on.
-const TIMEOUT_MS = Number(Deno.env.get("VTON_QUEUE_TIMEOUT_MS") ?? 40_000);
+// 90s, not 40: a caller may queue FOUR looks at once (grid-vton), and they are
+// rendered one at a time — so the last one legitimately waits for the whole
+// set. Sized for four 3-garment looks; past that the worker really is down.
+const TIMEOUT_MS = Number(Deno.env.get("VTON_QUEUE_TIMEOUT_MS") ?? 90_000);
 const POLL_MS = Number(Deno.env.get("VTON_POLL_MS") ?? 200);
 
 export function hybridEnabled(): boolean {
