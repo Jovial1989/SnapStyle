@@ -8,13 +8,13 @@
 // its address is. A dead worker degrades into "jobs stay queued" instead of
 // 5xx storms.
 //
-// The queue lives in STORAGE, not in a table. Not because that is prettier —
-// a table with FOR UPDATE SKIP LOCKED is the better primitive — but because
-// creating one needs DDL, and the operator's tooling could not apply a
-// migration. Storage needs only the service role we already hold. With a
-// single worker there is no claim race to lose; `migrations/0022_vton_jobs.sql`
-// is the drop-in replacement when DDL becomes available, and only the four
-// helpers below change.
+// The queue is the `vton_jobs` table (migrations/0022). Claiming goes through
+// claim_vton_job(), which uses FOR UPDATE SKIP LOCKED: two workers can never
+// render the same row, and a row stuck 'running' past its lease is re-offered.
+// The earlier Storage-object queue worked but claimed by MOVING a file, which is
+// not atomic against a concurrent reader and had no way to count attempts or
+// reclaim abandoned work. One transport, not two — the file version is in git
+// history if it is ever needed again.
 //
 // Callers keep their synchronous contract — this returns pixels — so nothing
 // downstream or client-side knows the transport changed.
@@ -41,8 +41,6 @@ export interface Inline {
 }
 
 const BUCKET = "generations";
-const QUEUE = "_vton/queue";
-const DONE = "_vton/done";
 
 // A dressing step is ~1.5s and a look is at most 3-4 steps, so anything past
 // ~40s means the worker is down rather than slow. Failing fast lets the caller
@@ -54,28 +52,6 @@ export function hybridEnabled(): boolean {
   return (Deno.env.get("VTON_ENGINE") ?? "").toLowerCase() === "hybrid";
 }
 
-const enc = new TextEncoder();
-
-async function putJson(db: SupabaseClient, path: string, obj: unknown): Promise<void> {
-  const { error } = await db.storage.from(BUCKET).upload(
-    path, new Blob([enc.encode(JSON.stringify(obj))], { type: "application/json" }),
-    { contentType: "application/json", upsert: true },
-  );
-  // NEVER swallow this: a silent enqueue failure looks exactly like a slow
-  // worker, and we would poll for 40s on a job that was never created.
-  if (error) throw new Error(`vton enqueue failed: ${error.message}`);
-}
-
-async function getJson(db: SupabaseClient, path: string): Promise<Record<string, unknown> | null> {
-  const { data, error } = await db.storage.from(BUCKET).download(path);
-  if (error || !data) return null;          // "not yet" is the common case
-  try {
-    return JSON.parse(await data.text());
-  } catch {
-    return null;
-  }
-}
-
 /** Enqueue a dressing sequence and wait for the rendered image.
  *  Throws on timeout or worker failure — callers are expected to fall back. */
 export async function hybridDress(
@@ -85,32 +61,32 @@ export async function hybridDress(
   steps: DressStep[],
 ): Promise<Inline> {
   if (!steps.length) throw new Error("hybridDress: no steps");
-  const id = crypto.randomUUID();
 
-  await putJson(db, `${QUEUE}/${id}.json`, {
-    id,
-    user_id: userId,
-    person_url: personUrl,
-    steps: sortSteps(steps),
-    created_at: new Date().toISOString(),
-  });
+  const { data: job, error } = await db
+    .from("vton_jobs")
+    .insert({ user_id: userId, person_url: personUrl, steps: sortSteps(steps) })
+    .select("id")
+    .single();
+  // NEVER swallow this: a silent insert failure looks exactly like a slow worker,
+  // and we would poll for the full timeout on a job that was never created.
+  if (error || !job) throw new Error(`vton enqueue failed: ${error?.message}`);
 
   const deadline = Date.now() + TIMEOUT_MS;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, POLL_MS));
-    const done = await getJson(db, `${DONE}/${id}.json`);
-    if (!done) continue;
+    const { data: row } = await db
+      .from("vton_jobs")
+      .select("status, result_path, error")
+      .eq("id", job.id)
+      .maybeSingle();
+    if (!row) continue;
+    if (row.status === "failed") throw new Error(`vton render failed: ${row.error}`);
+    if (row.status !== "done" || !row.result_path) continue;
 
-    // Read once, then drop the marker — nobody else is waiting on it, and the
-    // prefix would otherwise grow forever.
-    db.storage.from(BUCKET).remove([`${DONE}/${id}.json`]).catch(() => {});
-
-    if (done.error) throw new Error(`vton render failed: ${done.error}`);
-    const path = String(done.result_path ?? "");
-    if (!path) throw new Error("vton finished with no result_path");
-
-    const { data: blob, error } = await db.storage.from(BUCKET).download(path);
-    if (error || !blob) throw new Error(`vton result unreadable: ${error?.message}`);
+    const { data: blob, error: dl } = await db.storage
+      .from(BUCKET)
+      .download(row.result_path as string);
+    if (dl || !blob) throw new Error(`vton result unreadable: ${dl?.message}`);
     const bytes = new Uint8Array(await blob.arrayBuffer());
     let bin = "";
     for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -119,9 +95,12 @@ export async function hybridDress(
     return { data: btoa(bin), mimeType: "image/jpeg" };
   }
 
-  // Withdraw the job so a worker that picks it up late does not spend GPU time
-  // on a render nobody is waiting for.
-  db.storage.from(BUCKET).remove([`${QUEUE}/${id}.json`]).catch(() => {});
+  // Withdraw it so a worker picking it up late does not spend GPU time on a
+  // render nobody is waiting for. Guarded on status so a job that finished in
+  // the same tick is not marked failed.
+  await db.from("vton_jobs")
+    .update({ status: "failed", error: "caller timeout" })
+    .eq("id", job.id).in("status", ["queued", "running"]);
   throw new Error(`vton timeout after ${TIMEOUT_MS}ms`);
 }
 

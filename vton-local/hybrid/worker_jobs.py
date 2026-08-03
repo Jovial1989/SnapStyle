@@ -15,12 +15,12 @@ Why this shape rather than "expose the worker and let the EF POST to it":
   * A dead worker degrades into "jobs stay queued", not into 5xx storms in the
     EFs. Recovery is: start the worker again, the backlog drains.
 
-The queue is Storage objects rather than a table because creating the table
-needs DDL that the operator's tooling could not apply. Claiming is a MOVE:
-whoever moves the object out of the queue prefix owns the job, and a move that
-fails means somebody else got there first. That is weaker than FOR UPDATE SKIP
-LOCKED — it is not atomic against a concurrent reader — but with one worker
-there is no race to lose. Swap in `claim_vton_job()` when the table exists.
+Claiming goes through claim_vton_job(), which holds FOR UPDATE SKIP LOCKED:
+two workers can never take the same row, and a row left 'running' past its
+lease is re-offered with its attempt count carried forward, so a worker killed
+mid-render does not strand the job. NOTE the empty-queue shape — PostgREST
+serialises the unset composite as a row of NULLs, not as null, so "no work"
+must be detected by a missing id rather than by falsiness of the response.
 
     python worker_jobs.py
 """
@@ -40,7 +40,6 @@ from pipeline import DEVICE, HybridVTONPipeline
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
 BUCKET = os.getenv("VTON_BUCKET", "generations")
-QUEUE, CLAIMED, DONE = "_vton/queue", "_vton/claimed", "_vton/done"
 # Idle poll interval: one small list call per tick, p50 dispatch under ~0.5s.
 IDLE_SLEEP = float(os.getenv("VTON_POLL_SEC", "0.2"))
 MAX_STEPS = int(os.getenv("VTON_MAX_STEPS_PER_JOB", "4"))
@@ -63,36 +62,19 @@ def _req(method: str, path: str, body: bytes | None = None,
         return r.read()
 
 
-def list_queue() -> list[dict]:
-    """Oldest first — a queue that serves newest-first starves under load."""
-    body = json.dumps({
-        "prefix": QUEUE + "/", "limit": 20,
-        "sortBy": {"column": "created_at", "order": "asc"},
-    }).encode()
-    raw = _req("POST", f"/storage/v1/object/list/{BUCKET}", body)
-    return [o for o in json.loads(raw or "[]") if o.get("name", "").endswith(".json")]
-
-
-def claim(name: str) -> dict | None:
-    """Take ownership by MOVING the object out of the queue prefix.
-    A failed move means another worker already owns it — skip, do not render."""
-    src, dst = f"{QUEUE}/{name}", f"{CLAIMED}/{name}"
-    payload = json.dumps({"bucketId": BUCKET, "sourceKey": src, "destinationKey": dst}).encode()
-    try:
-        _req("POST", "/storage/v1/object/move", payload)
-    except urllib.error.HTTPError:
+def claim() -> dict | None:
+    """Atomically take the oldest queued job, or None when idle."""
+    raw = _req("POST", "/rest/v1/rpc/claim_vton_job", b"{}")
+    job = json.loads(raw or "null")
+    # A row of NULLs is how an empty queue comes back — not a job.
+    if not isinstance(job, dict) or not job.get("id"):
         return None
-    raw = _req("GET", f"/storage/v1/object/{BUCKET}/{dst}")
-    return json.loads(raw)
+    return job
 
 
-def finish(job_id: str, name: str, **fields: object) -> None:
-    _req("POST", f"/storage/v1/object/{BUCKET}/{DONE}/{job_id}.json",
-         json.dumps(fields).encode(), extra={"x-upsert": "true"})
-    try:
-        _req("DELETE", f"/storage/v1/object/{BUCKET}/{CLAIMED}/{name}")
-    except urllib.error.HTTPError:
-        pass
+def patch(job_id: str, fields: dict) -> None:
+    _req("PATCH", f"/rest/v1/vton_jobs?id=eq.{job_id}", json.dumps(fields).encode(),
+         extra={"Prefer": "return=minimal"})
 
 
 def _fetch_image(url: str) -> Image.Image:
@@ -129,38 +111,37 @@ def render(job: dict) -> str:
 
 
 def main() -> None:
-    print(f"[worker] polling {BUCKET}/{QUEUE} on {DEVICE}", flush=True)
+    print(f"[worker] polling vton_jobs on {DEVICE}", flush=True)
     engine.warmup()
     print("[worker] warm", flush=True)
     while True:
         try:
-            pending = list_queue()
-        except Exception as e:  # noqa: BLE001 — a transient list must not stop the loop
-            print(f"[worker] list failed ({e}); retrying", flush=True)
+            job = claim()
+        except Exception as e:  # noqa: BLE001 — a transient claim must not stop the loop
+            print(f"[worker] claim failed ({e}); retrying", flush=True)
             time.sleep(2)
             continue
-        if not pending:
+        if not job:
             time.sleep(IDLE_SLEEP)
             continue
 
-        for obj in pending:
-            name = obj["name"].rsplit("/", 1)[-1]
-            job = claim(name)
-            if not job:
-                continue
-            jid = job.get("id", name[:-5])
-            t0 = time.time()
+        jid = job["id"]
+        t0 = time.time()
+        try:
+            path = render(job)
+            patch(jid, {"status": "done", "result_path": path,
+                        "finished_at": "now()"})
+            print(f"[worker] {jid[:8]} done in {time.time() - t0:.1f}s → {path}", flush=True)
+        except Exception as e:  # noqa: BLE001 — one bad job must not stop the loop
+            msg = f"{type(e).__name__}: {e}"[:400]
+            print(f"[worker] {jid[:8]} FAILED {msg}", flush=True)
+            # Back to 'queued' so claim_vton_job can re-offer it; give up at 3
+            # attempts so a permanently-bad job cannot spin the GPU forever.
+            final = "failed" if job.get("attempts", 0) >= 3 else "queued"
             try:
-                path = render(job)
-                finish(jid, name, result_path=path)
-                print(f"[worker] {jid[:8]} done in {time.time() - t0:.1f}s → {path}", flush=True)
-            except Exception as e:  # noqa: BLE001 — one bad job must not stop the loop
-                msg = f"{type(e).__name__}: {e}"[:400]
-                print(f"[worker] {jid[:8]} FAILED {msg}", flush=True)
-                try:
-                    finish(jid, name, error=msg)
-                except Exception:
-                    pass
+                patch(jid, {"status": final, "error": msg})
+            except Exception:
+                pass
 
 
 if __name__ == "__main__":
