@@ -50,4 +50,16 @@ post_install do |installer|
       config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
     end
   end
+  # …and again across EVERY generated project, not just `pods_project`. CocoaPods
+  # splits pods into multiple projects, so the loop above reached only some of
+  # them — the build kept dying on whichever pod landed elsewhere (FBLPromises,
+  # then GoogleToolboxForMac, then SDWebImage). Iterating generated_projects is
+  # what actually covers all of them.
+  installer.generated_projects.each do |project|
+    project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER'] = 'NO'
+      end
+    end
+  end
 end
