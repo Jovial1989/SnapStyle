@@ -1148,7 +1148,18 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
       // waist-up crop legitimately has content at the bottom edge (no feet).
       // ONE feet retake max (server QA also checks framing) — a 2-retake cascade
       // stacked on the QA/identity retries pushed swaps past 50s.
-      var cropped = !_isCloseUpSet(sel) && await _feetCropped(bytes);
+      // …and only when the SOURCE was fine. This guard detects "the model
+      // cropped the frame", which is a thing gpt-image did by zooming. Our own
+      // engine cannot: it repaints inside a mask and composites back into the
+      // original canvas, so the output geometry is the input's. On a photo the
+      // user shot with their feet already near the bottom edge the check fired
+      // every single time, and each retake was a second full render for nothing
+      // — the observed two fix_renders rows and ~13s extra per tap.
+      //
+      // Comparing against the source makes it mean what its name says.
+      var cropped = !_isCloseUpSet(sel) &&
+          await _feetCropped(bytes) &&
+          !await _feetCropped(base ?? _base);
       for (var attempt = 1; cropped && attempt <= 1; attempt++) {
         try {
           bytes = await _gen('${primary.instruction}${_retakeNote(attempt)}',
