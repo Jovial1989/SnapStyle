@@ -373,12 +373,13 @@ def _garment_mask(p: Pose, kind: str,
     intersected with the person matte so the background stays untouched.
 
     Generous in the CUT'S OWN direction, though, not blindly. Pass `garment` and
-    the slot band is trimmed to the ratios measured off the flat-lay
-    (`_garment_metrics`): the hem stops where that garment's hem stops, the
-    sleeve corridor stops where its sleeve stops, and the sides sit at its own
-    width instead of the figure's. Without `garment` the band is the old
-    full-slot rectangle — still correct for a swap of the same cut, still the
-    reason a short-sleeve tee used to come back long-sleeved.
+    the band is fitted to ratios measured off the flat-lay (`_garment_metrics`):
+    the sleeve corridor stops where that garment's sleeve stops instead of at
+    the wrist, the sides sit at its own width instead of spanning the figure, and
+    the hem can run past the basics' for a long shirt or a coat. The floor is
+    always the base avatar's own clothes — see the note at the bands below.
+    Without `garment` this is the old full-slot rectangle, which is why a
+    short-sleeve tee used to come back long-sleeved.
     """
     h, w = p.h, p.w
     pts = p.pts
@@ -421,16 +422,18 @@ def _garment_mask(p: Pose, kind: str,
     else:
         met, gw, cx = None, 0.0, (x0 + x1) // 2
 
+    # THE BASE AVATAR SETS A FLOOR the mask can never go under. It wears grey
+    # basics — short-sleeve tee, full-length trousers — so a mask that stops
+    # where the NEW garment stops would leave the old one showing beneath it,
+    # which reads as two layers rather than a swap. So the measurements can only
+    # EXTEND a zone past the basics, never trim inside them. For 'lower' and
+    # 'full' that means the band still runs to the ankle whatever the flat-lay
+    # says: shorts and skirts need the shins repainted as skin, and the shins are
+    # currently trousers.
     if kind == "lower":
         y0, y1 = hip - span * 0.06, min(h - 1, ankle + span * 0.03)
-        if met:
-            # Shorts stop at the thigh. Running the band to the ankle for them
-            # is what filled the shins with invented fabric.
-            y1 = min(y1, hip + met["len_ratio"] * gw)
     elif kind == "full":
         y0, y1 = shoulder - span * 0.07, min(h - 1, ankle + span * 0.03)
-        if met:
-            y1 = min(y1, shoulder + met["len_ratio"] * gw)
     elif kind == "shoes":
         # The FEET LIE BELOW THE LAST KEYPOINT: COCO-18 stops at the ankle, so
         # the ankle cannot define the bottom edge. The silhouette's lowest
@@ -451,16 +454,18 @@ def _garment_mask(p: Pose, kind: str,
     else:  # upper
         y0, y1 = shoulder - span * 0.07, hip + span * 0.10
         if met:
-            # A cropped top and a long shirt are both 'upper'; only the flat-lay
-            # knows which. Never past the knee — a top that measures that long
-            # means the flat-lay was misread.
-            y1 = min(shoulder + met["len_ratio"] * gw, hip + span * 0.55)
+            # A long shirt and a cropped top are both 'upper'; only the flat-lay
+            # knows which. It can lengthen the band (a shirt worn out, a coat) but
+            # not shorten it below the basics' hem. Never past the knee — a top
+            # measuring that long means the flat-lay was misread.
+            y1 = max(y1, min(shoulder + met["len_ratio"] * gw, hip + span * 0.55))
 
     if met and kind in ("upper", "full", "lower"):
-        # Sides at the garment's own width, not the figure's. The 14% figure pad
-        # put mask outside the body on both flanks, and the model filled it with
-        # the halo that traced the silhouette.
-        half = gw / 2.0 + max(4, span * 0.02)
+        # SIDES AT THE GARMENT'S OWN WIDTH, not the figure's. The 14% figure pad
+        # runs from wrist to wrist, so on a standing figure it put mask well
+        # outside the body on both flanks — and the model filled that strip with
+        # the halo that traced the silhouette. The pad here is for drape only.
+        half = gw / 2.0 + max(6, span * 0.035)
         x0, x1 = max(0, int(cx - half)), min(w - 1, int(cx + half))
 
     box = np.zeros((h, w), np.uint8)
@@ -491,10 +496,13 @@ def _garment_mask(p: Pose, kind: str,
                 # given. A sleeveless top now measures ~0 and gets a shoulder cap
                 # only; a long sleeve measures about one torso width and gets the
                 # whole arm.
-                reach = met["sleeve_ratio"] * gw
-                if reach < gw * 0.10:
-                    cv2.circle(arm, chain[0], thick, 255, -1)
-                    continue
+                chain_len = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                                for a, b in zip(chain, chain[1:]))
+                # …but never shorter than the basics' own sleeve, which ends
+                # around a third of the way down the arm. A tank top measures
+                # near zero, and stopping there would leave the grey sleeve
+                # under it.
+                reach = max(met["sleeve_ratio"] * gw, chain_len * 0.42)
                 path = _walk(chain, reach)
             else:
                 # STOP SHORT OF THE WRIST. Reaching the wrist pulled the HAND into
