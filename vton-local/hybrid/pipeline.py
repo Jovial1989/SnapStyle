@@ -236,6 +236,49 @@ def _split(chain: list[tuple[int, int]],
     return before, [chain[-1]]
 
 
+def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
+    """The garment alone, cut out of its studio background. None if unclear.
+
+    SEPARATE BY FLOOD-FILLING THE BACKGROUND, not by thresholding the garment.
+    "Garment on white" does not mean "garment is darker than 235": the first
+    catalogue top measured is an off-white tee at grey 238 on paper at 252, and a
+    plain threshold picked up its shadow instead of the shirt (2% of the frame).
+    Filling inward from the border finds the background by connectivity, whatever
+    the garment is. FIXED_RANGE is the part that matters: the default compares
+    each pixel to its NEIGHBOUR, so the fill walks up the soft shadow gradient
+    and eats the whole white shirt (measured: zero object left at every
+    tolerance). Against the SEED value it stops at the shadow, as intended.
+    """
+    g = cv2.cvtColor(garment, cv2.COLOR_BGR2GRAY) if garment.ndim == 3 else garment
+    g = cv2.medianBlur(g, 5)
+    h, w = g.shape
+
+    m = np.zeros((h + 2, w + 2), np.uint8)
+    flags = 4 | cv2.FLOODFILL_MASK_ONLY | cv2.FLOODFILL_FIXED_RANGE | (255 << 8)
+    for seed in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1),
+                 (w // 2, 0), (w // 2, h - 1)):
+        cv2.floodFill(g.copy(), m, seed, 255, 5, 5, flags)
+    ink = (m[1:-1, 1:-1] == 0).astype(np.uint8)
+    ink = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8))
+    ink = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(ink, 8)
+    if n < 2:
+        return None
+    best = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    if stats[best, cv2.CC_STAT_AREA] < g.size * 0.02:
+        return None
+    return (lab == best).astype(np.uint8)
+
+
+def _garment_color(garment: np.ndarray) -> np.ndarray | None:
+    """The garment's own average colour. See the fill note in `generate`."""
+    sil = _flatlay_silhouette(garment)
+    if sil is None:
+        return None
+    return np.array([int(c) for c in cv2.mean(garment, mask=sil)[:3]], np.uint8)
+
+
 def _garment_metrics(garment: np.ndarray, kind: str) -> dict | None:
     """Measure the flat-lay so the mask can follow the CUT, not the slot.
 
@@ -262,36 +305,10 @@ def _garment_metrics(garment: np.ndarray, kind: str) -> dict | None:
     object, a garment cropped by the frame. The caller then keeps the slot band,
     which is wrong in a known way rather than wrong in a surprising one.
     """
-    g = cv2.cvtColor(garment, cv2.COLOR_BGR2GRAY) if garment.ndim == 3 else garment
-    g = cv2.medianBlur(g, 5)
-    h, w = g.shape
-
-    # SEPARATE BY FLOOD-FILLING THE BACKGROUND, not by thresholding the garment.
-    # "Garment on white" does not mean "garment is darker than 235": the first
-    # catalogue top measured is an off-white tee at grey 238 on paper at 252, and
-    # a threshold picked up its shadow instead of the shirt (2% of the frame — it
-    # would have failed the size check and silently fallen back). Filling inward
-    # from the border finds the background by connectivity, whatever the garment
-    # is. FIXED_RANGE is the part that matters: the default compares each pixel
-    # to its NEIGHBOUR, so the fill walks up the soft shadow gradient and eats
-    # the whole white shirt (measured: zero object left at every tolerance).
-    # Against the SEED value it stops at the shadow, as intended.
-    m = np.zeros((h + 2, w + 2), np.uint8)
-    flags = 4 | cv2.FLOODFILL_MASK_ONLY | cv2.FLOODFILL_FIXED_RANGE | (255 << 8)
-    for seed in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1),
-                 (w // 2, 0), (w // 2, h - 1)):
-        cv2.floodFill(g.copy(), m, seed, 255, 5, 5, flags)
-    ink = (m[1:-1, 1:-1] == 0).astype(np.uint8)
-    ink = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8))
-    ink = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
-
-    n, lab, stats, _ = cv2.connectedComponentsWithStats(ink, 8)
-    if n < 2:
+    sil = _flatlay_silhouette(garment)
+    if sil is None:
         return None
-    best = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    if stats[best, cv2.CC_STAT_AREA] < g.size * 0.02:
-        return None
-    sil = (lab == best).astype(np.uint8)
+    h, w = sil.shape
     ys, xs = np.nonzero(sil)
     y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
     # A garment touching the frame edge is cropped, so its length is unknown and
@@ -750,33 +767,37 @@ class HybridVTONPipeline:
         # avatar rendered correctly, which is the tell: the old garment's darkness
         # was leaking, not the conditioning being weak.
         #
-        # SKIN, NOT MID-GREY. Grey is neutral in luminance and wrong in meaning:
-        # the sampler read it as an intended fabric colour and filled with it
-        # everything the new garment did not cover — so a short-sleeve tee came
-        # back long-sleeved, and a grey halo traced the figure wherever the
-        # garment stopped short. Raising IP scale did not help (0.75 → 0.9 → 1.0
-        # at a fixed seed: more of the right colour, same grey), which is what
-        # ruled the adapter out as the cause.
+        # THE GARMENT'S OWN COLOUR, not mid-grey and not skin. Both of those were
+        # tried and both are visible when exposed, and a fill IS exposed: the mask
+        # has to cover the old garment, the sampler paints the new hem where its
+        # own prior puts it, and the strip between the two is fill. Grey left a
+        # grey halo; skin sampled from the forearms left a salmon slab across the
+        # hips (measured, |output − fill| ≈ 24/255, i.e. the sampler simply kept
+        # the fill). Raising IP scale changed neither (0.75 → 0.9 → 1.0 at a fixed
+        # seed).
         #
-        # The body's own skin tone is the honest prior: where a garment ends,
-        # skin is what belongs there. Sampled from the forearms OUTSIDE the mask
-        # (the one large skin area the repaint zone never covers), with mid-grey
-        # kept as the fallback when no such pixels are visible.
+        # Averaging the flat-lay makes the fill benign in exactly that strip — an
+        # unpainted patch reads as a slightly longer garment instead of a bruise —
+        # and it biases the initial latent TOWARDS the target colour rather than
+        # away from it. Skin stays the fallback for an unreadable flat-lay.
         init = full.copy()
-        fill = np.array([128, 128, 128], np.uint8)
-        try:
-            skin = np.zeros(mask_full.shape, np.uint8)
-            for wrist_i, elbow_i in ((4, 3), (7, 6)):
-                a, b = pose.pts[wrist_i], pose.pts[elbow_i]
-                if a and b:
-                    cv2.line(skin, a, b, 255, max(6, round(full.shape[0] * 0.02)))
-            skin = cv2.bitwise_and(skin, pose.silhouette)
-            skin[mask_full > 20] = 0          # only pixels we are NOT repainting
-            if int(skin.sum()) > 0:
-                fill = cv2.mean(full, mask=skin)[:3]
-                fill = np.array([int(c) for c in fill], np.uint8)
-        except Exception:  # noqa: BLE001 — a fill is never worth failing a render
-            pass
+        fill = _garment_color(np.array(garment)[:, :, ::-1])
+        if fill is None:
+            fill = np.array([128, 128, 128], np.uint8)
+            try:
+                skin = np.zeros(mask_full.shape, np.uint8)
+                for wrist_i, elbow_i in ((4, 3), (7, 6)):
+                    a, b = pose.pts[wrist_i], pose.pts[elbow_i]
+                    if a and b:
+                        cv2.line(skin, a, b, 255,
+                                 max(6, round(full.shape[0] * 0.02)))
+                skin = cv2.bitwise_and(skin, pose.silhouette)
+                skin[mask_full > 20] = 0      # only pixels we are NOT repainting
+                if int(skin.sum()) > 0:
+                    fill = np.array([int(c) for c in cv2.mean(full, mask=skin)[:3]],
+                                    np.uint8)
+            except Exception:  # noqa: BLE001 — a fill is never worth a failed render
+                pass
         init[mask_full > 20] = fill
         init_s = _to_pil(init[:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS)
         mask_s = Image.fromarray(mask_full).resize((WORK_W, WORK_H), Image.LANCZOS)
