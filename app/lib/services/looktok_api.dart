@@ -556,6 +556,10 @@ class LooktokApi {
     // 2081 KB / 16.6s with bytes against 642 KB / 10.3s with the URL.
     List<String> referenceUrls = const [],
     List<String> referenceZones = const [],
+    // The SHORT garment name per reference. Slicing `instruction` for this gave
+    // the renderer 200 chars of composed-prompt boilerplate with no garment in
+    // it, so text conditioning fought the reference image and the old colour won.
+    List<String> referenceHints = const [],
     int attempt = 1,
   }) async {
     final refs = <Map<String, String>>[];
@@ -590,6 +594,7 @@ class LooktokApi {
       if (refs.isNotEmpty) 'references': refs,
       if (referenceUrls.isNotEmpty) 'reference_urls': referenceUrls,
       if (referenceZones.isNotEmpty) 'reference_zones': referenceZones,
+      if (referenceHints.isNotEmpty) 'reference_hints': referenceHints,
       if (attempt > 1) 'attempt': attempt,
       // 100s, not 45: the hosted render measures 45-60s, so the old budget
       // failed a call that was about to succeed (every look_renders row for
@@ -615,6 +620,7 @@ class LooktokApi {
   Future<({Uint8List? bytes, Uint8List? bytesTucked, String? renderId})> dispatchFix({
     List<String> referenceUrls = const [],
     List<String> referenceZones = const [],
+    List<String> referenceHints = const [],
     required String base64Image,
     required String mimeType,
     required String instruction,
@@ -669,6 +675,7 @@ class LooktokApi {
       if (refs.isNotEmpty) 'references': refs,
       if (referenceUrls.isNotEmpty) 'reference_urls': referenceUrls,
       if (referenceZones.isNotEmpty) 'reference_zones': referenceZones,
+      if (referenceHints.isNotEmpty) 'reference_hints': referenceHints,
       if (identityB64 != null)
         'identity': {'data': identityB64, 'mimeType': 'image/jpeg'},
       if (tucked != null)

@@ -609,6 +609,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
       List<Uint8List> references = const [],
       List<String> referenceUrls = const [],
       List<String> referenceZones = const [],
+      List<String> referenceHints = const [],
       String? comboKey,
       ({String instruction, List<String> targetZones, List<String> lockedZones})? tucked,
       String? tuckedKey,
@@ -663,6 +664,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
         references: references,
         referenceUrls: referenceUrls,
         referenceZones: referenceZones,
+        referenceHints: referenceHints,
         tucked: tucked,
         identityB64: identityB64);
     Completer<Uint8List>? twinC;
@@ -1132,6 +1134,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
           references: refs.bytes,
           referenceUrls: refs.urls,
           referenceZones: refs.zones,
+          referenceHints: refs.hints,
           comboKey: key,
           tucked: tuckedSpec,
           tuckedKey: dualTuck ? _keyFor(sel, tuck: 1) : null,
@@ -1154,6 +1157,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
               references: refs.bytes,
               referenceUrls: refs.urls,
               referenceZones: refs.zones,
+              referenceHints: refs.hints,
               comboKey: key,
               personOverride: base);
           cropped = await _feetCropped(bytes);
@@ -1213,11 +1217,18 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
   /// was positional across two separate lists and broke as soon as one garment
   /// had a product photo and another did not, which sent every multi-zone swap
   /// to the hosted renderer.
-  Future<({List<Uint8List> bytes, List<String> urls, List<String> zones})> _swapRefs(
-      Map<int, int> sel) async {
+  Future<({List<Uint8List> bytes, List<String> urls, List<String> zones, List<String> hints})>
+      _swapRefs(Map<int, int> sel) async {
     final refs = <Uint8List>[];
     final urls = <String>[];
     final zones = <String>[];
+    // SHORT GARMENT NAME per reference. The engine's text conditioning was
+    // getting the first 200 chars of `instruction`, which is a composed prompt
+    // starting with 'MANDATORY EDIT — this is the entire point…' — boilerplate
+    // with no garment in it. IP-Adapter still transferred texture from the photo,
+    // but text and image conditioning disagreed and the old colour survived (a
+    // white linen shirt rendered as the previous black top with new sleeves).
+    final hints = <String>[];
     for (final k in sel.keys.toList()..sort()) {
       final alt = _slots![k].alts[sel[k]! - 1];
       // PREFER THE REAL PRODUCT PHOTO. When an alternative was matched to an
@@ -1231,6 +1242,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
       if (shopUrl.startsWith('http')) {
         urls.add(shopUrl);
         zones.add(_slots![k].slot);
+        hints.add(alt.label);
         continue;
       }
       try {
@@ -1241,9 +1253,10 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
             .timeout(const Duration(seconds: 12)));
         urls.add('');                     // placeholder keeps zones aligned
         zones.add(_slots![k].slot);
+        hints.add(alt.label);
       } catch (_) {/* text-only for this item */}
     }
-    return (bytes: refs, urls: urls, zones: zones);
+    return (bytes: refs, urls: urls, zones: zones, hints: hints);
   }
 
   // ── Smart Prefetch Queue — cost-capped background warming ─────────────────

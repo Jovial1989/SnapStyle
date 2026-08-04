@@ -63,7 +63,7 @@ Deno.serve(async (req) => {
   }
 
   const { render_id, image, instruction, target_zones, locked_zones, references, identity, tucked, cache_key_tucked,
-          reference_urls, reference_zones } =
+          reference_urls, reference_zones, reference_hints } =
     await req.json().catch(() => ({}));
   if (!render_id || !image?.data || !instruction) return json({ error: "bad_payload" }, 400);
 
@@ -82,7 +82,14 @@ Deno.serve(async (req) => {
   // want a synchronous preview.
   const refUrls: string[] = Array.isArray(reference_urls) ? reference_urls.map(String) : [];
   const refZones: string[] = Array.isArray(reference_zones) ? reference_zones.map(String) : [];
-  const pairs: { kind: Slot; url?: string; bytes?: { data: string; mimeType: string } }[] = [];
+  // The SHORT garment name per zone. Slicing `instruction` for this handed the
+  // renderer 200 chars of composed-prompt boilerplate ('MANDATORY EDIT — this is
+  // the entire point…') with no garment named in it. IP-Adapter still transferred
+  // texture from the reference photo, but the text said nothing about a white
+  // linen shirt, so the two conditionings disagreed and the previous black top's
+  // colour survived with only its sleeves redrawn.
+  const refHints: string[] = Array.isArray(reference_hints) ? reference_hints.map(String) : [];
+  const pairs: { kind: Slot; hint: string; url?: string; bytes?: { data: string; mimeType: string } }[] = [];
   {
     let byteAt = 0;
     for (let i = 0; i < refZones.length; i++) {
@@ -90,7 +97,14 @@ Deno.serve(async (req) => {
       const url = refUrls[i] ?? "";
       const bytes = url ? undefined : refs[byteAt++];
       if (!kind || (!url && !bytes)) continue;
-      pairs.push({ kind, url: url || undefined, bytes });
+      pairs.push({
+        kind,
+        // Fall back to the sliced instruction only when the client is older than
+        // reference_hints — a weak hint still beats an empty one.
+        hint: (refHints[i] || String(instruction).slice(0, 120)).trim(),
+        url: url || undefined,
+        bytes,
+      });
     }
   }
   const lockedZones: string[] = Array.isArray(locked_zones) ? locked_zones.map(String) : [];
