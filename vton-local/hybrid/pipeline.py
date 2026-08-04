@@ -472,16 +472,35 @@ def _garment_mask(p: Pose, kind: str,
     else:  # upper
         y0, y1 = shoulder - span * 0.07, hip + span * 0.10
         if met:
-            # A cropped top and a long shirt are both 'upper', and only the
-            # flat-lay knows which — but this can only SHORTEN the band, never
-            # lengthen it. Measured: a mask carried 120 px past the hip on an
-            # oversized tee whose ratio said it was long, the model painted the
-            # hem where its own prior wanted it (at the hip) and the neutral fill
-            # was left exposed below as a skin-coloured slab. The mask cannot make
-            # the sampler paint further than it intends to, so a band beyond that
-            # point can only ever expose fill. The floor stays the basics' hem.
-            y1 = max(hip + span * 0.02,
-                     min(y1, shoulder + met["len_ratio"] * gw))
+            # WHERE THE HEM ACTUALLY LANDS. The mask cannot make the sampler paint
+            # further than it intends to — measured twice: with the band 83 px past
+            # the hip, the model put the hem at the hip both times and the strip
+            # below came back as exposed fill, a translucent film over the
+            # trousers with a hard horizontal edge. So the band ends just under
+            # the basics' hem for anything of ordinary length, and only a garment
+            # that measures DECISIVELY long (past the hip by a fifth of the
+            # figure) earns the extra room, because that is when the reference
+            # itself will make the sampler paint down there.
+            hem = shoulder + met["len_ratio"] * gw
+            y1 = (min(hem, hip + span * 0.55) if hem > hip + span * 0.20
+                  else hip + span * 0.03)
+
+    if met and kind in ("upper", "full"):
+        # THE NECK IS NOT A COLLAR. Starting the band 7% of the figure above the
+        # shoulder line gives a collar room to exist, but it also puts the throat
+        # and the lower jaw inside the repaint zone — and with the zone
+        # neutralised, the sampler read that as garment and painted a mock-neck up
+        # to the chin over a crew-neck reference. The neck's narrowest row is
+        # where a collar actually sits, and the silhouette knows it without a
+        # keypoint for the jaw.
+        nose = pts[0][1] if pts[0] else top_body
+        lo = int(max(0, nose + (shoulder - nose) * 0.25))
+        hi = int(max(lo + 1, shoulder))
+        widths = [(int(r.max() - r.min() + 1) if r.size else 10**6, y)
+                  for y, r in ((y, np.flatnonzero(p.silhouette[y]))
+                               for y in range(lo, hi))]
+        if widths:
+            y0 = max(y0, min(widths)[1])
 
     if met and kind in ("upper", "full", "lower"):
         # SIDES AT THE GARMENT'S OWN WIDTH, not the figure's. The 14% figure pad
