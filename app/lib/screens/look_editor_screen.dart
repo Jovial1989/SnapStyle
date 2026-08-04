@@ -140,6 +140,11 @@ const _slotToCategory = {
 
 class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
   late Uint8List _base = widget.imageBytes; // ORIGINAL photo — never mutated
+  /// Storage path of the most recent server render, when there is one. The
+  /// first swap of a session still ships pixels (the source photo is only on
+  /// the device); every swap after it sends this path instead — ~2s of mobile
+  /// uplink and ~1s of server restaging per tap.
+  String? _lastRenderPath;
   String? _baseB64; // memo of base64(_base)
   List<_Slot>? _slots;
   String? _error;
@@ -610,6 +615,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
       List<String> referenceUrls = const [],
       List<String> referenceZones = const [],
       List<String> referenceHints = const [],
+      String? personPath,
       String? comboKey,
       ({String instruction, List<String> targetZones, List<String> lockedZones})? tucked,
       String? tuckedKey,
@@ -665,6 +671,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
         referenceUrls: referenceUrls,
         referenceZones: referenceZones,
         referenceHints: referenceHints,
+        personPath: personPath,
         tucked: tucked,
         identityB64: identityB64);
     Completer<Uint8List>? twinC;
@@ -740,6 +747,9 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
       final status = (row['status'] ?? '').toString();
       final phase = (row['phase'] ?? '').toString();
       final path = (row['image_path'] ?? '').toString();
+      // Keep it: the NEXT swap sends this pointer instead of re-uploading the
+      // look it is about to modify. The server signs it in place.
+      if (path.isNotEmpty) _lastRenderPath = path;
       // The tucked twin lands on the SAME row — cache it the moment it
       // appears, so the toggle is a 0ms local source swap afterwards.
       final tPath = (row['image_path_tucked'] ?? '').toString();
@@ -1135,6 +1145,9 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
           referenceUrls: refs.urls,
           referenceZones: refs.zones,
           referenceHints: refs.hints,
+          // Only when this swap starts from a server render — a neutral base or
+          // the device photo has no path yet.
+          personPath: base == null ? _lastRenderPath : null,
           comboKey: key,
           tucked: tuckedSpec,
           tuckedKey: dualTuck ? _keyFor(sel, tuck: 1) : null,

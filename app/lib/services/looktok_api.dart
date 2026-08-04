@@ -621,6 +621,10 @@ class LooktokApi {
     List<String> referenceUrls = const [],
     List<String> referenceZones = const [],
     List<String> referenceHints = const [],
+    // A Storage path for the person INSTEAD of pixels. Our own renders already
+    // live in `generations`, so a chained swap re-sends a pointer rather than a
+    // couple of megabytes over a mobile uplink.
+    String? personPath,
     required String base64Image,
     required String mimeType,
     required String instruction,
@@ -642,11 +646,15 @@ class LooktokApi {
     }
     String keyFor(String instr, List<String> tz, List<String> lz) => sha256
         .convert(utf8.encode([
-          'fix:v12', 'gemini', base64Image, instr, // v11: QA full-body restore + bg hygiene
+          // personPath REPLACES base64Image when the source is already in
+          // Storage, so it has to be in the key — otherwise a chained swap and a
+          // pixel-carrying one would collide on the same fingerprint.
+          'fix:v15', personPath ?? base64Image, instr,
           tz.join(','), lz.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,
           ...referenceZones,
+          ...referenceHints,
         ].join('|')))
         .toString();
     final cacheFile =
@@ -676,6 +684,7 @@ class LooktokApi {
       if (referenceUrls.isNotEmpty) 'reference_urls': referenceUrls,
       if (referenceZones.isNotEmpty) 'reference_zones': referenceZones,
       if (referenceHints.isNotEmpty) 'reference_hints': referenceHints,
+      if (personPath != null) 'person_path': personPath,
       if (identityB64 != null)
         'identity': {'data': identityB64, 'mimeType': 'image/jpeg'},
       if (tucked != null)

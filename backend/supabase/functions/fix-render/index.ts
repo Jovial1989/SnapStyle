@@ -63,9 +63,14 @@ Deno.serve(async (req) => {
   }
 
   const { render_id, image, instruction, target_zones, locked_zones, references, identity, tucked, cache_key_tucked,
-          reference_urls, reference_zones, reference_hints } =
+          reference_urls, reference_zones, reference_hints, person_path } =
     await req.json().catch(() => ({}));
-  if (!render_id || !image?.data || !instruction) return json({ error: "bad_payload" }, 400);
+  // Pixels are OPTIONAL now: `person_path` points at a look already in Storage
+  // (our own renders land there), so a chained swap need not re-upload what it
+  // was just handed. ~2s of mobile uplink and ~1s of restaging per tap.
+  if (!render_id || !instruction || (!image?.data && !person_path)) {
+    return json({ error: "bad_payload" }, 400);
+  }
 
   const db = admin();
   const { data: row } = await db.from("fix_renders")
@@ -89,6 +94,7 @@ Deno.serve(async (req) => {
   // linen shirt, so the two conditionings disagreed and the previous black top's
   // colour survived with only its sleeves redrawn.
   const refHints: string[] = Array.isArray(reference_hints) ? reference_hints.map(String) : [];
+  const personPath = typeof person_path === "string" ? person_path : null;
   const pairs: { kind: Slot; hint: string; url?: string; bytes?: { data: string; mimeType: string } }[] = [];
   {
     let byteAt = 0;
@@ -118,7 +124,22 @@ Deno.serve(async (req) => {
   // Lean fallback the image model falls back to when the full prompt returns
   // no image (IMAGE_OTHER) — see generateLookImage.
   const compact = buildCompactFixPrompt(String(instruction), refs.length);
-  const person = { data: String(image.data), mimeType: String(image.mimeType) };
+  // LAZY. The self-hosted path never needs the person's bytes — it hands the
+  // worker a signed URL, and the framing gate, QA verifier and identity gate are
+  // all skipped on it. Only the hosted fallback and the training log read pixels,
+  // so fetch them at most once and only if something actually asks.
+  let _person: Inline | null = image?.data
+    ? { data: String(image.data), mimeType: String(image.mimeType) }
+    : null;
+  const person = async (): Promise<Inline> => {
+    if (_person) return _person;
+    const { data, error } = await db.storage.from(OUT_BUCKET).download(personPath!);
+    if (error || !data) throw new Error(`person_path unreadable: ${error?.message}`);
+    const b = new Uint8Array(await data.arrayBuffer());
+    let bin = "";
+    for (let i = 0; i < b.length; i += 0x8000) bin += String.fromCharCode(...b.subarray(i, i + 0x8000));
+    return (_person = { data: btoa(bin), mimeType: "image/jpeg" });
+  };
 
   // NOTE: no separate identity gate here — verifyEditApplied (which runs
   // BEFORE the row flips completed) already includes the identity check, so
@@ -145,8 +166,19 @@ Deno.serve(async (req) => {
     if (hybridEnabled() && pairs.length) {
       const staged: string[] = [];
       try {
-        const pr = await stageInline(db, { data: person.data, mimeType: person.mimeType });
-        staged.push(pr.path);
+        // Already in Storage? Sign it. Staging would copy bytes we own into a
+        // scratch object for no reason — measured ~1s of a ~7s server path.
+        let personUrl: string;
+        if (personPath) {
+          const { data: t } = await db.storage.from(OUT_BUCKET)
+            .createSignedUrl(personPath, 900, { transform: { width: 768, quality: 85 } });
+          if (!t?.signedUrl) throw new Error(`person_path unreadable: ${personPath}`);
+          personUrl = t.signedUrl;
+        } else {
+          const pr = await stageInline(db, { data: person.data, mimeType: person.mimeType });
+          staged.push(pr.path);
+          personUrl = pr.url;
+        }
         const steps = [];
         for (const g of pairs) {
           let url = g.url;
@@ -161,7 +193,7 @@ Deno.serve(async (req) => {
           // 200 chars of composed-prompt boilerplate instead.
           steps.push({ url, kind: g.kind, hint: g.hint });
         }
-        const img = await hybridDress(db, String(row.user_id), pr.url, steps);
+        const img = await hybridDress(db, String(row.user_id), personUrl, steps);
         hybridUsed = true;
         console.log("[fix-render] hybrid:", steps.length, "steps");
         return img;
@@ -171,9 +203,10 @@ Deno.serve(async (req) => {
         unstage(db, staged);
       }
     }
-    let out = await generateLookImage(person, p, genRefs, { fallbackPrompt: compact });
+    const src = await person();
+    let out = await generateLookImage(src, p, genRefs, { fallbackPrompt: compact });
     try {
-      const din = imgDims(person.data);
+      const din = imgDims(src.data);
       const dout = imgDims(out.data);
       if (din && dout && din.w > 0 && dout.h > 0) {
         const ain = din.w / din.h;
@@ -181,7 +214,7 @@ Deno.serve(async (req) => {
         if (Math.abs(aout - ain) / ain > 0.12 && renders < BUDGET) {
           console.error("[fix-render]", render_id, `framing gate: ${ain.toFixed(2)} → ${aout.toFixed(2)}, regenerating`);
           renders++;
-          out = await generateLookImage(person, p + FRAMING_RETRY_NOTE, genRefs);
+          out = await generateLookImage(src, p + FRAMING_RETRY_NOTE, genRefs);
         }
       }
     } catch { /* parser hiccup → let model QA carry it */ }
@@ -253,7 +286,7 @@ Deno.serve(async (req) => {
     // running it and discarding the answer would leave the whole cost in place.
     if (!hybridUsed) {
       try {
-        const v = await verifyEditApplied(v1, String(instruction), refs, person);
+        const v = await verifyEditApplied(v1, String(instruction), refs, await person());
         applied = v.applied;
         failReason = v.reason;
       } catch {
@@ -312,7 +345,7 @@ Deno.serve(async (req) => {
           if (await samePerson(retry, idRef)) {
             final = retry;
             try {
-              applied = (await verifyEditApplied(final, String(instruction), refs, person)).applied;
+              applied = (await verifyEditApplied(final, String(instruction), refs, await person())).applied;
             } catch { /* keep prior verified flag */ }
           } else {
             console.error("[fix-render]", row.id, "identity still off after retry — shipping");
@@ -337,10 +370,12 @@ Deno.serve(async (req) => {
     }
     // Training-pair capture (fire-and-forget): person + garment refs + result
     // + instruction → proprietary VTON dataset for future distillation.
-    if (applied) {
+    // No bytes fetched (pure hybrid path) → nothing to log; a training pair
+    // without its input image is not a training pair.
+    if (applied && _person) {
       const logP = logTrainingPair(db, {
         userId: row.user_id as string, renderId: String(render_id), source: "fix",
-        person, refs, resultBucket: OUT_BUCKET, resultPath: finalPath, instruction: String(instruction),
+        person: _person!, refs, resultBucket: OUT_BUCKET, resultPath: finalPath, instruction: String(instruction),
         meta: { targetZones, verified },
       });
       // deno-lint-ignore no-explicit-any

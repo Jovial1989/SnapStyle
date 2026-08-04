@@ -21,7 +21,7 @@ Deno.serve(async (req) => {
   if (!user) return json({ error: "unauthorized" }, 401);
 
   const { image, instruction, target_zones, locked_zones, references, tucked, identity,
-          reference_urls, reference_zones, reference_hints } = await req.json().catch(() => ({}));
+          reference_urls, reference_zones, reference_hints, person_path } = await req.json().catch(() => ({}));
   if (!image?.data || !image?.mimeType) return json({ error: "image { data, mimeType } required" }, 400);
   if (!instruction) return json({ error: "instruction required" }, 400);
   const refs: { data: string; mimeType: string }[] =
@@ -85,6 +85,9 @@ Deno.serve(async (req) => {
       reference_urls: Array.isArray(reference_urls) ? reference_urls : [],
       reference_zones: Array.isArray(reference_zones) ? reference_zones : [],
       reference_hints: Array.isArray(reference_hints) ? reference_hints : [],
+      // A Storage path INSTEAD of pixels: our own renders already live there, so
+      // a chained swap need not re-upload the look it just received.
+      person_path: typeof person_path === "string" ? person_path : undefined,
       identity: identity?.data && identity?.mimeType ? identity : undefined,
       tucked: tk, cache_key_tucked: cacheKeyTucked,
     }),
