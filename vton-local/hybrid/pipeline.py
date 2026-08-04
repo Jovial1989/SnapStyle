@@ -492,22 +492,18 @@ def _garment_mask(p: Pose, kind: str,
         # neutralised, the sampler read that as garment and painted a mock-neck up
         # to the chin over a crew-neck reference.
         #
-        # Where a collar sits is the neck-to-shoulder junction, found by walking up
-        # from the shoulder line until the figure narrows to a neck. NOT by taking
-        # the narrowest row between the nose and the shoulders: measured on this
-        # avatar that is the CHIN at 68 px, narrower than the neck below it, and it
-        # placed the edge higher than the constant it was meant to replace.
-        def row_w(y: int) -> int:
-            r = np.flatnonzero(p.silhouette[y])
-            return int(r.max() - r.min() + 1) if r.size else 0
-
-        shoulder_w = max(1, row_w(int(min(h - 1, shoulder + span * 0.02))))
-        neck = int(shoulder)
-        for y in range(int(shoulder), int(max(0, shoulder - span * 0.12)), -1):
-            neck = y
-            if row_w(y) < shoulder_w * 0.55:
-                break
-        y0 = max(y0, neck - span * 0.012)
+        # A crew collar sits 3% of the figure above the shoulder keypoints — that
+        # is where the basics' own collar is, measured on this avatar (row 225,
+        # shoulders at 250, figure 833 tall). 7% is row 192, which is the throat
+        # and the bottom of the jaw.
+        #
+        # Two silhouette-derived rules were tried first and both landed higher
+        # than the collar they were meant to find: the narrowest row between nose
+        # and shoulders is the CHIN (68 px at row 180 — a jaw tapers to a point,
+        # so it is thinner than the neck below it), and walking up to where the
+        # figure narrows to 55% of shoulder width stops at row 208, mid-throat.
+        # The width profile through the neck is too shallow to threshold safely.
+        y0 = max(y0, shoulder - span * 0.03)
 
     if met and kind in ("upper", "full", "lower"):
         # SIDES AT THE GARMENT'S OWN WIDTH, not the figure's. The 14% figure pad
