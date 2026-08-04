@@ -41,7 +41,21 @@ Deno.serve(async (req) => {
     // brief=true → verdict only (score + one line), ~60 tokens instead of the
     // full hotspot set. The editor asks for this on entry and fetches the
     // details only when someone taps for them.
-    const result = await analyzeFit(image, ctx, brief === true);
+    // Same STUB_TEXT switch: a fixed verdict so the editor opens and the swap
+    // path can be exercised while the text provider is off. Deliberately a
+    // constant, not a random number — a score that jitters between runs on the
+    // same photo would read as a bug.
+    const result = (Deno.env.get("STUB_TEXT") ?? "") === "1"
+      ? {
+        analysis: {
+          analyzable: true,
+          overall: { score: 7, summary: "Stub verdict — the text layer is off; try-on is live." },
+          hotspots: [],
+        },
+        model: "stub",
+        promptVersion: "stub-v1",
+      }
+      : await analyzeFit(image, ctx, brief === true);
     await burnFree(db, user.id, ent); // success only; no-op if pro
 
     // Persist to history (best-effort — never fail the response on a storage hiccup).

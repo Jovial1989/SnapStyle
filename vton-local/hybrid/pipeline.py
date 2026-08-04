@@ -473,7 +473,21 @@ class HybridVTONPipeline:
         edges[mask_full > 20] = 0
         control_canny = cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
 
-        init_s = _to_pil(full[:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS)
+        # NEUTRALISE THE ZONE BEFORE ENCODING. The inpaint pipeline VAE-encodes
+        # this image, so whatever is under the mask sets the luminance the sampler
+        # starts from — and it does not travel far from it. Measured on the same
+        # photo and garment: swapping a butter-yellow tee onto a BLACK sleeveless
+        # top returned brown, at IP scale 0.75 and again at 0.95 (the print got
+        # sharper, the colour did not budge). The same garment on the grey-basics
+        # avatar rendered correctly, which is the tell: the old garment's darkness
+        # was leaking, not the conditioning being weak.
+        #
+        # Mid-grey is the neutral choice — it biases neither light nor dark. Only
+        # the model's INPUT is touched; the composite below still runs against the
+        # untouched `avatar`, so identity stays a guarantee.
+        init = full.copy()
+        init[mask_full > 20] = 128
+        init_s = _to_pil(init[:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS)
         mask_s = Image.fromarray(mask_full).resize((WORK_W, WORK_H), Image.LANCZOS)
         pose_s = _to_pil(control_pose).resize((WORK_W, WORK_H), Image.LANCZOS)
         canny_s = _to_pil(control_canny).resize((WORK_W, WORK_H), Image.NEAREST)

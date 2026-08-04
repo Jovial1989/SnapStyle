@@ -74,7 +74,31 @@ Deno.serve(async (req) => {
     try {
       premium = (await getEntitlement(db, user.id)).premium;
     } catch (_) {/* no entitlement row → free tier */}
-    const out = await detectOutfitSlots({ data: image.data, mimeType: image.mimeType }, trends, premium);
+    // STUB_TEXT: skip the vision model and hand back a fixed slot list. The
+    // ENGINE is the feature under test; the text layer is a dependency that was
+    // costing money and is currently switched off, so the editor could not even
+    // open (analyze/outfit-slots returned 502 and the swap path was never
+    // reached). Stubbing lets the try-on be exercised end to end.
+    //
+    // NOT random text: `item` is deliberately vague and the ideas are filled
+    // from the catalogue by the pool code below, so every alternative carries a
+    // real garment photo — which is exactly what the renderer needs. A random
+    // string would have produced a rail of unrenderable cards.
+    const stub = (Deno.env.get("STUB_TEXT") ?? "") === "1";
+    const out = stub
+      ? {
+        gender_presentation: "masculine",
+        slots: ["top", "bottom", "shoes", "outerwear"].map((slot) => ({
+          slot,
+          item: `your ${slot}`,
+          ideas: [0, 1, 2, 3].map(() => ({
+            garment: slot,          // pool matching keys off the slot, not this
+            why: "Swap it and see how it looks on you.",
+            recommended: false,
+          })),
+        })),
+      } as Awaited<ReturnType<typeof detectOutfitSlots>>
+      : await detectOutfitSlots({ data: image.data, mimeType: image.mimeType }, trends, premium);
     // LIBRARY GROUNDING: match each idea to our OWN generated flat-lay
     // (affiliate_items, source='generated') so the editor shows a READY image
     // instantly (no per-thumb Gemini render) AND grounds the try-on on that
@@ -122,7 +146,7 @@ Deno.serve(async (req) => {
           const ok = (nm?: string, itemId?: string) =>
             !!nm && !!itemId && generatedIds.has(itemId) &&
             !slotConflict(s.slot, nm) && !genderConflict(nm, g);
-          const m = g
+          const m = (g && !stub)
               ? await matchRealGarment(db, idea.garment, {
                   category: s.slot === "accessories" ? null : s.slot,
                   minSimilarity: 0.28,
@@ -144,6 +168,10 @@ Deno.serve(async (req) => {
             (idea as Record<string, unknown>).shop = {
               id, brand: "", name, price: 0, currency: "USD", buyUrl: "", imageUrl: img,
             };
+            // The matched item's real name becomes the idea itself, so the
+            // client's label — and therefore the renderer's hint — names the
+            // garment instead of repeating the slot.
+            if (name) (idea as Record<string, unknown>).garment = name;
           }
         })));
     } catch (e) {
