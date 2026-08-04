@@ -175,7 +175,12 @@ Deno.serve(async (req) => {
           if (!t?.signedUrl) throw new Error(`person_path unreadable: ${personPath}`);
           personUrl = t.signedUrl;
         } else {
-          const pr = await stageInline(db, { data: person.data, mimeType: person.mimeType });
+          // await person(): it is a lazy RESOLVER, not a value. Reading .data off
+          // the function returned undefined, atob choked on it, the hybrid branch
+          // threw, and the swap fell through to the hosted provider — which is
+          // how a Gemini "API key not valid" surfaced on a path that is supposed
+          // to touch no external API at all.
+          const pr = await stageInline(db, await person());
           staged.push(pr.path);
           personUrl = pr.url;
         }
