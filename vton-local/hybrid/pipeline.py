@@ -531,6 +531,31 @@ def _garment_mask(p: Pose, kind: str,
     mask = cv2.bitwise_and(mask, box)   # …but never past the slot's own band
     mask = cv2.bitwise_and(mask, cv2.bitwise_not(bare))   # …and not the bare arm
 
+    # HOW FAR OUTSIDE THE BODY, from the garment's width rather than a constant.
+    # The dilation above is what lets a mask grow a silhouette the body does not
+    # have — a coat's shoulder line, a puffer's bulk — but applied at full
+    # strength to a plain tee it left a 29 px ring of mask hanging in the air all
+    # round the figure, and the model filled that ring with the halo. Measured
+    # here: 17% of the old mask lay off the body. A garment WIDER than the
+    # shoulders earns that room; one that is not, does not.
+    if met:
+        row = int(min(h - 1, max(0, shoulder + span * 0.06)))
+        occupied = np.flatnonzero(p.silhouette[row])
+        body_w = float(occupied[-1] - occupied[0] + 1) if occupied.size else gw
+        allow = max(8, int((gw - body_w) / 2))
+        reachable = cv2.dilate(p.silhouette,
+                               np.ones((allow * 2 + 1,) * 2, np.uint8), iterations=1)
+        mask = cv2.bitwise_and(mask, reachable)
+
+        # Whatever survives as a detached speck is mask floating beside the
+        # figure, and inpainting will dutifully paint fabric there.
+        n, lab, st, _ = cv2.connectedComponentsWithStats((mask > 20).astype(np.uint8), 8)
+        if n > 2:
+            keep = st[1:, cv2.CC_STAT_AREA].max() * 0.04
+            for i in range(1, n):
+                if st[i, cv2.CC_STAT_AREA] < keep:
+                    mask[lab == i] = 0
+
     # HANDS OUT, unconditionally and AFTER dilation. Shortening the arm corridor
     # was not enough: dilation grows the mask by span*0.035 and won back most of
     # what the shortening gave up, so the hands were still in the repaint zone.
