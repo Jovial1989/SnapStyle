@@ -486,21 +486,28 @@ def _garment_mask(p: Pose, kind: str,
                   else hip + span * 0.03)
 
     if met and kind in ("upper", "full"):
-        # THE NECK IS NOT A COLLAR. Starting the band 7% of the figure above the
+        # THE THROAT IS NOT A COLLAR. Starting the band 7% of the figure above the
         # shoulder line gives a collar room to exist, but it also puts the throat
         # and the lower jaw inside the repaint zone — and with the zone
         # neutralised, the sampler read that as garment and painted a mock-neck up
-        # to the chin over a crew-neck reference. The neck's narrowest row is
-        # where a collar actually sits, and the silhouette knows it without a
-        # keypoint for the jaw.
-        nose = pts[0][1] if pts[0] else top_body
-        lo = int(max(0, nose + (shoulder - nose) * 0.25))
-        hi = int(max(lo + 1, shoulder))
-        widths = [(int(r.max() - r.min() + 1) if r.size else 10**6, y)
-                  for y, r in ((y, np.flatnonzero(p.silhouette[y]))
-                               for y in range(lo, hi))]
-        if widths:
-            y0 = max(y0, min(widths)[1])
+        # to the chin over a crew-neck reference.
+        #
+        # Where a collar sits is the neck-to-shoulder junction, found by walking up
+        # from the shoulder line until the figure narrows to a neck. NOT by taking
+        # the narrowest row between the nose and the shoulders: measured on this
+        # avatar that is the CHIN at 68 px, narrower than the neck below it, and it
+        # placed the edge higher than the constant it was meant to replace.
+        def row_w(y: int) -> int:
+            r = np.flatnonzero(p.silhouette[y])
+            return int(r.max() - r.min() + 1) if r.size else 0
+
+        shoulder_w = max(1, row_w(int(min(h - 1, shoulder + span * 0.02))))
+        neck = int(shoulder)
+        for y in range(int(shoulder), int(max(0, shoulder - span * 0.12)), -1):
+            neck = y
+            if row_w(y) < shoulder_w * 0.55:
+                break
+        y0 = max(y0, neck - span * 0.012)
 
     if met and kind in ("upper", "full", "lower"):
         # SIDES AT THE GARMENT'S OWN WIDTH, not the figure's. The 14% figure pad
