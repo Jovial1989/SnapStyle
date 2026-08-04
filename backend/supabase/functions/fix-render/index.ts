@@ -155,7 +155,11 @@ Deno.serve(async (req) => {
             staged.push(ref.path);
             url = ref.url;
           }
-          steps.push({ url, kind: g.kind, hint: String(instruction).slice(0, 200) });
+          // g.hint is the SHORT garment name (reference_hints), already resolved
+          // when `pairs` was built. Rebuilding it from `instruction` here — which
+          // is what this line used to do — threw that away and fed the renderer
+          // 200 chars of composed-prompt boilerplate instead.
+          steps.push({ url, kind: g.kind, hint: g.hint });
         }
         const img = await hybridDress(db, String(row.user_id), pr.url, steps);
         hybridUsed = true;
