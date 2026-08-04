@@ -7,6 +7,9 @@
 import { readFileSync } from 'node:fs';
 import pg from 'pg';
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
+
+globalThis.WebSocket ??= WebSocket; // supabase-js realtime needs it on Node < 22
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_DB_URL } = process.env;
 if (!SUPABASE_DB_URL || !SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {

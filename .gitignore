@@ -2,6 +2,15 @@
 .env
 .env.*
 !.env.example
+# belt-and-braces: the VTON service's live keys (FAL_KEY + service_role) live
+# here so the box can be re-run without re-configuring. Covered by `.env.*`
+# already; named explicitly so nobody "tidies" that glob away.
+pipeline-3d/.env.local
+
+# generated 3D assets — rebuilt by engine-3d/*.py and pipeline-3d/batch.ts
+engine-3d/assets/*.png
+pipeline-3d/output_glbs/
+pipeline-3d/input_images/
 
 # node
 node_modules/

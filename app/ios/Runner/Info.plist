@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Snapstyle</string>
+	<string>Looktok</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>snapstyle</string>
+	<string>looktok</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -70,5 +70,7 @@
 	<string>Snapstyle uses your camera to review how your outfit fits.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>Snapstyle needs photo access to review outfits you choose from your gallery.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Snapstyle saves your looks to your photo library when you tap Save.</string>
 </dict>
 </plist>

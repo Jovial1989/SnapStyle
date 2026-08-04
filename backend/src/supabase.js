@@ -1,4 +1,8 @@
 import { createClient } from '@supabase/supabase-js';
+import WebSocket from 'ws';
+
+// supabase-js's realtime client needs a global WebSocket; Node < 22 has none.
+globalThis.WebSocket ??= WebSocket;
 
 /** True when Supabase env is configured. Local dev can run without it. */
 export function hasSupabase() {

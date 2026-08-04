@@ -24,7 +24,8 @@ android {
         applicationId = "com.fitgestion.fitgestion"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // ML Kit subject segmentation (NativeLooktokEngine) requires API 24+.
+        minSdk = maxOf(flutter.minSdkVersion, 24)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -41,4 +42,11 @@ android {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // NativeLooktokEngine: on-device subject segmentation (people + garments).
+    // The model itself arrives via Play Services (see the DEPENDENCIES
+    // meta-data in AndroidManifest.xml).
+    implementation("com.google.android.gms:play-services-mlkit-subject-segmentation:16.0.0-beta1")
 }

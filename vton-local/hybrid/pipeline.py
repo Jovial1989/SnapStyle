@@ -212,27 +212,28 @@ def _draw_openpose(p: Pose) -> np.ndarray:
     return canvas
 
 
-def _walk(chain: list[tuple[int, int]], dist: float) -> list[tuple[int, int]]:
-    """The first `dist` pixels of a polyline, as a polyline.
+def _split(chain: list[tuple[int, int]],
+           dist: float) -> tuple[list[tuple[int, int]], list[tuple[int, int]]]:
+    """Cut a polyline at arc length `dist`. Returns (before, after).
 
-    Used to lay a sleeve of measured length along the arm: the flat-lay says how
-    far the sleeve reaches, the pose says where the arm goes, and this puts one
-    on the other.
+    The arm is a polyline and a sleeve is a length along it: `before` is the
+    sleeve, `after` is the bare arm below the cuff. Both matter — the first is
+    the region to repaint, the second is the region to protect.
     """
-    out = [chain[0]]
+    before = [chain[0]]
     left = dist
-    for a, b in zip(chain, chain[1:]):
+    for i, (a, b) in enumerate(zip(chain, chain[1:])):
         seg = math.hypot(b[0] - a[0], b[1] - a[1])
         if seg <= 1e-6:
             continue
         if seg >= left:
-            t = left / seg
-            out.append((round(a[0] + (b[0] - a[0]) * t),
-                        round(a[1] + (b[1] - a[1]) * t)))
-            return out
-        out.append(b)
+            t = max(0.0, left) / seg
+            cut = (round(a[0] + (b[0] - a[0]) * t),
+                   round(a[1] + (b[1] - a[1]) * t))
+            return before + [cut], [cut, b] + chain[i + 2:]
+        before.append(b)
         left -= seg
-    return out
+    return before, [chain[-1]]
 
 
 def _garment_metrics(garment: np.ndarray, kind: str) -> dict | None:
@@ -479,6 +480,9 @@ def _garment_mask(p: Pose, kind: str,
     # instruction — those pixels were simply never up for redrawing.
     #
     # Only for zones that own the arms. 'lower' and 'shoes' must never touch them.
+    kdil = max(5, round(span * dilate_frac)) | 1
+    bare = np.zeros((h, w), np.uint8)
+
     if kind in ("upper", "full"):
         arm = np.zeros((h, w), np.uint8)
         # Thick enough to cover a rolled cuff or a loose sleeve, scaled to the
@@ -488,41 +492,44 @@ def _garment_mask(p: Pose, kind: str,
             chain = [pts[i] for i in (shoulder_i, elbow_i, wrist_i) if pts[i]]
             if len(chain) < 2:
                 continue
+            chain_len = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                            for a, b in zip(chain, chain[1:]))
             if met:
-                # HOW FAR down the arm, measured off the flat-lay. This used to be
-                # the constant 88%-of-the-forearm for every garment, which is
-                # exactly why a short-sleeve tee came back long-sleeved: the mask
-                # asked for a full sleeve, and inpainting must fill what it is
-                # given. A sleeveless top now measures ~0 and gets a shoulder cap
-                # only; a long sleeve measures about one torso width and gets the
-                # whole arm.
-                chain_len = sum(math.hypot(b[0] - a[0], b[1] - a[1])
-                                for a, b in zip(chain, chain[1:]))
-                # …but never shorter than the basics' own sleeve, which ends
-                # around a third of the way down the arm. A tank top measures
-                # near zero, and stopping there would leave the grey sleeve
-                # under it.
+                # HOW FAR down the arm, measured off the flat-lay — but never
+                # shorter than the basics' own sleeve, which ends about a third
+                # of the way down. A tank measures near zero, and stopping there
+                # would leave the grey sleeve under it.
                 reach = max(met["sleeve_ratio"] * gw, chain_len * 0.42)
-                path = _walk(chain, reach)
             else:
-                # STOP SHORT OF THE WRIST. Reaching the wrist pulled the HAND into
-                # the repaint zone, and hands are what diffusion mangles most
-                # visibly — a swapped top is not worth six fingers. A cuff sits
-                # above the wrist anyway.
-                path = _walk(chain, 0.94 * sum(
-                    math.hypot(b[0] - a[0], b[1] - a[1])
-                    for a, b in zip(chain, chain[1:])))
-            for a, b in zip(path, path[1:]):
+                # STOP SHORT OF THE WRIST. Reaching the wrist pulled the HAND
+                # into the repaint zone, and hands are what diffusion mangles
+                # most visibly. A cuff sits above the wrist anyway.
+                reach = 0.94 * chain_len
+            sleeve, rest = _split(chain, reach)
+            for a, b in zip(sleeve, sleeve[1:]):
                 cv2.line(arm, a, b, 255, thick)
+            if met:
+                # AND THE BARE ARM BELOW THE CUFF IS PROTECTED. Measuring the
+                # sleeve is not enough on its own: with the hands in the pockets
+                # the torso band already spans wrist to wrist and hip to thigh,
+                # so it covered the whole arm no matter where the corridor
+                # stopped — the corridor could only ever add. Measured on this
+                # avatar, both masks reached 89% down the arm. Carving the rest
+                # of the arm back out is what actually lets a short sleeve be
+                # short. Thicker than the corridor by the dilation kernel, since
+                # this is applied after dilation.
+                for a, b in zip(rest, rest[1:]):
+                    cv2.line(bare, a, b, 255, thick + kdil)
         box = cv2.bitwise_or(box, arm)
 
     mask = cv2.bitwise_and(box, p.silhouette)
     # Dilate past the silhouette edge: garments sit OUTSIDE the body outline
     # (sleeves, drape, a coat's shoulder line). A mask clipped to the skin
     # cannot grow one.
-    k = max(5, round(span * dilate_frac)) | 1
+    k = kdil
     mask = cv2.dilate(mask, np.ones((k, k), np.uint8), iterations=1)
     mask = cv2.bitwise_and(mask, box)   # …but never past the slot's own band
+    mask = cv2.bitwise_and(mask, cv2.bitwise_not(bare))   # …and not the bare arm
 
     # HANDS OUT, unconditionally and AFTER dilation. Shortening the arm corridor
     # was not enough: dilation grows the mask by span*0.035 and won back most of

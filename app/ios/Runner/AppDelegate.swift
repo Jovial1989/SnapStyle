@@ -12,5 +12,7 @@ import UIKit
 
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
+    NativeLooktokEngine.shared.register(
+      with: engineBridge.pluginRegistry.registrar(forPlugin: "NativeLooktokEngine")!.messenger())
   }
 }
