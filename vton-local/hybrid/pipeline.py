@@ -212,7 +212,157 @@ def _draw_openpose(p: Pose) -> np.ndarray:
     return canvas
 
 
-def _garment_mask(p: Pose, kind: str) -> np.ndarray:
+def _walk(chain: list[tuple[int, int]], dist: float) -> list[tuple[int, int]]:
+    """The first `dist` pixels of a polyline, as a polyline.
+
+    Used to lay a sleeve of measured length along the arm: the flat-lay says how
+    far the sleeve reaches, the pose says where the arm goes, and this puts one
+    on the other.
+    """
+    out = [chain[0]]
+    left = dist
+    for a, b in zip(chain, chain[1:]):
+        seg = math.hypot(b[0] - a[0], b[1] - a[1])
+        if seg <= 1e-6:
+            continue
+        if seg >= left:
+            t = left / seg
+            out.append((round(a[0] + (b[0] - a[0]) * t),
+                        round(a[1] + (b[1] - a[1]) * t)))
+            return out
+        out.append(b)
+        left -= seg
+    return out
+
+
+def _garment_metrics(garment: np.ndarray, kind: str) -> dict | None:
+    """Measure the flat-lay so the mask can follow the CUT, not the slot.
+
+    The zone mask has to be generous — traced around the existing clothes it
+    could never grow a different silhouette, so a tee would never become a
+    puffer. But generosity has a mirror cost: inpainting must fill its whole
+    mask, and where the new garment is SHORTER than the zone the model invents
+    something. A short-sleeve tee came back long-sleeved, with a halo tracing
+    the figure. Three fixes were tried and measured away (adapter scale, fill
+    colour, compositing by difference) because none of them addressed the shape.
+
+    The flat-lay already knows the shape. It is a garment on white, so a
+    threshold separates it exactly, and its own proportions say where the
+    sleeves end and where the hem falls. What it cannot give is placement: laid
+    flat the sleeves point sideways, on a standing body the arms hang down. So
+    this returns RATIOS, in units of the garment's own width, and the mask
+    builder scales them onto the pose. Cut without a dictionary of garment
+    names, and no rigid stamp that would land the sleeves in mid-air.
+
+        len_ratio     collar→hem, over torso width  (crop top ≈ 0.8, coat ≈ 1.8)
+        sleeve_ratio  shoulder→cuff, over torso width  (vest 0, long sleeve ≈ 1)
+
+    Returns None when the flat-lay is unusable — a busy background, no clear
+    object, a garment cropped by the frame. The caller then keeps the slot band,
+    which is wrong in a known way rather than wrong in a surprising one.
+    """
+    g = cv2.cvtColor(garment, cv2.COLOR_BGR2GRAY) if garment.ndim == 3 else garment
+    g = cv2.medianBlur(g, 5)
+    h, w = g.shape
+
+    # SEPARATE BY FLOOD-FILLING THE BACKGROUND, not by thresholding the garment.
+    # "Garment on white" does not mean "garment is darker than 235": the first
+    # catalogue top measured is an off-white tee at grey 238 on paper at 252, and
+    # a threshold picked up its shadow instead of the shirt (2% of the frame — it
+    # would have failed the size check and silently fallen back). Filling inward
+    # from the border finds the background by connectivity, whatever the garment
+    # is. FIXED_RANGE is the part that matters: the default compares each pixel
+    # to its NEIGHBOUR, so the fill walks up the soft shadow gradient and eats
+    # the whole white shirt (measured: zero object left at every tolerance).
+    # Against the SEED value it stops at the shadow, as intended.
+    m = np.zeros((h + 2, w + 2), np.uint8)
+    flags = 4 | cv2.FLOODFILL_MASK_ONLY | cv2.FLOODFILL_FIXED_RANGE | (255 << 8)
+    for seed in ((0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1),
+                 (w // 2, 0), (w // 2, h - 1)):
+        cv2.floodFill(g.copy(), m, seed, 255, 5, 5, flags)
+    ink = (m[1:-1, 1:-1] == 0).astype(np.uint8)
+    ink = cv2.morphologyEx(ink, cv2.MORPH_CLOSE, np.ones((11, 11), np.uint8))
+    ink = cv2.morphologyEx(ink, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8))
+
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(ink, 8)
+    if n < 2:
+        return None
+    best = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+    if stats[best, cv2.CC_STAT_AREA] < g.size * 0.02:
+        return None
+    sil = (lab == best).astype(np.uint8)
+    ys, xs = np.nonzero(sil)
+    y0, y1, x0, x1 = ys.min(), ys.max(), xs.min(), xs.max()
+    # A garment touching the frame edge is cropped, so its length is unknown and
+    # a ratio taken from it would be a lie. Better to fall back to the band.
+    if y0 <= 1 or x0 <= 1 or y1 >= h - 2 or x1 >= w - 2:
+        return None
+    sil = sil[y0:y1 + 1, x0:x1 + 1]
+    H, W = sil.shape
+    if H < 24 or W < 24:
+        return None
+
+    rows = [np.flatnonzero(r) for r in sil]
+    width = np.array([(r[-1] - r[0] + 1) if r.size else 0 for r in rows], float)
+
+    # Where to read the garment's own width. For a top the hem is the torso; for
+    # a dress the hem is a skirt, so read its waist instead; for a bottom it is
+    # the waistband at the very top.
+    band = {
+        "upper": (0.62, 0.95),
+        "full": (0.30, 0.45),
+        "lower": (0.02, 0.14),
+    }.get(kind)
+    if band is None:
+        return None
+    lo, hi = int(H * band[0]), max(int(H * band[1]), int(H * band[0]) + 1)
+    ref = float(np.median(width[lo:hi]))
+    if ref < 8:
+        return None
+
+    # PLAUSIBLE RATIOS ONLY. A catalogue row could hold a worn shot instead of a
+    # flat-lay, and a person's proportions would sail through everything above —
+    # then the mask would follow the photo's body rather than the garment. Real
+    # garments live in a narrow band of length-over-width; outside it, fall back
+    # to the slot band rather than trust a measurement of the wrong thing.
+    len_ratio = H / ref
+    lo_r, hi_r = {"upper": (0.55, 2.6), "full": (1.2, 4.0),
+                  "lower": (0.7, 4.2)}[kind]
+    if not lo_r <= len_ratio <= hi_r:
+        return None
+
+    out = {"len_ratio": len_ratio}
+    if kind in ("upper", "full"):
+        # Sleeve as one straight segment from the shoulder corner to the cuff.
+        # Measuring only horizontal reach under-reads a sleeve laid diagonally,
+        # which is how long sleeves are usually photographed.
+        cx = W / 2.0
+        shoulder_y = H * 0.06
+        reach = 0.0
+        for side in (0, 1):
+            tip_x = 0 if side == 0 else W - 1
+            col = np.flatnonzero(sil[:, tip_x])
+            if not col.size:
+                # Sleeve does not reach the crop edge: find the extreme column
+                # that any row occupies on this side.
+                ext = [r[0] if side == 0 else r[-1] for r in rows if r.size]
+                tip_x = min(ext) if side == 0 else max(ext)
+                col = np.flatnonzero(sil[:, tip_x])
+            if not col.size:
+                continue
+            tip_y = float(col.mean())
+            dx = abs(cx + (ref / 2.0) * (1 if side else -1) - tip_x)
+            dy = max(0.0, tip_y - shoulder_y)
+            reach = max(reach, math.hypot(dx, dy))
+        sleeve_ratio = reach / ref
+        if sleeve_ratio > 1.7:      # longer than a sleeve can be: not a flat-lay
+            return None
+        out["sleeve_ratio"] = sleeve_ratio
+    return out
+
+
+def _garment_mask(p: Pose, kind: str,
+                  garment: np.ndarray | None = None) -> np.ndarray:
     """AGNOSTIC mask — the region to repaint, not a trace of the current
     clothes.
 
@@ -221,6 +371,14 @@ def _garment_mask(p: Pose, kind: str) -> np.ndarray:
     become a jacket and every result quietly regresses toward the input
     garment. The mask has to be GENEROUS — the whole body zone for that slot,
     intersected with the person matte so the background stays untouched.
+
+    Generous in the CUT'S OWN direction, though, not blindly. Pass `garment` and
+    the slot band is trimmed to the ratios measured off the flat-lay
+    (`_garment_metrics`): the hem stops where that garment's hem stops, the
+    sleeve corridor stops where its sleeve stops, and the sides sit at its own
+    width instead of the figure's. Without `garment` the band is the old
+    full-slot rectangle — still correct for a swap of the same cut, still the
+    reason a short-sleeve tee used to come back long-sleeved.
     """
     h, w = p.h, p.w
     pts = p.pts
@@ -248,10 +406,31 @@ def _garment_mask(p: Pose, kind: str) -> np.ndarray:
     x0, x1 = max(0, min(xs) - xpad), min(w - 1, max(xs) + xpad)
     dilate_frac = 0.035
 
+    met = _garment_metrics(garment, kind) if garment is not None else None
+    # The garment's width ON THE BODY. Joints sit inside the flesh and fabric
+    # sits outside it, so the shoulder/hip keypoint distance under-reads what a
+    # garment actually spans; the factors below are what closes that gap.
+    ls, rs = pts[5], pts[2]
+    lh, rh = pts[11], pts[8]
+    if met and kind in ("upper", "full") and ls and rs:
+        gw = abs(ls[0] - rs[0]) * 1.30
+        cx = (ls[0] + rs[0]) // 2
+    elif met and kind == "lower" and lh and rh:
+        gw = abs(lh[0] - rh[0]) * 1.55
+        cx = (lh[0] + rh[0]) // 2
+    else:
+        met, gw, cx = None, 0.0, (x0 + x1) // 2
+
     if kind == "lower":
         y0, y1 = hip - span * 0.06, min(h - 1, ankle + span * 0.03)
+        if met:
+            # Shorts stop at the thigh. Running the band to the ankle for them
+            # is what filled the shins with invented fabric.
+            y1 = min(y1, hip + met["len_ratio"] * gw)
     elif kind == "full":
         y0, y1 = shoulder - span * 0.07, min(h - 1, ankle + span * 0.03)
+        if met:
+            y1 = min(y1, shoulder + met["len_ratio"] * gw)
     elif kind == "shoes":
         # The FEET LIE BELOW THE LAST KEYPOINT: COCO-18 stops at the ankle, so
         # the ankle cannot define the bottom edge. The silhouette's lowest
@@ -271,6 +450,18 @@ def _garment_mask(p: Pose, kind: str) -> np.ndarray:
         dilate_frac = 0.018   # a foot-sized kernel, not a torso-sized one
     else:  # upper
         y0, y1 = shoulder - span * 0.07, hip + span * 0.10
+        if met:
+            # A cropped top and a long shirt are both 'upper'; only the flat-lay
+            # knows which. Never past the knee — a top that measures that long
+            # means the flat-lay was misread.
+            y1 = min(shoulder + met["len_ratio"] * gw, hip + span * 0.55)
+
+    if met and kind in ("upper", "full", "lower"):
+        # Sides at the garment's own width, not the figure's. The 14% figure pad
+        # put mask outside the body on both flanks, and the model filled it with
+        # the halo that traced the silhouette.
+        half = gw / 2.0 + max(4, span * 0.02)
+        x0, x1 = max(0, int(cx - half)), min(w - 1, int(cx + half))
 
     box = np.zeros((h, w), np.uint8)
     box[max(0, int(y0)):int(y1) + 1, x0:x1 + 1] = 255
@@ -289,18 +480,32 @@ def _garment_mask(p: Pose, kind: str) -> np.ndarray:
         # figure so it holds for any framing.
         thick = max(6, round(span * 0.055))
         for shoulder_i, elbow_i, wrist_i in ((2, 3, 4), (5, 6, 7)):
-            sh, el, wr = pts[shoulder_i], pts[elbow_i], pts[wrist_i]
-            if sh and el:
-                cv2.line(arm, sh, el, 255, thick)
-            if el and wr:
+            chain = [pts[i] for i in (shoulder_i, elbow_i, wrist_i) if pts[i]]
+            if len(chain) < 2:
+                continue
+            if met:
+                # HOW FAR down the arm, measured off the flat-lay. This used to be
+                # the constant 88%-of-the-forearm for every garment, which is
+                # exactly why a short-sleeve tee came back long-sleeved: the mask
+                # asked for a full sleeve, and inpainting must fill what it is
+                # given. A sleeveless top now measures ~0 and gets a shoulder cap
+                # only; a long sleeve measures about one torso width and gets the
+                # whole arm.
+                reach = met["sleeve_ratio"] * gw
+                if reach < gw * 0.10:
+                    cv2.circle(arm, chain[0], thick, 255, -1)
+                    continue
+                path = _walk(chain, reach)
+            else:
                 # STOP SHORT OF THE WRIST. Reaching the wrist pulled the HAND into
                 # the repaint zone, and hands are what diffusion mangles most
                 # visibly — a swapped top is not worth six fingers. A cuff sits
-                # above the wrist anyway, so 88% of the forearm covers the sleeve
-                # and leaves the hand as original pixels.
-                end = (round(el[0] + (wr[0] - el[0]) * 0.88),
-                       round(el[1] + (wr[1] - el[1]) * 0.88))
-                cv2.line(arm, el, end, 255, thick)
+                # above the wrist anyway.
+                path = _walk(chain, 0.94 * sum(
+                    math.hypot(b[0] - a[0], b[1] - a[1])
+                    for a, b in zip(chain, chain[1:])))
+            for a, b in zip(path, path[1:]):
+                cv2.line(arm, a, b, 255, thick)
         box = cv2.bitwise_or(box, arm)
 
     mask = cv2.bitwise_and(box, p.silhouette)
@@ -469,7 +674,9 @@ class HybridVTONPipeline:
         # A — geometry at the ORIGINAL resolution, so the mask lines up with
         # the pixels we composite back onto later.
         pose = self.reader.read(full)
-        mask_full = _garment_mask(pose, kind)
+        # The flat-lay goes in as well: the mask is trimmed to THIS garment's cut
+        # (hem, sleeve, width) rather than the whole slot band.
+        mask_full = _garment_mask(pose, kind, np.array(garment)[:, :, ::-1])
 
         # B — conditioning, then everything down to the model's working size.
         control_pose = _draw_openpose(pose)
@@ -489,11 +696,34 @@ class HybridVTONPipeline:
         # avatar rendered correctly, which is the tell: the old garment's darkness
         # was leaking, not the conditioning being weak.
         #
-        # Mid-grey is the neutral choice — it biases neither light nor dark. Only
-        # the model's INPUT is touched; the composite below still runs against the
-        # untouched `avatar`, so identity stays a guarantee.
+        # SKIN, NOT MID-GREY. Grey is neutral in luminance and wrong in meaning:
+        # the sampler read it as an intended fabric colour and filled with it
+        # everything the new garment did not cover — so a short-sleeve tee came
+        # back long-sleeved, and a grey halo traced the figure wherever the
+        # garment stopped short. Raising IP scale did not help (0.75 → 0.9 → 1.0
+        # at a fixed seed: more of the right colour, same grey), which is what
+        # ruled the adapter out as the cause.
+        #
+        # The body's own skin tone is the honest prior: where a garment ends,
+        # skin is what belongs there. Sampled from the forearms OUTSIDE the mask
+        # (the one large skin area the repaint zone never covers), with mid-grey
+        # kept as the fallback when no such pixels are visible.
         init = full.copy()
-        init[mask_full > 20] = 128
+        fill = np.array([128, 128, 128], np.uint8)
+        try:
+            skin = np.zeros(mask_full.shape, np.uint8)
+            for wrist_i, elbow_i in ((4, 3), (7, 6)):
+                a, b = pose.pts[wrist_i], pose.pts[elbow_i]
+                if a and b:
+                    cv2.line(skin, a, b, 255, max(6, round(full.shape[0] * 0.02)))
+            skin = cv2.bitwise_and(skin, pose.silhouette)
+            skin[mask_full > 20] = 0          # only pixels we are NOT repainting
+            if int(skin.sum()) > 0:
+                fill = cv2.mean(full, mask=skin)[:3]
+                fill = np.array([int(c) for c in fill], np.uint8)
+        except Exception:  # noqa: BLE001 — a fill is never worth failing a render
+            pass
+        init[mask_full > 20] = fill
         init_s = _to_pil(init[:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS)
         mask_s = Image.fromarray(mask_full).resize((WORK_W, WORK_H), Image.LANCZOS)
         pose_s = _to_pil(control_pose).resize((WORK_W, WORK_H), Image.LANCZOS)
@@ -524,20 +754,50 @@ class HybridVTONPipeline:
         # this is what makes identity a guarantee instead of a hope.
         gen_full = np.array(out.resize(avatar.size, Image.LANCZOS)).astype(np.float32)
         base = np.array(avatar).astype(np.float32)
-        alpha = (mask_full.astype(np.float32) / 255.0)[:, :, None]
+
+        # COMPOSITE WHERE THE MODEL ACTUALLY DREW, not across the whole mask.
+        #
+        # Inpainting has no way to leave part of its mask alone — the mask IS the
+        # instruction to repaint. Ours is deliberately generous (the whole torso
+        # band plus the arms) because a mask traced around the old garment can
+        # never grow a different silhouette: a tee could not become a puffer. The
+        # cost of that generosity showed up as its mirror image: a short-sleeve
+        # tee came back long-sleeved, or left a halo of fill colour tracing the
+        # figure wherever the garment stopped short.
+        #
+        # Neither the fill colour nor the adapter scale was the cause. Swept
+        # 0.75/0.9/1.0 at a fixed seed (more of the right colour, same halo), then
+        # swapped mid-grey for the body's own skin tone (the halo turned skin-
+        # coloured and stayed). What was left is structural: the model must put
+        # SOMETHING everywhere, and where it had nothing to draw it emits ~the
+        # fill it started from.
+        #
+        # So ask, per pixel, whether it drew anything: distance from the fill.
+        # Close to the fill → it had nothing there → keep the original. This is
+        # arithmetic on the same footing as the identity guarantee, not a prompt
+        # we hope lands.
+        drew = np.abs(gen_full - fill.astype(np.float32)).max(axis=2)
+        # 26/255: above sampling noise and JPEG ringing, well below any real
+        # garment/skin boundary. Blurred so the kept and repainted regions meet
+        # in a gradient rather than a cut-out edge.
+        drew = cv2.GaussianBlur((np.clip(drew / 26.0, 0.0, 1.0) * 255).astype(np.uint8), (21, 21), 0)
+        alpha = ((mask_full.astype(np.float32) / 255.0) *
+                 (drew.astype(np.float32) / 255.0))[:, :, None]
         blended = gen_full * alpha + base * (1.0 - alpha)
         return Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
 
     # -- introspection ------------------------------------------------------
 
-    def debug(self, avatar: Image.Image, kind: str = "upper") -> Image.Image:
+    def debug(self, avatar: Image.Image, kind: str = "upper",
+              garment: Image.Image | None = None) -> Image.Image:
         """Pose + mask overlay, no diffusion. Every mask bug this session was
         found by LOOKING at this, and every one that shipped was found by not
         looking. Free and instant — use it before spending a render."""
         avatar = _fix_exif(avatar).convert("RGB")
         full = np.array(avatar)[:, :, ::-1].copy()
         pose = self.reader.read(full)
-        mask = _garment_mask(pose, kind)
+        g = np.array(_fix_exif(garment).convert("RGB"))[:, :, ::-1] if garment else None
+        mask = _garment_mask(pose, kind, g)
         vis = full.copy()
         vis[mask > 20] = (vis[mask > 20] * 0.45 + np.array([0, 0, 200]) * 0.55)
         vis = cv2.addWeighted(vis, 1.0, _draw_openpose(pose)[:, :, ::-1], 0.9, 0)
