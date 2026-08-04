@@ -455,11 +455,16 @@ def _garment_mask(p: Pose, kind: str,
     else:  # upper
         y0, y1 = shoulder - span * 0.07, hip + span * 0.10
         if met:
-            # A long shirt and a cropped top are both 'upper'; only the flat-lay
-            # knows which. It can lengthen the band (a shirt worn out, a coat) but
-            # not shorten it below the basics' hem. Never past the knee — a top
-            # measuring that long means the flat-lay was misread.
-            y1 = max(y1, min(shoulder + met["len_ratio"] * gw, hip + span * 0.55))
+            # A cropped top and a long shirt are both 'upper', and only the
+            # flat-lay knows which — but this can only SHORTEN the band, never
+            # lengthen it. Measured: a mask carried 120 px past the hip on an
+            # oversized tee whose ratio said it was long, the model painted the
+            # hem where its own prior wanted it (at the hip) and the neutral fill
+            # was left exposed below as a skin-coloured slab. The mask cannot make
+            # the sampler paint further than it intends to, so a band beyond that
+            # point can only ever expose fill. The floor stays the basics' hem.
+            y1 = max(hip + span * 0.02,
+                     min(y1, shoulder + met["len_ratio"] * gw))
 
     if met and kind in ("upper", "full", "lower"):
         # SIDES AT THE GARMENT'S OWN WIDTH, not the figure's. The 14% figure pad
@@ -546,6 +551,8 @@ def _garment_mask(p: Pose, kind: str,
         reachable = cv2.dilate(p.silhouette,
                                np.ones((allow * 2 + 1,) * 2, np.uint8), iterations=1)
         mask = cv2.bitwise_and(mask, reachable)
+    else:
+        reachable = None
 
         # Whatever survives as a detached speck is mask floating beside the
         # figure, and inpainting will dutifully paint fabric there.
@@ -568,7 +575,14 @@ def _garment_mask(p: Pose, kind: str,
             if wr:
                 cv2.circle(mask, wr, max(8, round(span * 0.045)), 0, -1)
 
-    return cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
+    mask = cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
+    if reachable is not None:
+        # The feather has to respect the allowance too. Clipping only the binary
+        # mask left the blur's tail hanging outside the body, and the sampler
+        # painted that tail — measured at 13.8k px of soft fabric-coloured smear
+        # around the figure, against a white background where it shows plainly.
+        mask = cv2.bitwise_and(mask, reachable)
+    return mask
 
 
 # ───────────────────────────── Stage C: the renderer ─────────────────────────
