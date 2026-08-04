@@ -454,9 +454,16 @@ class HybridVTONPipeline:
         prompt_hint: str = "the garment in the reference image",
         steps: int | None = None,
         seed: int | None = None,
+        # PER-RENDER IP SCALE. It was build-time only, so comparing 0.75 against
+        # 0.9 meant restarting the worker and reloading 5 GB between samples —
+        # slow enough that the knob never got measured properly. The adapter's
+        # scale is cheap to set on a live pipeline, so a job can carry its own.
+        ip_scale: float | None = None,
     ) -> Image.Image:
         avatar = _fix_exif(avatar).convert("RGB")
         garment = _fix_exif(garment).convert("RGB")
+        if ip_scale is not None:
+            self.ensure_loaded().set_ip_adapter_scale(float(ip_scale))
         full = np.array(avatar)[:, :, ::-1].copy()          # RGB → BGR
 
         # A — geometry at the ORIGINAL resolution, so the mask lines up with

@@ -166,10 +166,36 @@ Deno.serve(async (req) => {
     if (hybridEnabled() && pairs.length) {
       const staged: string[] = [];
       try {
+        // CANONICAL AVATAR AS THE BASE, not the raw upload. The mask repaints the
+        // whole torso band intersected with the person matte, and MediaPipe counts
+        // an object held against the chest as part of the body — so a phone in the
+        // hand landed inside the repaint zone and came back as a grey slab, with
+        // the hand beside it mangled. The avatar is the same person re-dressed in
+        // neutral grey basics on white, arms down, nothing held: every render on it
+        // has been clean. It also removes the previous garment from the canvas, so
+        // a new one cannot read as a second layer over it.
+        //
+        // Falls through to whatever the client sent when no avatar exists yet
+        // (it is built fire-and-forget after the first photo upload).
+        let avatarPath: string | null = null;
+        if (!personPath) {
+          try {
+            const { data: sp } = await db.from("style_profiles")
+              .select("source_photo_path").eq("user_id", row.user_id).maybeSingle();
+            const src = sp?.source_photo_path as string | undefined;
+            if (src) {
+              const { data: t } = await db.storage.from("body-photos")
+                .createSignedUrl(`${src}.avatar.png`, 900, { transform: { width: 768, quality: 85 } });
+              if (t?.signedUrl) avatarPath = t.signedUrl;
+            }
+          } catch (_) {/* no avatar → use the client's pixels */}
+        }
         // Already in Storage? Sign it. Staging would copy bytes we own into a
         // scratch object for no reason — measured ~1s of a ~7s server path.
         let personUrl: string;
-        if (personPath) {
+        if (avatarPath) {
+          personUrl = avatarPath;
+        } else if (personPath) {
           const { data: t } = await db.storage.from(OUT_BUCKET)
             .createSignedUrl(personPath, 900, { transform: { width: 768, quality: 85 } });
           if (!t?.signedUrl) throw new Error(`person_path unreadable: ${personPath}`);

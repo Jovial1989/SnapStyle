@@ -109,6 +109,7 @@ def render(job: dict) -> str:
             kind=st.get("kind", "upper"),
             prompt_hint=st.get("hint", "the garment in the reference image"),
             seed=st.get("seed"),
+            ip_scale=st.get("ip_scale"),
         )
         print(f"  step {i + 1}/{len(steps)} {st.get('kind')}", flush=True)
 
