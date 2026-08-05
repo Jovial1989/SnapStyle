@@ -934,19 +934,150 @@ class HybridVTONPipeline:
         # SOMETHING everywhere, and where it had nothing to draw it emits ~the
         # fill it started from.
         #
-        # So ask, per pixel, whether it drew anything: distance from the fill.
-        # Close to the fill → it had nothing there → keep the original. This is
-        # arithmetic on the same footing as the identity guarantee, not a prompt
-        # we hope lands.
-        drew = np.abs(gen_full - fill_img.astype(np.float32)).max(axis=2)
-        # 26/255: above sampling noise and JPEG ringing, well below any real
-        # garment/skin boundary. Blurred so the kept and repainted regions meet
-        # in a gradient rather than a cut-out edge.
-        drew = cv2.GaussianBlur((np.clip(drew / 26.0, 0.0, 1.0) * 255).astype(np.uint8), (21, 21), 0)
+        # So ask, per pixel, whether it drew anything. This is arithmetic on the
+        # same footing as the identity guarantee, not a prompt we hope lands.
+        #
+        # COLOUR ALONE CANNOT ANSWER THIS, and asking it that way broke dark
+        # garments. Now that the fill IS the garment's colour, a correctly painted
+        # black puffer sits close to a black fill — the test read that as "drew
+        # nothing", kept the original, and the render came back wearing the grey
+        # basics. Measured across twelve catalogue items: a black puffer rendered
+        # silver and black jeans rendered grey, while navy (far from the grey
+        # underneath) came out right.
+        #
+        # So ask it twice. Colour distance still catches a garment that differs
+        # from the fill, and LOCAL CONTRAST catches one that matches it: real
+        # fabric has folds and shading, a flat fill has none, and that holds at
+        # any brightness. Only flat AND fill-coloured counts as untouched.
+        by_colour = np.abs(gen_full - fill_img.astype(np.float32)).max(axis=2) / 26.0
+        grey = cv2.cvtColor(np.clip(gen_full, 0, 255).astype(np.uint8), cv2.COLOR_BGR2GRAY)
+        gf = grey.astype(np.float32)
+        local_mean = cv2.blur(gf, (9, 9))
+        local_std = np.sqrt(np.maximum(cv2.blur(gf * gf, (9, 9)) - local_mean ** 2, 0.0))
+        by_texture = local_std / 3.0
+        drew = np.maximum(by_colour, by_texture)
+        # Blurred so the kept and repainted regions meet in a gradient rather than
+        # a cut-out edge.
+        drew = cv2.GaussianBlur((np.clip(drew, 0.0, 1.0) * 255).astype(np.uint8), (21, 21), 0)
         alpha = ((mask_full.astype(np.float32) / 255.0) *
                  (drew.astype(np.float32) / 255.0))[:, :, None]
         blended = gen_full * alpha + base * (1.0 - alpha)
         return Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
+
+    # -- base preparation ---------------------------------------------------
+
+    def bare_arms(self, avatar: Image.Image, seed: int | None = 7) -> Image.Image:
+        """Repaint the base avatar's sleeves as bare skin. Run ONCE per avatar.
+
+        THE BASE HAVING SLEEVES IS THE SINGLE BIGGEST SOURCE OF ARTEFACTS, and
+        measuring said so plainly: of seven tops rendered across the catalogue,
+        five showed the basics' grey sleeve or a coloured block at the cuff. The
+        cause is structural and no mask tuning removes it — the sampler paints the
+        sleeve where its prior ends, the mask must reach past that to cover the old
+        sleeve, and whatever is in between shows. Every fill colour tried is
+        visible there in a different way: grey read as fabric, skin read as a
+        block, the garment's own colour read as an over-long sleeve.
+
+        With bare arms underneath there is nothing to cover, so "the model stopped
+        here" resolves to bare skin — which is what a short sleeve looks like, and
+        a tank top, and a rolled cuff. One render per avatar buys that for every
+        swap the avatar will ever appear in.
+
+        PER ARM, ON ITS OWN CROP. The first attempt inpainted both arms inside the
+        full frame, which is downscaled to 512 wide before it reaches the model:
+        an arm is a thin thing, ~28k px of a 885k px frame, and it came back
+        blurred into a smear. Cropping to one arm and giving it the whole 512×768
+        raises the arm's effective resolution about fivefold for the same 20 steps.
+        """
+        avatar = _fix_exif(avatar).convert("RGB")
+        full = np.array(avatar)[:, :, ::-1].copy()
+        pose = self.reader.read(full)
+        h, w = full.shape[:2]
+        ys = [q[1] for q in pose.pts if q]
+        span = max(1.0, (max(ys) - min(ys)) if ys else 1.0)
+
+        skin_src = np.zeros((h, w), np.uint8)
+        for a_i, b_i in ((4, 3), (7, 6)):
+            a, b = pose.pts[a_i], pose.pts[b_i]
+            if a and b:
+                cv2.line(skin_src, a, b, 255, max(6, round(h * 0.02)))
+        skin_src = cv2.bitwise_and(skin_src, pose.silhouette)
+        col = ([int(c) for c in cv2.mean(full, mask=skin_src)[:3]]
+               if int(skin_src.sum()) else [128, 128, 128])
+
+        pipe = self.ensure_loaded()
+        control_pose = _draw_openpose(pose)
+        out = full.copy()
+
+        for ids in ((2, 3, 4), (5, 6, 7)):
+            chain = [pose.pts[i] for i in ids if pose.pts[i]]
+            if len(chain) < 2:
+                continue
+            total = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                        for a, b in zip(chain, chain[1:]))
+            # From just below the shoulder cap: the seam there is the garment's,
+            # not the arm's, and repainting it would eat into the torso.
+            _, rest = _split(chain, total * 0.18)
+            mask = np.zeros((h, w), np.uint8)
+            for a, b in zip(rest, rest[1:]):
+                cv2.line(mask, a, b, 255, max(8, round(span * 0.075)))
+            mask = cv2.bitwise_and(mask, pose.silhouette)
+            wrist = pose.pts[ids[2]]
+            if wrist:      # hands stay original; diffusion mangles them
+                cv2.circle(mask, wrist, max(8, round(span * 0.045)), 0, -1)
+            if not mask.any():
+                continue
+
+            xs_, ys_ = np.nonzero(mask)[1], np.nonzero(mask)[0]
+            pad = int(span * 0.05)
+            bx0, bx1 = max(0, xs_.min() - pad), min(w - 1, xs_.max() + pad)
+            by0, by1 = max(0, ys_.min() - pad), min(h - 1, ys_.max() + pad)
+            # Grow the crop to the model's aspect so nothing is squashed on resize.
+            bw, bh = bx1 - bx0 + 1, by1 - by0 + 1
+            want = WORK_W / WORK_H
+            if bw / bh < want:
+                need = int(bh * want) - bw
+                bx0, bx1 = max(0, bx0 - need // 2), min(w - 1, bx1 + need - need // 2)
+            else:
+                need = int(bw / want) - bh
+                by0, by1 = max(0, by0 - need // 2), min(h - 1, by1 + need - need // 2)
+
+            init = full.copy()
+            init[mask > 20] = col
+            sub = (slice(by0, by1 + 1), slice(bx0, bx1 + 1))
+            cm = mask[sub]
+            grey = cv2.cvtColor(full, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(cv2.bilateralFilter(grey, 7, 60, 60), 80, 170)
+            edges[mask > 20] = 0
+
+            res = pipe(
+                prompt="a bare human arm, sleeveless, smooth natural skin, "
+                       "soft studio light, photographic",
+                negative_prompt="sleeve, cuff, fabric, clothing, glove, tattoo, "
+                                "text, watermark, deformed",
+                image=_to_pil(init[sub][:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS),
+                mask_image=Image.fromarray(cm).resize((WORK_W, WORK_H), Image.LANCZOS),
+                control_image=[
+                    _to_pil(control_pose[sub]).resize((WORK_W, WORK_H), Image.LANCZOS),
+                    _to_pil(cv2.cvtColor(edges[sub], cv2.COLOR_GRAY2RGB)).resize(
+                        (WORK_W, WORK_H), Image.NEAREST),
+                ],
+                ip_adapter_image=Image.new("RGB", (224, 224), tuple(col[::-1])),
+                num_inference_steps=STEPS,
+                guidance_scale=float(os.getenv("VTON_CFG", "6.5")),
+                controlnet_conditioning_scale=[0.9, 0.45],
+                generator=(torch.Generator(device="cpu").manual_seed(seed)
+                           if seed is not None else None),
+            ).images[0]
+            _drain()
+
+            gen = cv2.resize(np.array(res)[:, :, ::-1], (cm.shape[1], cm.shape[0]),
+                             interpolation=cv2.INTER_LANCZOS4).astype(np.float32)
+            k = max(5, round(span * 0.012)) | 1
+            a = (cv2.GaussianBlur(cm, (k, k), 0).astype(np.float32) / 255.0)[:, :, None]
+            out[sub] = np.clip(gen * a + out[sub].astype(np.float32) * (1 - a), 0, 255)
+
+        return _to_pil(out[:, :, ::-1])
 
     # -- introspection ------------------------------------------------------
 
