@@ -99,7 +99,13 @@ Deno.serve(async (req) => {
     const out = stub
       ? {
         gender_presentation: "masculine",
-        slots: ["top", "bottom", "shoes", "outerwear"].map((slot) => ({
+        // OUTERWEAR IS CUT FROM THE DEMO LANE, same rule as shorts: never offer
+        // what the engine cannot render. Layering a jacket OVER a worn top is not
+        // expressible by single-slot inpainting — a puffer rendered as a floating
+        // black shape with a grey arch over the shoulders, and it was already in
+        // the failed half of the acceptance set. Restore the slot when layering
+        // exists; a thinner rail beats a broken frame at a fund demo.
+        slots: ["top", "bottom", "shoes"].map((slot) => ({
           slot,
           item: `your ${slot}`,
           ideas: [0, 1, 2, 3].map(() => ({
