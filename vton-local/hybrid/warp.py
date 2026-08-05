@@ -577,6 +577,13 @@ def shoes_warp(garment: np.ndarray, sil: np.ndarray, pose,
 
     A single shoe in frame (one component) is mirrored for the other foot, which is
     what a catalogue photo of one shoe means anyway.
+
+    THE SHOE IS STRETCHED TO THE FOOT'S BOX ON PURPOSE, and preserving its own
+    aspect instead was tried and measured worse: coverage of the shoe zone fell
+    from 56-63% to 30-45% and the base's white sneaker reappeared around the edges.
+    A boot's proportions would be better served by the aspect, but the catalogue has
+    no boots — that was protecting a hypothetical case at the cost of a visible one.
+    Revisit when boots exist, with the zone height fixed in the same change.
     """
     n, lab, stats, cent = cv2.connectedComponentsWithStats((sil > 0).astype(np.uint8), 8)
     if n < 2:
