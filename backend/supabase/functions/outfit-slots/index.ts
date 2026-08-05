@@ -28,9 +28,20 @@ const OUTER_WORDS = /(jacket|coat|blazer|parka|trench|bomber|overcoat|windbreake
 const FEMININE_WORDS = /(heel|stiletto|pump|court shoe|ballet|ballerina|mary jane|maryjane|slingback|kitten|wedge|peep.?toe|dress\b|gown|skirt|blouse|camisole|bodysuit|bralette)/i;
 const MASCULINE_ONLY_WORDS = /(necktie|bow.?tie)/i;
 
+// SHORTS ARE OFF THE MENU until the render base has bare legs. The base wears
+// full-length trousers, and the legs repaint pass measurably fails (grey trouser
+// with the base's emblem bleeding through) — so every shorts render ships as
+// long navy trousers with a white fill band and denim tubes around the pocketed
+// hands. Reported from the phone as "полный ужас", traced to `lower: navy
+// shorts` in the job rows while the identical pipeline rendered real jeans
+// cleanly. Offering a garment the engine cannot render is worse than a thinner
+// catalogue; lift this with the minimal-base work.
+const BLOCKED_WORDS = /(shorts|шорт)/i;
+
 function slotConflict(slot: string, name: string): boolean {
   const n = (name || "").toLowerCase();
   if (!n) return false;
+  if (BLOCKED_WORDS.test(n)) return true;
   switch (slot) {
     case "bottom": return TOP_WORDS.test(n) || SHOE_WORDS.test(n) || OUTER_WORDS.test(n);
     case "top":    return BOTTOM_WORDS.test(n) || SHOE_WORDS.test(n) || OUTER_WORDS.test(n);
