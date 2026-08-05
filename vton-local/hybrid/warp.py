@@ -270,6 +270,19 @@ def garment_keypoints(sil: np.ndarray, kind: str) -> dict | None:
     if not below.size:
         return None
     ay_l = ay_r = y_wide + int(below[0])
+    body_lo = ay_l
+
+    # The extreme column on each side IS the cuff; its occupied rows are the
+    # cuff's two ends.
+    x_tip_l = int(left[:torso_lo].min())
+    x_tip_r = int(right[:torso_lo].max())
+    rows_l = np.flatnonzero(sub[:, x_tip_l])
+    rows_r = np.flatnonzero(sub[:, x_tip_r])
+    if rows_l.size < 2 or rows_r.size < 2:
+        return None
+
+    full_rows = np.flatnonzero(width[body_lo:] >= w_torso * 0.8)
+    y_hem = (body_lo + int(full_rows[-1])) if full_rows.size else H - 1
 
     def pt(x, y):
         return [float(x + x0), float(y + y0)]
@@ -278,14 +291,28 @@ def garment_keypoints(sil: np.ndarray, kind: str) -> dict | None:
         "collar":     pt((left[0] + right[0]) / 2 if width[0] > 0 else W / 2, 0),
         "shoulder_l": pt(left[max(1, int(H * 0.04))], int(H * 0.04)),
         "shoulder_r": pt(right[max(1, int(H * 0.04))], int(H * 0.04)),
+        # THE CUFF IS AN EDGE, NOT A POINT. Using one point twice made the sleeve
+        # quad degenerate — two coincident corners — and a degenerate perspective
+        # transform filled the whole frame with the border colour, wiping the
+        # torso that had been warped correctly a moment earlier. The cuff's own
+        # column gives its two ends.
         "cuff_l":     pt(left[y_wide], y_wide),
         "cuff_r":     pt(right[y_wide], y_wide),
+        "cuff_l_top": pt(x_tip_l, rows_l[0]),
+        "cuff_l_bot": pt(x_tip_l, rows_l[-1]),
+        "cuff_r_top": pt(x_tip_r, rows_r[0]),
+        "cuff_r_bot": pt(x_tip_r, rows_r[-1]),
         "armpit_l":   pt(torso_l, ay_l),
         "armpit_r":   pt(torso_r, ay_r),
         "waist_l":    pt(torso_l, int(H * 0.75)),
         "waist_r":    pt(torso_r, int(H * 0.75)),
-        "hem_l":      pt(left[H - 1], H - 1),
-        "hem_r":      pt(right[H - 1], H - 1),
+        # THE HEM IS NOT THE LAST ROW. The bottom row of a silhouette is the hem's
+        # lowest tongue — measured on a striped tee, 10 px wide — and stretching
+        # ten pixels across a whole torso produced a flat colour with no stripes
+        # and no print at all. Take the lowest row where the garment is still
+        # essentially full width.
+        "hem_l":      pt(left[y_hem], y_hem),
+        "hem_r":      pt(right[y_hem], y_hem),
     }
 
 
@@ -359,3 +386,120 @@ def mesh_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
         return None
     cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
     return Warped(image=img, mask=mask, coverage=round(cov, 3))
+
+
+def _quad_warp(garment: np.ndarray, sil: np.ndarray, src: np.ndarray,
+               dst: np.ndarray, shape: tuple[int, int],
+               out: np.ndarray, filled: np.ndarray) -> None:
+    """Warp ONE part and lay it into the accumulating frame.
+
+    The part's own silhouette goes through the same transform, so what lands is
+    the garment's outline rather than a rectangle — an armpit stays empty, a
+    tapered cuff stays tapered.
+    """
+    h, w = shape
+    m = cv2.getPerspectiveTransform(src.astype(np.float32), dst.astype(np.float32))
+    poly = np.zeros(sil.shape, np.uint8)
+    cv2.fillConvexPoly(poly, src.astype(np.int32), 255)
+    part = cv2.bitwise_and((sil > 0).astype(np.uint8) * 255, poly)
+    img = cv2.warpPerspective(garment, m, (w, h), flags=cv2.INTER_LINEAR,
+                              borderMode=cv2.BORDER_REPLICATE)
+    msk = cv2.warpPerspective(part, m, (w, h), flags=cv2.INTER_NEAREST)
+    np.copyto(out, img, where=(msk > 0)[:, :, None])
+    filled[msk > 0] = 255
+
+
+def parts_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
+               slot_mask: np.ndarray, sleeve_ratio: float | None,
+               split) -> Warped | None:
+    """DEFORMABLE PARTS: the torso is one quad, each sleeve is its own.
+
+    Why not one mesh over all of it — measured, and this is the whole reason this
+    function exists. A single Delaunay mesh spanning torso and sleeves came back
+    with wavy stripes and a chest print squeezed into an hourglass: a sleeve
+    rotating onto a hanging arm shears every triangle it shares with the torso,
+    and the torso is where the print is. Splitting them means the torso keeps a
+    pure quad — no shear, straight stripes — and the sleeve's rotation stays
+    inside the sleeve, where there is rarely a print and never text.
+
+    Each part is a perspective map on four points, which cannot fold. The parts
+    meet at the armpit and the shoulder seam, so they abut instead of overlapping,
+    and the sleeve is drawn last: at the shoulder the sleeve's fabric is what sits
+    on top in a real garment.
+    """
+    if kind not in ("upper", "full") or sleeve_ratio is None:
+        return None
+    kp = garment_keypoints(sil, kind)
+    if kp is None:
+        return None
+    pts = pose.pts
+    ls, rs, lh, rh = pts[5], pts[2], pts[11], pts[8]
+    if not (ls and rs and lh and rh):
+        return None
+    ys = [q[1] for q in pts if q]
+    span = max(1.0, max(ys) - min(ys))
+    gw = abs(ls[0] - rs[0]) * 1.30
+    cx = (ls[0] + rs[0]) / 2.0
+    sh_y = float(min(ls[1], rs[1]))
+    hip_y = float(max(lh[1], rh[1]))
+    x_l, x_r = cx - gw / 2, cx + gw / 2          # image-left and image-right edges
+
+    # A FLAT-LAY IS SHOT FROM THE FRONT, LIKE THE BODY, so its left edge is the
+    # body's left edge in image coordinates. No mirroring — and getting this wrong
+    # is one of the ways the mesh version sheared, since a sleeve crossing to the
+    # far arm drags the whole triangulation with it.
+    arm_left = (5, 6, 7) if ls[0] < rs[0] else (2, 3, 4)
+    arm_right = (2, 3, 4) if ls[0] < rs[0] else (5, 6, 7)
+
+    h, w = pose.h, pose.w
+    out = np.zeros((h, w, 3), np.uint8)
+    filled = np.zeros((h, w), np.uint8)
+
+    # ── torso: shoulder seam to hem, the quad that already worked ──────────────
+    t_src = np.float32([kp["shoulder_l"], kp["shoulder_r"], kp["hem_r"], kp["hem_l"]])
+    t_dst = np.float32([[x_l, sh_y], [x_r, sh_y],
+                        [x_r, hip_y + span * 0.03], [x_l, hip_y + span * 0.03]])
+    _quad_warp(garment, sil, t_src, t_dst, (h, w), out, filled)
+
+    # ── sleeves: armpit → cuff, one quad each ─────────────────────────────────
+    for side, ids, x_edge in (("l", arm_left, x_l), ("r", arm_right, x_r)):
+        chain = [pts[i] for i in ids if pts[i]]
+        if len(chain) < 2:
+            continue
+        total = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                    for a, b in zip(chain, chain[1:]))
+        # The measured sleeve, floored so a sleeveless top still gets a shoulder
+        # cap and capped short of the hand.
+        reach = min(max(sleeve_ratio * gw, total * 0.16), total * 0.9)
+        path = split(chain, reach)[0]
+        cuff = np.float32(path[-1])
+        prev = np.float32(path[-2] if len(path) > 1 else chain[0])
+        axis = cuff - prev
+        n = float(np.hypot(*axis)) or 1.0
+        perp = np.float32([-axis[1] / n, axis[0] / n])
+
+        # THE CUFF KEEPS THE SLEEVE'S OWN PROPORTIONS. Its width is scaled by the
+        # same factor as its length, which is what stopped shorts stretching into
+        # trousers; a cuff sized from the arm instead would make every sleeve the
+        # same width whatever the garment.
+        g_sh = np.float32(kp["shoulder_" + side])
+        g_pit = np.float32(kp["armpit_" + side])
+        g_top = np.float32(kp[f"cuff_{side}_top"])
+        g_bot = np.float32(kp[f"cuff_{side}_bot"])
+        g_len = float(np.hypot(*((g_top + g_bot) / 2 - g_sh))) or 1.0
+        scale = reach / g_len
+        half = max(span * 0.02, float(np.hypot(*(g_bot - g_top))) * scale * 0.5)
+
+        # Four distinct corners, traced around the sleeve: shoulder seam, cuff's
+        # upper end, cuff's lower end, armpit.
+        s_src = np.float32([g_sh, g_top, g_bot, g_pit])
+        s_dst = np.float32([[x_edge, sh_y],
+                            cuff + perp * half, cuff - perp * half,
+                            [x_edge + (cx - x_edge) * 0.14, sh_y + span * 0.085]])
+        _quad_warp(garment, sil, s_src, s_dst, (h, w), out, filled)
+
+    mask = cv2.bitwise_and(filled, (slot_mask > 20).astype(np.uint8) * 255)
+    if not mask.any():
+        return None
+    cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
+    return Warped(image=out, mask=mask, coverage=round(cov, 3))

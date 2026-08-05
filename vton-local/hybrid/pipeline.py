@@ -34,7 +34,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from warp import mesh_warp, torso_warp
+from warp import mesh_warp, parts_warp, torso_warp
 
 # ─────────────────────────────── device / precision ──────────────────────────
 
@@ -89,6 +89,15 @@ WARP_STRENGTH = float(os.getenv("VTON_WARP_STRENGTH", "0.55"))
 # rather than one mesh over everything, which is the next thing to try, not a
 # tuning pass on this. VTON_MESH_WARP=1 to look at it again.
 MESH_WARP = os.getenv("VTON_MESH_WARP", "0") == "1"
+# Deformable parts — torso quad plus a quad per sleeve — is the right idea and is
+# NOT ready. Two measured attempts at warping sleeves (one mesh, one parts) both
+# damaged the TORSO, which is where prints and text live and where a demo is won:
+# stripes bunched to one edge, a chest graphic squeezed under a diagonal seam. The
+# sleeve's destination geometry is the unsolved part (where the armpit sits on the
+# body, and how the cuff's width scales), not a coefficient. Until that is derived
+# properly the plain torso quad ships, because it measured clean at 84-90% coverage
+# with prints intact. VTON_PARTS_WARP=1 to work on it.
+PARTS_WARP = os.getenv("VTON_PARTS_WARP", "0") == "1"
 SIDE_PAD = float(os.getenv("VTON_SIDE_PAD", "0.035"))
 
 # SD 1.5 was trained at 512²; 768×1024 is off-distribution for it and shows up
@@ -961,7 +970,12 @@ class HybridVTONPipeline:
                 g_bgr = np.array(garment)[:, :, ::-1]
                 sil = _flatlay_silhouette(g_bgr)
                 if sil is not None:
-                    if MESH_WARP:
+                    if PARTS_WARP:
+                        g_met = _garment_metrics(g_bgr, kind) or {}
+                        warped = parts_warp(
+                            g_bgr, sil, pose, kind, mask_full,
+                            g_met.get("sleeve_ratio"), _split)
+                    if warped is None and MESH_WARP:
                         g_met = _garment_metrics(g_bgr, kind) or {}
                         warped = mesh_warp(
                             g_bgr, sil, pose, kind, mask_full,
@@ -1082,49 +1096,91 @@ class HybridVTONPipeline:
 
     # -- base preparation ---------------------------------------------------
 
-    def bare_arms(self, avatar: Image.Image, seed: int | None = 7) -> Image.Image:
-        """Repaint the base avatar's sleeves as bare skin. Run ONCE per avatar.
+    @staticmethod
+    def leg_zones(pose: Pose) -> list[np.ndarray]:
+        """Where the base's TROUSERS have to become bare legs, one zone per leg.
 
-        THE BASE HAVING SLEEVES IS THE SINGLE BIGGEST SOURCE OF ARTEFACTS, and
-        measuring said so plainly: of seven tops rendered across the catalogue,
-        five showed the basics' grey sleeve or a coloured block at the cuff. The
-        cause is structural and no mask tuning removes it — the sampler paints the
-        sleeve where its prior ends, the mask must reach past that to cover the old
-        sleeve, and whatever is in between shows. Every fill colour tried is
-        visible there in a different way: grey read as fabric, skin read as a
-        block, the garment's own colour read as an over-long sleeve.
+        Same lesson as the sleeves, one slot down: the base wears full-length
+        trousers, so under a pair of SHORTS its grey leg shows and no mask can
+        remove it — the sampler ends the shorts where its prior ends and the mask
+        must reach past that to cover the old garment. Measured on the shorts
+        category of the test set: every render showed trouser below the hem.
 
-        With bare arms underneath there is nothing to cover, so "the model stopped
-        here" resolves to bare skin — which is what a short sleeve looks like, and
-        a tank top, and a rolled cuff. One render per avatar buys that for every
-        swap the avatar will ever appear in.
+        THE CUT IS AT 30% OF HIP→ANKLE, upper thigh. Higher and the base has no
+        shorts left, so a rendered pair of trousers has nothing to sit on at the
+        waist and the crotch becomes the sampler's invention. Lower and short
+        shorts still show trouser. It is the same trade the arms had, and the arms
+        settled at "from the joint" only because a sleeve's own seam is at the
+        joint; a leg has no such landmark, so this one is a choice to verify on
+        the GPU rather than a derivation.
 
-        PER ARM, ON ITS OWN CROP. The first attempt inpainted both arms inside the
-        full frame, which is downscaled to 512 wide before it reaches the model:
-        an arm is a thin thing, ~28k px of a 885k px frame, and it came back
-        blurred into a smear. Cropping to one arm and giving it the whole 512×768
-        raises the arm's effective resolution about fivefold for the same 20 steps.
+        FEET AND HANDS ARE CARVED OUT. Shoes are not this pass's business, and the
+        hands hang at hip height in the canonical pose — the same reason the lower
+        garment mask has to exclude them.
         """
-        avatar = _fix_exif(avatar).convert("RGB")
-        full = np.array(avatar)[:, :, ::-1].copy()
-        pose = self.reader.read(full)
-        h, w = full.shape[:2]
+        h, w = pose.h, pose.w
+        pts = pose.pts
+        ys = [q[1] for q in pts if q]
+        if not ys:
+            return []
+        span = max(1.0, max(ys) - min(ys))
+        zones: list[np.ndarray] = []
+        for ids in ((8, 9, 10), (11, 12, 13)):
+            chain = [pts[i] for i in ids if pts[i]]
+            if len(chain) < 2:
+                continue
+            total = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                        for a, b in zip(chain, chain[1:]))
+            _, rest = _split(chain, total * 0.30)
+            m = np.zeros((h, w), np.uint8)
+            for a, b in zip(rest, rest[1:]):
+                cv2.line(m, a, b, 255, max(10, round(span * 0.085)))
+            m = cv2.bitwise_and(m, pose.silhouette)
+            ankle = pts[ids[2]]
+            if ankle:      # the shoe stays; a foot is not a leg
+                cv2.circle(m, ankle, max(10, round(span * 0.05)), 0, -1)
+            for wrist_i in (4, 7):
+                wr = pts[wrist_i]
+                if wr:
+                    cv2.circle(m, wr, max(10, round(span * 0.055)), 0, -1)
+            if m.any():
+                zones.append(m)
+        return zones
+
+    def bare_legs(self, avatar: Image.Image, seed: int | None = 7) -> Image.Image:
+        """Repaint the base's trouser legs as bare skin. Run ONCE per avatar.
+
+        The legs half of `bare_arms`, and it exists for the same measured reason —
+        see `leg_zones`. Runs the identical per-zone machinery: own crop at native
+        resolution (a leg inside a downscaled full frame came back as a smear when
+        this was tried on arms), the adapter muted (it imposes garments, which is
+        the opposite of this), and up to three seeds kept against the smoothness of
+        real skin, because one arm in three came back ribbed.
+        """
+        return self._repaint(avatar, self.leg_zones, seed,
+                             "bare human legs, sleeveless, smooth natural skin, "
+                             "soft studio light, photographic",
+                             "trousers, jeans, shorts, hem, seam, fabric, cloth, "
+                             "textile, clothing, sock, shoe, tattoo, text, "
+                             "watermark, deformed")
+
+    def minimal_base(self, avatar: Image.Image, seed: int | None = 7) -> Image.Image:
+        """Arms then legs: the base covering as little as any garment we render.
+
+        Every artefact this engine has fought traces to the base covering MORE than
+        the garment replacing it — the grey cuff under a short sleeve, the trouser
+        under shorts. Two passes, ~12s once per avatar, and every later render
+        inherits it.
+        """
+        return self.bare_legs(self.bare_arms(avatar, seed), seed)
+
+    @staticmethod
+    def arm_zones(pose: Pose) -> list[np.ndarray]:
+        """Where the base's SLEEVES must become bare arms, one zone per arm."""
+        h, w = pose.h, pose.w
         ys = [q[1] for q in pose.pts if q]
         span = max(1.0, (max(ys) - min(ys)) if ys else 1.0)
-
-        skin_src = np.zeros((h, w), np.uint8)
-        for a_i, b_i in ((4, 3), (7, 6)):
-            a, b = pose.pts[a_i], pose.pts[b_i]
-            if a and b:
-                cv2.line(skin_src, a, b, 255, max(6, round(h * 0.02)))
-        skin_src = cv2.bitwise_and(skin_src, pose.silhouette)
-        col = ([int(c) for c in cv2.mean(full, mask=skin_src)[:3]]
-               if int(skin_src.sum()) else [128, 128, 128])
-
-        pipe = self.ensure_loaded()
-        control_pose = _draw_openpose(pose)
-        out = full.copy()
-
+        zones: list[np.ndarray] = []
         for ids in ((2, 3, 4), (5, 6, 7)):
             chain = [pose.pts[i] for i in ids if pose.pts[i]]
             if len(chain) < 2:
@@ -1149,8 +1205,66 @@ class HybridVTONPipeline:
             wrist = pose.pts[ids[2]]
             if wrist:      # hands stay original; diffusion mangles them
                 cv2.circle(mask, wrist, max(8, round(span * 0.045)), 0, -1)
-            if not mask.any():
-                continue
+            if mask.any():
+                zones.append(mask)
+        return zones
+
+    def bare_arms(self, avatar: Image.Image, seed: int | None = 7) -> Image.Image:
+        """Repaint the base avatar's sleeves as bare skin. Run ONCE per avatar.
+
+        THE BASE HAVING SLEEVES IS THE SINGLE BIGGEST SOURCE OF ARTEFACTS, and
+        measuring said so plainly: of seven tops rendered across the catalogue,
+        five showed the basics' grey sleeve or a coloured block at the cuff. The
+        cause is structural and no mask tuning removes it — the sampler paints the
+        sleeve where its prior ends, the mask must reach past that to cover the old
+        sleeve, and whatever is in between shows. Every fill colour tried is
+        visible there in a different way: grey read as fabric, skin read as a
+        block, the garment's own colour read as an over-long sleeve.
+
+        With bare arms underneath there is nothing to cover, so "the model stopped
+        here" resolves to bare skin — which is what a short sleeve looks like, and
+        a tank top, and a rolled cuff. One render per avatar buys that for every
+        swap the avatar will ever appear in.
+
+        PER ARM, ON ITS OWN CROP. The first attempt inpainted both arms inside the
+        full frame, which is downscaled to 512 wide before it reaches the model:
+        an arm is a thin thing, ~28k px of a 885k px frame, and it came back
+        blurred into a smear. Cropping to one arm and giving it the whole 512×768
+        raises the arm's effective resolution about fivefold for the same 20 steps.
+        """
+        return self._repaint(avatar, self.arm_zones, seed,
+                             "bare skin, sleeveless, smooth natural skin, "
+                             "soft studio light, photographic",
+                             "sleeve, short sleeve, cuff, hem, seam, fabric, "
+                             "cloth, textile, shirt, t-shirt, clothing, glove, "
+                             "tattoo, text, watermark, deformed")
+
+    def _repaint(self, avatar: Image.Image, zones_fn, seed: int | None,
+                 prompt: str, negative: str) -> Image.Image:
+        """One skin-repaint pass per zone. Shared by `bare_arms` and `bare_legs`:
+        same crop per zone at native resolution, same muted adapter, same retry
+        against real skin. Zones and wording are the only difference."""
+        avatar = _fix_exif(avatar).convert("RGB")
+        full = np.array(avatar)[:, :, ::-1].copy()
+        pose = self.reader.read(full)
+        h, w = full.shape[:2]
+        ys = [q[1] for q in pose.pts if q]
+        span = max(1.0, (max(ys) - min(ys)) if ys else 1.0)
+
+        skin_src = np.zeros((h, w), np.uint8)
+        for a_i, b_i in ((4, 3), (7, 6)):
+            a, b = pose.pts[a_i], pose.pts[b_i]
+            if a and b:
+                cv2.line(skin_src, a, b, 255, max(6, round(h * 0.02)))
+        skin_src = cv2.bitwise_and(skin_src, pose.silhouette)
+        col = ([int(c) for c in cv2.mean(full, mask=skin_src)[:3]]
+               if int(skin_src.sum()) else [128, 128, 128])
+
+        pipe = self.ensure_loaded()
+        control_pose = _draw_openpose(pose)
+        out = full.copy()
+
+        for mask in zones_fn(pose):
 
             xs_, ys_ = np.nonzero(mask)[1], np.nonzero(mask)[0]
             pad = int(span * 0.05)
@@ -1194,9 +1308,9 @@ class HybridVTONPipeline:
             pipe.set_ip_adapter_scale(0.2)
             best, best_energy = None, None
             for attempt in range(3):
-                res = self._bare_arm_pass(pipe, init, mask, control_pose, edges,
-                                          sub, cm, col,
-                                          None if seed is None else seed + attempt * 101)
+                res = self._bare_arm_pass(
+                    pipe, init, mask, control_pose, edges, sub, cm, col,
+                    None if seed is None else seed + attempt * 101, prompt, negative)
                 g = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
                 energy = float(np.abs(cv2.Laplacian(g, cv2.CV_32F))[cm > 20].mean())
                 if best_energy is None or energy < best_energy:
@@ -1215,7 +1329,7 @@ class HybridVTONPipeline:
     def _bare_arm_pass(self, pipe, init: np.ndarray, mask: np.ndarray,
                        control_pose: np.ndarray, edges: np.ndarray,
                        sub: tuple, cm: np.ndarray, col: list[int],
-                       seed: int | None) -> np.ndarray:
+                       seed: int | None, prompt: str, negative: str) -> np.ndarray:
         """One attempt at one arm, returned as a BGR crop. See `bare_arms`."""
         res = pipe(
             prompt="a bare human arm, sleeveless, smooth natural skin, "
