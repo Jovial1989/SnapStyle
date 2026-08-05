@@ -1294,6 +1294,14 @@ class HybridVTONPipeline:
                 need = int(bw / want) - bh
                 by0, by1 = max(0, by0 - need // 2), min(h - 1, by1 + need - need // 2)
 
+            init = full.copy()
+            init[mask > 20] = col
+            sub = (slice(by0, by1 + 1), slice(bx0, bx1 + 1))
+            cm = mask[sub]
+            grey = cv2.cvtColor(full, cv2.COLOR_BGR2GRAY)
+            edges = cv2.Canny(cv2.bilateralFilter(grey, 7, 60, 60), 80, 170)
+            edges[mask > 20] = 0
+
             # ERASE THE OLD GARMENT'S OUTLINE ABOVE THE ZONE TOO. Inside the zone
             # the Canny map is already wiped, but a trouser leg continues from the
             # band just ABOVE it, and ControlNet carries that edge straight into the
@@ -1302,21 +1310,12 @@ class HybridVTONPipeline:
             # returned a sleeve. The arms were fixed by starting at the joint so no
             # garment cue remained; a leg cannot be cut at the hip without leaving
             # the base naked, so the cue has to be removed instead.
-            edges = edges.copy()
             above = np.zeros_like(mask)
             ys0 = np.nonzero(mask > 20)[0]
             if ys0.size:
                 top = int(ys0.min())
                 above[max(0, top - int(span * 0.07)):top, :] = 255
                 edges[cv2.bitwise_and(above, pose.silhouette) > 0] = 0
-
-            init = full.copy()
-            init[mask > 20] = col
-            sub = (slice(by0, by1 + 1), slice(bx0, bx1 + 1))
-            cm = mask[sub]
-            grey = cv2.cvtColor(full, cv2.COLOR_BGR2GRAY)
-            edges = cv2.Canny(cv2.bilateralFilter(grey, 7, 60, 60), 80, 170)
-            edges[mask > 20] = 0
 
             # SKIN IS SMOOTH, AND THAT IS MEASURABLE. One arm in three came back
             # ribbed with periodic diagonal stripes — a plain diffusion artefact,
