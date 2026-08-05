@@ -163,7 +163,13 @@ def render(job: dict) -> str:
             current, garment,
             kind=kind,
             prompt_hint=st.get("hint", "the garment in the reference image"),
-            seed=st.get("seed"),
+            # DETERMINISTIC BY DEFAULT. The app sends no seed, so every tap was a
+            # lottery — and the diag lines exposed it: the verified-clean renders
+            # were all seed=7 while the phone's waist ridge came from random seeds
+            # landing badly in the 90px hem/waistband overlap. Same outfit must
+            # give the same picture: it makes quality reproducible, bugs
+            # re-renderable, and the cache honest. A caller can still pass its own.
+            seed=st.get("seed", 7),
             ip_scale=st.get("ip_scale"),
         )
         print(f"  step {i + 1}/{len(steps)} {kind}", flush=True)
