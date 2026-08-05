@@ -579,8 +579,9 @@ class LooktokApi {
           // halo fix was verified on a fresh render while the phone kept serving a
           // pre-fix image from cache, which reads exactly like "it did not work".
           // v16: render from the clean base, never chained. v17: garment-colour
-          // fallback bounded by the silhouette.
-          'fix:v17', base64Image, instruction,
+          // fallback bounded by the silhouette. v18: wrist protection keeps skin,
+          // not a disc of the old trousers.
+          'fix:v18', base64Image, instruction,
           targetZones.join(','), lockedZones.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,
@@ -656,7 +657,7 @@ class LooktokApi {
           // personPath REPLACES base64Image when the source is already in
           // Storage, so it has to be in the key — otherwise a chained swap and a
           // pixel-carrying one would collide on the same fingerprint.
-          'fix:v17', personPath ?? base64Image, instr,
+          'fix:v18', personPath ?? base64Image, instr,
           tz.join(','), lz.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,
