@@ -79,7 +79,9 @@ Deno.serve(async (req) => {
     // must see the real outfit, not the mannequin basics.
     const keepsPhotoGarments = (meta.kept_from_photo ?? []).length > 0;
     const sources = [
-      ...(keepsPhotoGarments ? [] : [`${photoPath}.avatar.png`]),
+      // `.bare.png` first — see the note in fix-render: a base with sleeves
+      // leaves its own cuff showing under a shorter one.
+      ...(keepsPhotoGarments ? [] : [`${photoPath}.bare.png`, `${photoPath}.avatar.png`]),
       `${photoPath}.clean.png`,
     ];
     let person;
@@ -155,7 +157,9 @@ Deno.serve(async (req) => {
           // neutral base; the raw photo would leave the old outfit showing.
           // Skipped when the look deliberately keeps garments from the photo.
           let personUrl: string | null = null;
-          for (const cand of keepsPhotoGarments ? [photoPath] : [`${photoPath}.avatar.png`, photoPath]) {
+          for (const cand of keepsPhotoGarments
+            ? [photoPath]
+            : [`${photoPath}.bare.png`, `${photoPath}.avatar.png`, photoPath]) {
             try {
               const { data: t } = await db.storage.from(IN_BUCKET)
                 .createSignedUrl(cand, 900, { transform: { width: 768, quality: 85 } });

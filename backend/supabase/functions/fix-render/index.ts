@@ -183,10 +183,19 @@ Deno.serve(async (req) => {
             const { data: sp } = await db.from("style_profiles")
               .select("source_photo_path").eq("user_id", row.user_id).maybeSingle();
             const src = sp?.source_photo_path as string | undefined;
+            // PREFER THE BARE-ARM BASE. The engine's masks must reach past the
+            // base garment to cover it, and the sampler ends a sleeve where its
+            // prior ends — so on the sleeved avatar the gap between the two came
+            // back as the basics' grey cuff, measured on five of seven catalogue
+            // tops. The `.bare.png` sibling has nothing to cover, so a short
+            // sleeve resolves to a bare arm. Falls back to `.avatar.png` for any
+            // avatar that predates it.
             if (src) {
-              const { data: t } = await db.storage.from("body-photos")
-                .createSignedUrl(`${src}.avatar.png`, 900, { transform: { width: 768, quality: 85 } });
-              if (t?.signedUrl) avatarPath = t.signedUrl;
+              for (const cand of [`${src}.bare.png`, `${src}.avatar.png`]) {
+                const { data: t } = await db.storage.from("body-photos")
+                  .createSignedUrl(cand, 900, { transform: { width: 768, quality: 85 } });
+                if (t?.signedUrl) { avatarPath = t.signedUrl; break; }
+              }
             }
           } catch (_) {/* no avatar → use the client's pixels */}
         }
