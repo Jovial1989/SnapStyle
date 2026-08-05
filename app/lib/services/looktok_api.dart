@@ -573,7 +573,14 @@ class LooktokApi {
     // re-tapping a seen swap paints instantly, even offline).
     final key = sha256
         .convert(utf8.encode([
-          'fix:v16', base64Image, instruction, // v11: QA full-body restore + bg hygiene
+          // BUMP THIS ON EVERY RENDER-PIPELINE CHANGE. The key covers the inputs,
+          // not the engine, so a fix that changes the OUTPUT for identical inputs
+          // leaves every stored render valid and stale — measured the hard way: the
+          // halo fix was verified on a fresh render while the phone kept serving a
+          // pre-fix image from cache, which reads exactly like "it did not work".
+          // v16: render from the clean base, never chained. v17: garment-colour
+          // fallback bounded by the silhouette.
+          'fix:v17', base64Image, instruction,
           targetZones.join(','), lockedZones.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,
@@ -649,7 +656,7 @@ class LooktokApi {
           // personPath REPLACES base64Image when the source is already in
           // Storage, so it has to be in the key — otherwise a chained swap and a
           // pixel-carrying one would collide on the same fingerprint.
-          'fix:v16', personPath ?? base64Image, instr,
+          'fix:v17', personPath ?? base64Image, instr,
           tz.join(','), lz.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,
