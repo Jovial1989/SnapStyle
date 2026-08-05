@@ -419,7 +419,8 @@ def _arm_zone(p: Pose, kind: str, from_frac: float = 0.25) -> np.ndarray:
 
 
 def _garment_mask(p: Pose, kind: str,
-                  garment: np.ndarray | None = None) -> np.ndarray:
+                  garment: np.ndarray | None = None,
+                  person: np.ndarray | None = None) -> np.ndarray:
     """AGNOSTIC mask — the region to repaint, not a trace of the current
     clothes.
 
@@ -683,7 +684,26 @@ def _garment_mask(p: Pose, kind: str,
         if wr:
             cv2.circle(mask, wr, max(10, round(span * 0.055)), 0, -1)
         if kind in ("lower", "shoes") and wr and el:
-            cv2.line(mask, el, wr, 0, max(12, round(span * 0.065)))
+            # BY SKIN COLOUR, NOT BY A FAT LINE. A corridor wide enough to hold
+            # the forearm is much wider than the forearm, and everything else it
+            # protected showed the BASE's grey trousers through the new denim —
+            # white mittens around both hands, reported from the phone. The arm is
+            # the skin-coloured part of that corridor, and the base image says
+            # exactly which pixels those are.
+            corridor = np.zeros((h, w), np.uint8)
+            cv2.line(corridor, el, wr, 255, max(12, round(span * 0.075)))
+            if person is not None:
+                sample = np.zeros((h, w), np.uint8)
+                cv2.line(sample, el, wr, 255, max(4, round(span * 0.012)))
+                sample = cv2.bitwise_and(sample, p.silhouette)
+                if int(sample.sum()):
+                    skin = np.array(cv2.mean(person, mask=sample)[:3], np.float32)
+                    near = (np.abs(person.astype(np.float32) - skin).max(axis=2) < 46)
+                    grow = max(3, round(span * 0.006)) | 1
+                    corridor = cv2.bitwise_and(corridor, cv2.dilate(
+                        (near.astype(np.uint8) * 255),
+                        np.ones((grow, grow), np.uint8), iterations=1))
+            mask[corridor > 0] = 0
 
     mask = cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
     if reachable is not None:
@@ -840,7 +860,7 @@ class HybridVTONPipeline:
         pose = self.reader.read(full)
         # The flat-lay goes in as well: the mask is trimmed to THIS garment's cut
         # (hem, sleeve, width) rather than the whole slot band.
-        mask_full = _garment_mask(pose, kind, np.array(garment)[:, :, ::-1])
+        mask_full = _garment_mask(pose, kind, np.array(garment)[:, :, ::-1], full)
 
         # B — conditioning, then everything down to the model's working size.
         control_pose = _draw_openpose(pose)
@@ -1164,7 +1184,7 @@ class HybridVTONPipeline:
         full = np.array(avatar)[:, :, ::-1].copy()
         pose = self.reader.read(full)
         g = np.array(_fix_exif(garment).convert("RGB"))[:, :, ::-1] if garment else None
-        mask = _garment_mask(pose, kind, g)
+        mask = _garment_mask(pose, kind, g, full)
         vis = full.copy()
         vis[mask > 20] = (vis[mask > 20] * 0.45 + np.array([0, 0, 200]) * 0.55)
         vis = cv2.addWeighted(vis, 1.0, _draw_openpose(pose)[:, :, ::-1], 0.9, 0)
