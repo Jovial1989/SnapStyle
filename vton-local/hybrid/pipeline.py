@@ -1015,13 +1015,21 @@ class HybridVTONPipeline:
                 continue
             total = sum(math.hypot(b[0] - a[0], b[1] - a[1])
                         for a, b in zip(chain, chain[1:]))
-            # From just below the shoulder cap: the seam there is the garment's,
-            # not the arm's, and repainting it would eat into the torso.
-            _, rest = _split(chain, total * 0.18)
+            # FROM THE SHOULDER JOINT, not from partway down. Starting at 18% of
+            # the upper arm left the top of the sleeve unmasked, and its hem
+            # visible in the Canny map — the model read both as "a sleeve
+            # continues here" and painted one, slightly longer than the original.
+            # The torso is protected by subtracting the column between the
+            # shoulders instead, which keeps the chest out of the zone without
+            # leaving the cue in.
             mask = np.zeros((h, w), np.uint8)
-            for a, b in zip(rest, rest[1:]):
+            for a, b in zip(chain, chain[1:]):
                 cv2.line(mask, a, b, 255, max(8, round(span * 0.075)))
             mask = cv2.bitwise_and(mask, pose.silhouette)
+            ls, rs = pose.pts[5], pose.pts[2]
+            if ls and rs:
+                inner = max(6, round(span * 0.02))
+                mask[:, min(ls[0], rs[0]) + inner:max(ls[0], rs[0]) - inner] = 0
             wrist = pose.pts[ids[2]]
             if wrist:      # hands stay original; diffusion mangles them
                 cv2.circle(mask, wrist, max(8, round(span * 0.045)), 0, -1)
@@ -1050,11 +1058,17 @@ class HybridVTONPipeline:
             edges = cv2.Canny(cv2.bilateralFilter(grey, 7, 60, 60), 80, 170)
             edges[mask > 20] = 0
 
+            # THE ADAPTER IS NOT WANTED HERE. It exists to impose a garment, and
+            # this pass is the opposite of that; a flat skin swatch through it
+            # only adds a colour the fill already carries. Turned down for the
+            # pass and restored after, so a queued render is unaffected.
+            pipe.set_ip_adapter_scale(0.2)
             res = pipe(
                 prompt="a bare human arm, sleeveless, smooth natural skin, "
                        "soft studio light, photographic",
-                negative_prompt="sleeve, cuff, fabric, clothing, glove, tattoo, "
-                                "text, watermark, deformed",
+                negative_prompt="sleeve, short sleeve, cuff, hem, seam, fabric, "
+                                "cloth, textile, shirt, t-shirt, clothing, glove, "
+                                "tattoo, text, watermark, deformed",
                 image=_to_pil(init[sub][:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS),
                 mask_image=Image.fromarray(cm).resize((WORK_W, WORK_H), Image.LANCZOS),
                 control_image=[
@@ -1069,6 +1083,7 @@ class HybridVTONPipeline:
                 generator=(torch.Generator(device="cpu").manual_seed(seed)
                            if seed is not None else None),
             ).images[0]
+            pipe.set_ip_adapter_scale(float(os.getenv("VTON_IP_SCALE", "0.75")))
             _drain()
 
             gen = cv2.resize(np.array(res)[:, :, ::-1], (cm.shape[1], cm.shape[0]),
