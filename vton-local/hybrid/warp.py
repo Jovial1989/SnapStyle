@@ -131,8 +131,17 @@ def torso_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
         half_top = abs(lh[0] - rh[0]) * 0.78
         cx_top = (lh[0] + rh[0]) / 2.0
         y_top = min(lh[1], rh[1]) - span * 0.02
+        # KEEP THE PANEL'S OWN ASPECT, then clamp at the ankle. Anchoring the
+        # bottom to the ankle stretched SHORTS into trousers — found immediately
+        # on a test set with a shorts category, which the catalogue did not have.
+        # Scaling the height by the same factor as the width needs no extra
+        # measurement and separates the two cases for free: shorts stop at the
+        # thigh, trousers reach the ankle and are clamped there.
         ankles = [pts[i][1] for i in (10, 13) if pts[i]]
-        y_bot = (max(ankles) + span * 0.02) if ankles else y_top + span * 0.45
+        aspect = (gy1 - gy0) / max(1.0, gx1 - gx0)
+        y_natural = y_top + aspect * (2.0 * half_top)
+        y_bot = min(y_natural, (max(ankles) + span * 0.02) if ankles
+                    else y_top + span * 0.45)
         # Legs stand apart, so the bottom of the quad is as wide as the figure is
         # down there — read it off the matte rather than assuming a taper.
         band = pose.silhouette[int(max(0, y_bot - span * 0.05)):int(y_bot) + 1]
