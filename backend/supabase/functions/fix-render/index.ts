@@ -152,6 +152,10 @@ Deno.serve(async (req) => {
   /// the best frame we have; the user's "Not right?" button is the honest
   /// escalation path, not another silent minute.
   const BUDGET = 3;
+  /// The engine being ASLEEP is not a render failure and must not be dressed up as
+  /// one. Its own error type so the hosted fallback can distinguish "the pod is
+  /// off" from "the render broke" — see the throw site below.
+  class EngineOffline extends Error {}
   let renders = 0;
 
   /// DETERMINISTIC FRAMING GATE: model-QA kept missing cut-off feet, but a
@@ -238,7 +242,20 @@ Deno.serve(async (req) => {
         console.log("[fix-render] hybrid:", steps.length, "steps");
         return img;
       } catch (e) {
-        console.error("[fix-render] hybrid failed, using hosted:", (e as Error).message);
+        const why = (e as Error).message;
+        console.error("[fix-render] hybrid failed:", why);
+        // DO NOT FALL THROUGH TO THE HOSTED PROVIDER WHEN THE ENGINE IS SIMPLY
+        // ASLEEP. The GPU pod is started per session, so "no worker" is a normal
+        // state — and falling back put "gemini-image 400: API key not valid" on the
+        // user's screen twice in one evening. That message is worse than useless: it
+        // names a provider we deliberately turned off, for a request that never
+        // reached one, and it reads as a broken app rather than an engine that needs
+        // a minute. A hosted fallback is still right for a genuine render failure,
+        // which is why only the asleep case rethrows.
+        // Marked, not returned: this runs inside a function that owes the caller
+        // an image, so the signal travels as a typed throw and the handler below
+        // turns it into a 503.
+        if (/asleep|no worker/i.test(why)) throw new EngineOffline(why);
       } finally {
         unstage(db, staged);
       }
@@ -474,7 +491,21 @@ Deno.serve(async (req) => {
     return json({ ok: true });
   } catch (err) {
     console.error("[fix-render]", render_id, (err as Error).message);
-    await touch({ status: "failed", error: (err as Error).message.slice(0, 300) });
-    return json({ ok: false });
+    // AN OFFLINE ENGINE GETS ITS OWN MESSAGE. The pod is started per session, so
+    // this is a normal state, and the client should say so rather than surface the
+    // last provider that happened to be tried: twice this evening the screen read
+    // "gemini-image 400: API key not valid" — a provider we deliberately turned
+    // off, for a request that never reached one. That reads as a broken app instead
+    // of an engine that needs a minute, and at a demo it would be the worst
+    // possible sentence on screen.
+    const offline = err instanceof EngineOffline;
+    await touch({
+      status: "failed",
+      error: offline
+        ? "engine_offline: the render engine is not running"
+        : (err as Error).message.slice(0, 300),
+    });
+    return json({ ok: false, error: offline ? "engine_offline" : "render_failed" },
+                offline ? 503 : 200);
   }
 });
