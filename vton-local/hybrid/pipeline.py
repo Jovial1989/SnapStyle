@@ -34,6 +34,8 @@ import numpy as np
 import torch
 from PIL import Image
 
+from warp import torso_warp
+
 # ─────────────────────────────── device / precision ──────────────────────────
 
 DEVICE = (
@@ -72,6 +74,13 @@ XFORMERS = os.getenv("VTON_XFORMERS", "1") == "1" and torch.cuda.is_available()
 #              shows along the sides; too large and the mask sits off the body,
 #              where the halo used to be painted.
 COLLAR_UP = float(os.getenv("VTON_COLLAR_UP", "0.045"))
+# WARP THE GARMENT ONTO THE BODY BEFORE DENOISING. See warp.py: the adapter only
+# ever carried a description, so prints came back as blobs and cut never arrived.
+# With the panel warped into the init image, denoising REFINES a photograph of the
+# garment instead of inventing one — hence the much lower strength. 1.0 is the old
+# behaviour and the rollback.
+WARP = os.getenv("VTON_WARP", "1") == "1"
+WARP_STRENGTH = float(os.getenv("VTON_WARP_STRENGTH", "0.55"))
 SIDE_PAD = float(os.getenv("VTON_SIDE_PAD", "0.035"))
 
 # SD 1.5 was trained at 512²; 768×1024 is off-distribution for it and shows up
@@ -934,6 +943,38 @@ class HybridVTONPipeline:
             if int(skin.sum()) > 0:
                 fill_img[arm > 0] = [int(c) for c in cv2.mean(full, mask=skin)[:3]]
         init[mask_full > 20] = fill_img[mask_full > 20]
+
+        # …and then the garment's real pixels over that, where the geometry works.
+        # The flat fill stays everywhere the warp does not reach — sleeves, the
+        # collar — so the sampler still has a neutral start there.
+        warped = None
+        if WARP:
+            try:
+                g_bgr = np.array(garment)[:, :, ::-1]
+                sil = _flatlay_silhouette(g_bgr)
+                if sil is not None:
+                    warped = torso_warp(g_bgr, sil, pose, kind, mask_full)
+            except Exception as e:  # noqa: BLE001 — a failed warp must not fail a render
+                print(f"[warp] skipped: {type(e).__name__}: {e}", flush=True)
+                warped = None
+            # A warp that covers almost none of the slot did not work out; falling
+            # back to plain inpainting beats compositing a sliver.
+            if warped is not None and warped.coverage < 0.35:
+                warped = None
+        if warped is not None:
+            wm = (cv2.GaussianBlur(warped.mask, (9, 9), 0).astype(np.float32) / 255.0)
+            init = np.clip(warped.image * wm[:, :, None] +
+                           init * (1.0 - wm[:, :, None]), 0, 255).astype(np.uint8)
+            # GIVE CONTROLNET THE GARMENT'S OWN EDGES BACK. The Canny map is wiped
+            # inside the mask because the edges there describe the OLD clothes —
+            # true when the zone held nothing but a flat fill. Now it holds the
+            # actual garment, and its seams, hem and print boundaries are exactly
+            # the structure we want denoising to keep rather than smooth away.
+            w_edges = cv2.Canny(cv2.bilateralFilter(
+                cv2.cvtColor(init, cv2.COLOR_BGR2GRAY), 7, 60, 60), 80, 170)
+            w_edges[warped.mask == 0] = 0
+            control_canny = cv2.cvtColor(cv2.bitwise_or(edges, w_edges),
+                                         cv2.COLOR_GRAY2RGB)
         init_s = _to_pil(init[:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS)
         mask_s = Image.fromarray(mask_full).resize((WORK_W, WORK_H), Image.LANCZOS)
         pose_s = _to_pil(control_pose).resize((WORK_W, WORK_H), Image.LANCZOS)
@@ -954,7 +995,8 @@ class HybridVTONPipeline:
                 ip_adapter_image=garment,
                 num_inference_steps=steps or STEPS,
                 guidance_scale=float(os.getenv("VTON_CFG", "6.5")),
-                strength=float(os.getenv("VTON_STRENGTH", "0.99")),
+                strength=(WARP_STRENGTH if warped is not None
+                          else float(os.getenv("VTON_STRENGTH", "0.99"))),
                 controlnet_conditioning_scale=[0.9, 0.45],
                 generator=gen,
             ).images[0]
