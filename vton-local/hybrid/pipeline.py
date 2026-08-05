@@ -1103,7 +1103,15 @@ class HybridVTONPipeline:
         # of denim and the base's grey hem — the grey band reported from the
         # phone. The fill is the new garment's own colour, so an unpainted patch
         # in the core reads as a plain piece of that garment instead.
-        core = np.clip((m - 0.85) / 0.15, 0.0, 1.0)[:, :, None]
+        # …AND NEVER OUTSIDE THE BODY. The mask is allowed a few pixels past the
+        # silhouette so a garment can drape wider than the flesh — measured at 5 px
+        # median, 11 px max — but the fallback there must be the PHOTOGRAPH, not the
+        # garment's colour. Filling it with denim drew a saturated blue rim around
+        # the hips and bulges in the gaps beside the arms, which on a white
+        # background reads as the figure bleeding. This is the halo that was chased
+        # all day at the mask level: the mask was right, the fallback was not.
+        core = np.clip((m - 0.85) / 0.15, 0.0, 1.0)
+        core = (core * (pose.silhouette > 0))[:, :, None]
         fallback = base * (1.0 - core) + fill_img.astype(np.float32) * core
         blended = gen_full * alpha + fallback * (1.0 - alpha)
         return Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
