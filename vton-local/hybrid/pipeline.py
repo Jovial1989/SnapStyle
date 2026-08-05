@@ -71,7 +71,7 @@ XFORMERS = os.getenv("VTON_XFORMERS", "1") == "1" and torch.cuda.is_available()
 #   SIDE_PAD   drape allowance on each flank. Too small and the base garment
 #              shows along the sides; too large and the mask sits off the body,
 #              where the halo used to be painted.
-COLLAR_UP = float(os.getenv("VTON_COLLAR_UP", "0.03"))
+COLLAR_UP = float(os.getenv("VTON_COLLAR_UP", "0.045"))
 SIDE_PAD = float(os.getenv("VTON_SIDE_PAD", "0.035"))
 
 # SD 1.5 was trained at 512²; 768×1024 is off-distribution for it and shows up
@@ -499,7 +499,12 @@ def _garment_mask(p: Pose, kind: str,
         foot_bottom = int(rows[-1]) if rows.size else bot_body
         # Start above the ankle so a boot shaft has room to exist; a mask that
         # begins at the ankle can only ever produce a low-top.
-        y0 = ankle - span * 0.075
+        # 0.03, not 0.075. The taller zone existed so a boot shaft could grow into
+        # it, but with a low shoe as the reference the sampler filled the whole
+        # band anyway — from the phone, a brogue came back as a brown mass up the
+        # calf. A boot now renders clipped, which is a wrong hem; the alternative
+        # was a wrong leg on every ordinary shoe.
+        y0 = ankle - span * 0.03
         y1 = min(h - 1, foot_bottom + span * 0.015)
         ax = [pts[i][0] for i in (10, 13) if pts[i]]
         if ax:
@@ -664,11 +669,21 @@ def _garment_mask(p: Pose, kind: str,
     # Tuning the percentage would be guesswork against a kernel size; carving the
     # hands out at the end is deterministic. Hands are what diffusion mangles most
     # visibly, and no sleeve is worth six fingers.
-    if kind in ("upper", "full"):
-        for wrist_i in (4, 7):
-            wr = pts[wrist_i]
-            if wr:
-                cv2.circle(mask, wr, max(8, round(span * 0.045)), 0, -1)
+    # HANDS AND FOREARMS OUT, FOR EVERY SLOT. Reported from the phone: swapping
+    # trousers painted dark denim blocks over both forearms and hands, and the
+    # shoes pass added a brown one. The hands hang AT HIP HEIGHT in the canonical
+    # pose — thumbs in the pockets — so the lower band covers them, and widening
+    # that band to the figure's true extent (needed so the far ankle is not
+    # clipped) made it worse. Nothing below the waist is ever in front of a hand:
+    # trousers and shoes go BEHIND the arm, so the arm is not theirs to repaint.
+    # 'upper' and 'full' keep the measured sleeve instead, which may legitimately
+    # cover the forearm.
+    for wrist_i, elbow_i in ((4, 3), (7, 6)):
+        wr, el = pts[wrist_i], pts[elbow_i]
+        if wr:
+            cv2.circle(mask, wr, max(10, round(span * 0.055)), 0, -1)
+        if kind in ("lower", "shoes") and wr and el:
+            cv2.line(mask, el, wr, 0, max(12, round(span * 0.065)))
 
     mask = cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
     if reachable is not None:
