@@ -22,7 +22,15 @@ safetensors>=0.4
 hf_transfer>=0.1.6
 
 # Same pin as the Mac list: the legacy `solutions` API (Pose + segmentation in
-# one model) is gone in mediapipe 1.0 and already in 0.10.35.
+# one model) is gone in mediapipe 1.0 and already in 0.10.35. FaceMesh, which
+# faceswap.py uses for identity transfer, is in the same legacy family and under
+# the same pin — so face swap adds NO dependency and NO weight to this image.
+#
+# That is deliberate. The obvious library for a face swap is insightface: MIT
+# code, but model packs (buffalo_l et al.) and the inswapper_128 swapper are
+# research/non-commercial only, and inswapper was withdrawn from distribution.
+# Same for IP-Adapter-FaceID, whose embeddings come from those recognisers. None
+# of it can ship in a commercial product, so none of it is here.
 mediapipe==0.10.21
 protobuf>=4.25,<5
 

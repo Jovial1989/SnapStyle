@@ -45,4 +45,25 @@ for repo, allow in REPOS[BASE]:
         allow_patterns=allow,
         ignore_patterns=None if allow else SKIP,
     )
+# MEDIAPIPE LAZILY DOWNLOADS ITS SOLUTION WEIGHTS. Observed on a clean venv:
+# constructing Pose printed "Downloading model to .../pose_landmark_heavy.tflite".
+# That download would otherwise land on the first paying request of a fresh pod,
+# in the same place the diffusion weights were moved out of. Constructing each
+# solution once here forces the fetch at build time. Both are Apache-2.0, code
+# and weights, which is also why the face swap needs nothing else prefetched.
+print("[prefetch] mediapipe solutions", flush=True)
+try:
+    import mediapipe as mp
+    import numpy as np
+
+    blank = np.zeros((256, 256, 3), np.uint8)
+    with mp.solutions.pose.Pose(static_image_mode=True, model_complexity=2,
+                                enable_segmentation=True) as pose:
+        pose.process(blank)
+    with mp.solutions.face_mesh.FaceMesh(static_image_mode=True,
+                                         refine_landmarks=True) as mesh:
+        mesh.process(blank)
+except Exception as e:  # noqa: BLE001 — a warm cache is an optimisation, not a gate
+    print(f"[prefetch] mediapipe warm-up skipped: {type(e).__name__}: {e}", flush=True)
+
 print(f"[prefetch] done for VTON_BASE={BASE}")
