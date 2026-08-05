@@ -379,6 +379,32 @@ def _garment_metrics(garment: np.ndarray, kind: str) -> dict | None:
     return out
 
 
+def _arm_zone(p: Pose, kind: str, from_frac: float = 0.25) -> np.ndarray:
+    """The arm below the shoulder cap — where a sleeve may or may not reach.
+
+    Used to answer "what belongs here if the garment does not cover it" per
+    region rather than per render: on the torso the answer is the garment, on the
+    arm it is skin. One flat fill cannot say both, and getting it wrong shows —
+    see the note in `generate`.
+    """
+    zone = np.zeros((p.h, p.w), np.uint8)
+    if kind not in ("upper", "full"):
+        return zone
+    ys = [q[1] for q in p.pts if q]
+    span = max(1.0, max(ys) - min(ys)) if ys else 1.0
+    thick = max(6, round(span * 0.075))
+    for ids in ((2, 3, 4), (5, 6, 7)):
+        chain = [p.pts[i] for i in ids if p.pts[i]]
+        if len(chain) < 2:
+            continue
+        total = sum(math.hypot(b[0] - a[0], b[1] - a[1])
+                    for a, b in zip(chain, chain[1:]))
+        _, rest = _split(chain, total * from_frac)
+        for a, b in zip(rest, rest[1:]):
+            cv2.line(zone, a, b, 255, thick)
+    return zone
+
+
 def _garment_mask(p: Pose, kind: str,
                   garment: np.ndarray | None = None) -> np.ndarray:
     """AGNOSTIC mask — the region to repaint, not a trace of the current
@@ -837,7 +863,29 @@ class HybridVTONPipeline:
                                     np.uint8)
             except Exception:  # noqa: BLE001 — a fill is never worth a failed render
                 pass
-        init[mask_full > 20] = fill
+        # TWO-TONE, because the question the fill answers has two answers. On the
+        # torso the garment certainly covers the pixel, so the garment's colour is
+        # right. On the ARM it may not: a short sleeve leaves skin, and the model
+        # stops where its prior stops regardless of how far the mask reaches.
+        # Measured on a navy V-neck: the sampler painted the sleeve shorter than
+        # the mask, the composite correctly declined to paint the remainder, and
+        # what showed through was the BASICS' GREY SLEEVE — a light block at each
+        # cuff. Filling the arm with skin makes that same declined region read as
+        # a bare arm, which is what a short sleeve actually looks like.
+        fill_img = np.empty_like(full)
+        fill_img[:] = fill
+        arm = _arm_zone(pose, kind)
+        if arm.any():
+            skin = np.zeros(mask_full.shape, np.uint8)
+            for wrist_i, elbow_i in ((4, 3), (7, 6)):
+                a, b = pose.pts[wrist_i], pose.pts[elbow_i]
+                if a and b:
+                    cv2.line(skin, a, b, 255, max(6, round(full.shape[0] * 0.02)))
+            skin = cv2.bitwise_and(skin, pose.silhouette)
+            skin[mask_full > 20] = 0      # sample only pixels we are NOT repainting
+            if int(skin.sum()) > 0:
+                fill_img[arm > 0] = [int(c) for c in cv2.mean(full, mask=skin)[:3]]
+        init[mask_full > 20] = fill_img[mask_full > 20]
         init_s = _to_pil(init[:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS)
         mask_s = Image.fromarray(mask_full).resize((WORK_W, WORK_H), Image.LANCZOS)
         pose_s = _to_pil(control_pose).resize((WORK_W, WORK_H), Image.LANCZOS)
@@ -890,7 +938,7 @@ class HybridVTONPipeline:
         # Close to the fill → it had nothing there → keep the original. This is
         # arithmetic on the same footing as the identity guarantee, not a prompt
         # we hope lands.
-        drew = np.abs(gen_full - fill.astype(np.float32)).max(axis=2)
+        drew = np.abs(gen_full - fill_img.astype(np.float32)).max(axis=2)
         # 26/255: above sampling noise and JPEG ringing, well below any real
         # garment/skin boundary. Blurred so the kept and repainted regions meet
         # in a gradient rather than a cut-out edge.
