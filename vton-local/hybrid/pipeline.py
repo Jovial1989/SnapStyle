@@ -595,7 +595,15 @@ def _garment_mask(p: Pose, kind: str,
         # a band sized from the HIP width clipped 13 px of the far ankle, and the
         # foot came back as a white blob beside the shoe. Widen to whatever the
         # figure actually occupies inside these rows.
-        band = p.silhouette[max(0, int(y0)):int(y1) + 1]
+        occ_src = p.silhouette.copy()
+        if kind in ("lower", "shoes"):
+            # Columns owned by the hanging arms must not widen the band — at hip
+            # rows the figure's extremes ARE the arms.
+            for ids in ((2, 3, 4), (5, 6, 7)):
+                ch = [pts[i] for i in ids if pts[i]]
+                for a, b in zip(ch, ch[1:]):
+                    cv2.line(occ_src, a, b, 0, max(12, round(span * 0.085)))
+        band = occ_src[max(0, int(y0)):int(y1) + 1]
         occupied = np.flatnonzero(band.any(axis=0)) if band.size else np.array([])
         if occupied.size:
             x0 = min(x0, max(0, int(occupied[0] - pad)))
@@ -705,55 +713,50 @@ def _garment_mask(p: Pose, kind: str,
     # trousers and shoes go BEHIND the arm, so the arm is not theirs to repaint.
     # 'upper' and 'full' keep the measured sleeve instead, which may legitimately
     # cover the forearm.
-    # THE HAND, NOT A DISC AROUND IT. A plain circle at the wrist protects the
-    # ORIGINAL pixels wholesale, and around a hand in a pocket those pixels are the
-    # OLD TROUSERS — so against new denim the protected disc read as a pale mitten,
-    # reported from the phone three times. Same medicine as the forearm: keep the
-    # skin-coloured part of the disc and let the garment have the rest.
-    skin_ref = None
-    if person is not None:
-        probe = np.zeros((h, w), np.uint8)
-        for a_i, b_i in ((4, 3), (7, 6)):
-            a, b = pts[a_i], pts[b_i]
-            if a and b:
-                cv2.line(probe, a, b, 255, max(4, round(span * 0.012)))
-        probe = cv2.bitwise_and(probe, p.silhouette)
-        if int(probe.sum()):
-            skin_ref = np.array(cv2.mean(person, mask=probe)[:3], np.float32)
-
-    for wrist_i, elbow_i in ((4, 3), (7, 6)):
-        wr, el = pts[wrist_i], pts[elbow_i]
-        if wr:
-            r = max(10, round(span * 0.055))
+    # ARMS ARE NEVER THE LOWER SLOT'S TO PAINT. Trousers and shoes cannot touch
+    # an arm on any body, so for those slots the whole arm — shoulder to wrist
+    # plus a hand disc — is shielded GEOMETRICALLY, no skin test. The skin test
+    # existed for the pockets pose, where the pixels around a hand are the old
+    # trousers; but on a FREE-ARMS base it let denim onto the arms whenever the
+    # match misfired, and the free-arms base is what the demo account uses.
+    # Measured there: at hip rows the figure's occupied columns ARE the hanging
+    # arms, so the band widened to them and denim slabbed across the arm-hip
+    # gap. A pockets-pose base keeps a patch of its old trousers around the
+    # fist — the known lesser evil; the real cure for that pose is the minimal
+    # base. The upper slot keeps the skin-tested hand disc: a sleeve may
+    # legitimately cover any part of the arm, so only the hand is carved there.
+    if kind in ("lower", "shoes"):
+        shield = np.zeros((h, w), np.uint8)
+        for ids in ((2, 3, 4), (5, 6, 7)):
+            chain = [pts[i] for i in ids if pts[i]]
+            for a, b in zip(chain, chain[1:]):
+                cv2.line(shield, a, b, 255, max(12, round(span * 0.085)))
+            if pts[ids[2]]:
+                cv2.circle(shield, pts[ids[2]], max(12, round(span * 0.07)), 255, -1)
+        mask[shield > 0] = 0
+    else:
+        skin_ref = None
+        if person is not None:
+            probe = np.zeros((h, w), np.uint8)
+            for a_i, b_i in ((4, 3), (7, 6)):
+                a, b = pts[a_i], pts[b_i]
+                if a and b:
+                    cv2.line(probe, a, b, 255, max(4, round(span * 0.012)))
+            probe = cv2.bitwise_and(probe, p.silhouette)
+            if int(probe.sum()):
+                skin_ref = np.array(cv2.mean(person, mask=probe)[:3], np.float32)
+        for wrist_i in (4, 7):
+            wr = pts[wrist_i]
+            if not wr:
+                continue
             disc = np.zeros((h, w), np.uint8)
-            cv2.circle(disc, wr, r, 255, -1)
+            cv2.circle(disc, wr, max(10, round(span * 0.055)), 255, -1)
             if skin_ref is not None:
                 near = (np.abs(person.astype(np.float32) - skin_ref).max(axis=2) < 46)
                 grow = max(3, round(span * 0.006)) | 1
                 disc = cv2.bitwise_and(disc, cv2.dilate(
                     (near.astype(np.uint8) * 255), np.ones((grow, grow), np.uint8)))
             mask[disc > 0] = 0
-        if kind in ("lower", "shoes") and wr and el:
-            # BY SKIN COLOUR, NOT BY A FAT LINE. A corridor wide enough to hold
-            # the forearm is much wider than the forearm, and everything else it
-            # protected showed the BASE's grey trousers through the new denim —
-            # white mittens around both hands, reported from the phone. The arm is
-            # the skin-coloured part of that corridor, and the base image says
-            # exactly which pixels those are.
-            corridor = np.zeros((h, w), np.uint8)
-            cv2.line(corridor, el, wr, 255, max(12, round(span * 0.075)))
-            if person is not None:
-                sample = np.zeros((h, w), np.uint8)
-                cv2.line(sample, el, wr, 255, max(4, round(span * 0.012)))
-                sample = cv2.bitwise_and(sample, p.silhouette)
-                if int(sample.sum()):
-                    skin = np.array(cv2.mean(person, mask=sample)[:3], np.float32)
-                    near = (np.abs(person.astype(np.float32) - skin).max(axis=2) < 46)
-                    grow = max(3, round(span * 0.006)) | 1
-                    corridor = cv2.bitwise_and(corridor, cv2.dilate(
-                        (near.astype(np.uint8) * 255),
-                        np.ones((grow, grow), np.uint8), iterations=1))
-            mask[corridor > 0] = 0
 
     mask = cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
     if reachable is not None:
