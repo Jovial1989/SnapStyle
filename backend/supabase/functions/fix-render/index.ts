@@ -237,9 +237,17 @@ Deno.serve(async (req) => {
           // 200 chars of composed-prompt boilerplate instead.
           steps.push({ url, kind: g.kind, hint: g.hint });
         }
+        // FULL ENQUEUE DUMP, one line, greppable. The vton_jobs row is the
+        // canonical payload record, but the dashboard's function logs are where
+        // people look first when a render is wrong — so the same facts land in
+        // both places: which base (the .bare.png question), which layers, in
+        // which Z order. URLs are cut to their tails; a signed URL is a secret.
+        console.log("[fix-render] enqueue", JSON.stringify({
+          base: personUrl.replace(/\?.*$/, "").slice(-42),
+          z: steps.map((s, i) => `${i}:${s.kind}:${(s.hint ?? "").slice(0, 28)}`),
+        }));
         const img = await hybridDress(db, String(row.user_id), personUrl, steps);
         hybridUsed = true;
-        console.log("[fix-render] hybrid:", steps.length, "steps");
         return img;
       } catch (e) {
         const why = (e as Error).message;

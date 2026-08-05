@@ -918,6 +918,7 @@ class HybridVTONPipeline:
         edges = cv2.Canny(cv2.bilateralFilter(gray, 7, 60, 60), 80, 170)
         # Erase edges inside the repaint zone: they describe the OLD garment
         # and would drag its outline into the new one.
+        edges_wiped = int((edges[mask_full > 20] > 0).sum())
         edges[mask_full > 20] = 0
         control_canny = cv2.cvtColor(edges, cv2.COLOR_GRAY2RGB)
 
@@ -1041,6 +1042,25 @@ class HybridVTONPipeline:
             w_edges[warped.mask == 0] = 0
             control_canny = cv2.cvtColor(cv2.bitwise_or(edges, w_edges),
                                          cv2.COLOR_GRAY2RGB)
+        # ONE DRY LINE PER RENDER. Every mask defect this engine has had was
+        # eventually pinned by a number, never by squinting at a phone screenshot
+        # — and each time the number had to be re-derived by hand on the pod.
+        # bbox answers "matchbox jacket", cov answers "mask escaped the slot",
+        # warp/wcov answer "did the garment's own pixels arrive", wiped answers
+        # "did ControlNet keep a cue of the old clothes".
+        mm_ = mask_full > 20
+        ys_, xs_ = np.nonzero(mm_)
+        print("[diag] kind=%s hint=%r mask_px=%dk bbox=(%d,%d..%d,%d) "
+              "warp=%s wcov=%s fill=%s edges_wiped=%d shading=%s" % (
+                  kind, (prompt_hint or "")[:40], int(mm_.sum()) // 1000,
+                  int(xs_.min()) if xs_.size else -1, int(ys_.min()) if ys_.size else -1,
+                  int(xs_.max()) if xs_.size else -1, int(ys_.max()) if ys_.size else -1,
+                  ("shoes" if kind == "shoes" and warped is not None else
+                   "quad" if warped is not None else "none"),
+                  ("%.0f%%" % (warped.coverage * 100)) if warped is not None else "-",
+                  fill.tolist() if hasattr(fill, "tolist") else fill,
+                  edges_wiped, os.getenv("VTON_SHADING", "1.0")), flush=True)
+
         init_s = _to_pil(init[:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS)
         mask_s = Image.fromarray(mask_full).resize((WORK_W, WORK_H), Image.LANCZOS)
         pose_s = _to_pil(control_pose).resize((WORK_W, WORK_H), Image.LANCZOS)
