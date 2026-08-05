@@ -1009,12 +1009,16 @@ class HybridVTONPipeline:
         control_pose = _draw_openpose(pose)
         out = full.copy()
 
+        # THE ZONES, in the order they are painted. Arms first, then the neckline:
+        # the base's neckline is the SECOND place the same lesson turned up. Its
+        # tank sits higher than a V-neck, so grey showed at the throat of an
+        # otherwise clean navy render — the base covering more than the target
+        # garment is the whole failure mode, whatever the body part.
+        zones: list[np.ndarray] = []
         for ids in ((2, 3, 4), (5, 6, 7)):
             chain = [pose.pts[i] for i in ids if pose.pts[i]]
             if len(chain) < 2:
                 continue
-            total = sum(math.hypot(b[0] - a[0], b[1] - a[1])
-                        for a, b in zip(chain, chain[1:]))
             # FROM THE SHOULDER JOINT, not from partway down. Starting at 18% of
             # the upper arm left the top of the sleeve unmasked, and its hem
             # visible in the Canny map — the model read both as "a sleeve
@@ -1022,17 +1026,35 @@ class HybridVTONPipeline:
             # The torso is protected by subtracting the column between the
             # shoulders instead, which keeps the chest out of the zone without
             # leaving the cue in.
-            mask = np.zeros((h, w), np.uint8)
+            m = np.zeros((h, w), np.uint8)
             for a, b in zip(chain, chain[1:]):
-                cv2.line(mask, a, b, 255, max(8, round(span * 0.075)))
-            mask = cv2.bitwise_and(mask, pose.silhouette)
+                cv2.line(m, a, b, 255, max(8, round(span * 0.075)))
+            m = cv2.bitwise_and(m, pose.silhouette)
             ls, rs = pose.pts[5], pose.pts[2]
             if ls and rs:
                 inner = max(6, round(span * 0.02))
-                mask[:, min(ls[0], rs[0]) + inner:max(ls[0], rs[0]) - inner] = 0
+                m[:, min(ls[0], rs[0]) + inner:max(ls[0], rs[0]) - inner] = 0
             wrist = pose.pts[ids[2]]
             if wrist:      # hands stay original; diffusion mangles them
-                cv2.circle(mask, wrist, max(8, round(span * 0.045)), 0, -1)
+                cv2.circle(m, wrist, max(8, round(span * 0.045)), 0, -1)
+            zones.append(m)
+
+        ls, rs = pose.pts[5], pose.pts[2]
+        if ls and rs:
+            # A SCOOP DOWN TO THE UPPER CHEST. Deeper than any neckline we expect
+            # to render, so every garment's own collar covers it. Narrower than
+            # the shoulders, so the shoulder line itself is left alone.
+            top = int(min(ls[1], rs[1]) - span * 0.055)
+            bot = int(min(ls[1], rs[1]) + span * 0.085)
+            cx = (ls[0] + rs[0]) // 2
+            half = int(abs(ls[0] - rs[0]) * 0.32)
+            m = np.zeros((h, w), np.uint8)
+            cv2.ellipse(m, (cx, bot), (half, bot - top), 0, 180, 360, 255, -1)
+            m = cv2.bitwise_and(m, pose.silhouette)
+            if m.any():
+                zones.append(m)
+
+        for mask in zones:
             if not mask.any():
                 continue
 
@@ -1100,9 +1122,9 @@ class HybridVTONPipeline:
                        control_pose: np.ndarray, edges: np.ndarray,
                        sub: tuple, cm: np.ndarray, col: list[int],
                        seed: int | None) -> np.ndarray:
-        """One attempt at one arm, returned as a BGR crop. See `bare_arms`."""
+        """One attempt at one zone, returned as a BGR crop. See `bare_arms`."""
         res = pipe(
-            prompt="a bare human arm, sleeveless, smooth natural skin, "
+            prompt="bare skin, sleeveless, smooth natural skin, "
                    "soft studio light, photographic",
             negative_prompt="sleeve, short sleeve, cuff, hem, seam, fabric, "
                             "cloth, textile, shirt, t-shirt, clothing, glove, "
