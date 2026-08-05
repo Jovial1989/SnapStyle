@@ -50,6 +50,10 @@ const BUCKET = "generations";
 // set. Sized for four 3-garment looks; past that the worker really is down.
 const TIMEOUT_MS = Number(Deno.env.get("VTON_QUEUE_TIMEOUT_MS") ?? 90_000);
 const POLL_MS = Number(Deno.env.get("VTON_POLL_MS") ?? 200);
+// How long a job may sit UNCLAIMED before we call the engine asleep. Generous
+// next to the sub-second claim a warm worker manages, tight next to the 90s
+// render timeout it used to hide behind.
+const NO_WORKER_MS = Number(Deno.env.get("VTON_NO_WORKER_MS") ?? 6_000);
 
 export function hybridEnabled(): boolean {
   return (Deno.env.get("VTON_ENGINE") ?? "").toLowerCase() === "hybrid";
@@ -74,6 +78,13 @@ export async function hybridDress(
   // and we would poll for the full timeout on a job that was never created.
   if (error || !job) throw new Error(`vton enqueue failed: ${error?.message}`);
 
+  // A JOB NOBODY EVEN CLAIMS MEANS THE GPU IS ASLEEP, not that the render is
+  // slow. The pod is now started per session and stops itself after 15 minutes
+  // idle, so "no worker" is a NORMAL state rather than an incident — and waiting
+  // out the full timeout for it wastes the user's minute and then reports the
+  // wrong cause. A warm worker claims within a second; anything past this and
+  // the queue has no reader.
+  const claimBy = Date.now() + NO_WORKER_MS;
   const deadline = Date.now() + TIMEOUT_MS;
   while (Date.now() < deadline) {
     await new Promise((r) => setTimeout(r, POLL_MS));
@@ -83,6 +94,12 @@ export async function hybridDress(
       .eq("id", job.id)
       .maybeSingle();
     if (!row) continue;
+    if (row.status === "queued" && Date.now() > claimBy) {
+      await db.from("vton_jobs")
+        .update({ status: "failed", error: "no worker" })
+        .eq("id", job.id).eq("status", "queued");
+      throw new Error("vton engine asleep: no worker claimed the job");
+    }
     if (row.status === "failed") throw new Error(`vton render failed: ${row.error}`);
     if (row.status !== "done" || !row.result_path) continue;
 

@@ -87,3 +87,40 @@ different architecture (LCM/Turbo distillation at 4-8 steps), not a knob.
 
 One worker per GPU — uvicorn workers do not share VRAM, so `--workers 2` means
 two full model copies and an OOM. Add pods, not workers.
+
+## Cost, and running the pod per session
+
+A render is under three seconds and the pod is $0.69/h, so a pod left running
+bills about $500 a month to idle through more than 99% of it. Until there is real
+traffic the pod goes up for a session and stops itself afterwards:
+
+```bash
+vton-local/hybrid/gpu.sh up       # start, pull, run the worker
+vton-local/hybrid/gpu.sh logs     # watch renders
+vton-local/hybrid/gpu.sh down     # stop now; prints what the session cost
+vton-local/hybrid/gpu.sh status   # state, uptime, spend so far
+```
+
+`up` starts `autostop.sh`, which runs the worker with `VTON_IDLE_EXIT_SEC=900`:
+fifteen minutes with an empty queue and the worker exits, then the pod stops
+itself. Stopping keeps the disk and the network volume, so the next `up` has the
+weights already there — it is not `terminate`.
+
+Config lives at `~/.config/looktok/runpod.env` (outside the repo, it holds an API
+key): `RUNPOD_API_KEY`, `RUNPOD_POD_ID`, `SSH_KEY`. Put `RUNPOD_API_KEY` in
+`/workspace/env.sh` on the pod as well, so `autostop.sh` can stop it when
+`runpodctl` is not authenticated there.
+
+**The ssh port changes every time the pod starts.** `gpu.sh up` reads the current
+host and port from the API and caches them; `gpu.sh ssh` and `gpu.sh logs` use
+that cache. Three separate debugging sessions were lost to a stale port.
+
+For a pod serving real traffic set `VTON_IDLE_EXIT_SEC=0`, which disables the
+exit. The next step past that is serverless per-second billing, where the same
+pull worker becomes a handler that drains the queue and returns —
+`claim_vton_job()` already holds `FOR UPDATE SKIP LOCKED`, so concurrent
+containers cannot take the same job.
+
+While no worker is running, `hybridDress` fails after `VTON_NO_WORKER_MS` (6 s)
+with "engine asleep" instead of waiting out the 90-second render timeout and
+blaming the render.

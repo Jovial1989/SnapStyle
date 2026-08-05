@@ -44,6 +44,12 @@ BUCKET = os.getenv("VTON_BUCKET", "generations")
 # Idle poll interval: one small list call per tick, p50 dispatch under ~0.5s.
 IDLE_SLEEP = float(os.getenv("VTON_POLL_SEC", "0.2"))
 MAX_STEPS = int(os.getenv("VTON_MAX_STEPS_PER_JOB", "4"))
+# EXIT WHEN NOBODY IS ASKING. The GPU costs $0.69/h whether it renders or waits,
+# and a render takes under three seconds — at development volume the card idles
+# through more than 99% of what we pay for. Exiting on a quiet queue lets
+# autostop.sh stop the pod, which is the difference between ~$40 and ~$500 a
+# month. 0 disables it, which is what a pod serving real traffic wants.
+IDLE_EXIT = float(os.getenv("VTON_IDLE_EXIT_SEC", "0"))
 
 engine = HybridVTONPipeline()
 
@@ -125,6 +131,9 @@ def main() -> None:
     print(f"[worker] polling vton_jobs on {DEVICE}", flush=True)
     engine.warmup()
     print("[worker] warm", flush=True)
+    if IDLE_EXIT:
+        print(f"[worker] will exit after {IDLE_EXIT:.0f}s idle", flush=True)
+    last_job = time.time()
     while True:
         try:
             job = claim()
@@ -133,9 +142,15 @@ def main() -> None:
             time.sleep(2)
             continue
         if not job:
+            # A claim that FAILS must not count as idle — a Supabase outage would
+            # otherwise shut the pod down and look like an idle timeout.
+            if IDLE_EXIT and time.time() - last_job > IDLE_EXIT:
+                print(f"[worker] idle {IDLE_EXIT:.0f}s, exiting", flush=True)
+                return
             time.sleep(IDLE_SLEEP)
             continue
 
+        last_job = time.time()
         jid = job["id"]
         t0 = time.time()
         try:
@@ -153,6 +168,8 @@ def main() -> None:
                 patch(jid, {"status": final, "error": msg})
             except Exception:
                 pass
+        # Count idle from when the work ENDED, not when it started.
+        last_job = time.time()
 
 
 if __name__ == "__main__":
