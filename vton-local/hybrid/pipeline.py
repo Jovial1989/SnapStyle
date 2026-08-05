@@ -34,7 +34,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from warp import mesh_warp, parts_warp, shoes_warp, torso_warp
+from warp import apply_shading, mesh_warp, parts_warp, shoes_warp, torso_warp
 
 # ─────────────────────────────── device / precision ──────────────────────────
 
@@ -998,6 +998,12 @@ class HybridVTONPipeline:
             if warped is not None and warped.coverage < 0.35:
                 warped = None
         if warped is not None:
+            # The flat-lay is lit flat by design; the body's own light falloff is
+            # what makes it read as worn rather than pasted. Multiplicative, so the
+            # colour the warp exists to preserve stays exactly as it was.
+            warped.image[:] = apply_shading(
+                warped.image, warped.mask, full,
+                float(os.getenv("VTON_SHADING", "1.0")))
             wm = (cv2.GaussianBlur(warped.mask, (9, 9), 0).astype(np.float32) / 255.0)
             init = np.clip(warped.image * wm[:, :, None] +
                            init * (1.0 - wm[:, :, None]), 0, 255).astype(np.uint8)

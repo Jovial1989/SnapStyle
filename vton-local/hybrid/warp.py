@@ -646,3 +646,40 @@ def shoes_warp(garment: np.ndarray, sil: np.ndarray, pose,
         return None
     cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
     return Warped(image=out, mask=mask, coverage=round(cov, 3))
+
+
+def apply_shading(warped: np.ndarray, mask: np.ndarray, base: np.ndarray,
+                  strength: float = 1.0) -> np.ndarray:
+    """Give the flat garment the body's own light falloff. Colour is untouched.
+
+    A flat-lay is lit flat, by design — even light, no shadows, so the catalogue
+    photograph reads as a product rather than a scene. Warped onto a body it keeps
+    that flatness and looks pasted on: no darkening at the sides, no lift on the
+    chest, none of the shading that tells an eye the thing has volume.
+    The body already carries that information, in the pixels the garment is
+    covering. Normalising its luminance to its own mean turns it into a MULTIPLIER
+    — bright where the light hits, dim in the folds — and multiplying is the one
+    operation that adds shading without touching hue or saturation, which matters
+    because garment colour is the thing we spent the whole warp preserving.
+
+    Low-passed heavily first: the base's own seams, texture and print must not
+    print through the new garment. Clamped, because a deep shadow on the base would
+    otherwise stamp a black band onto a garment that has no such fold.
+    """
+    if not mask.any():
+        return warped
+    g = cv2.cvtColor(base, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    # 10% of the frame, not 4%. At 4% the base's own ARMHOLE SHADOWS survived the
+    # blur and printed a hard dark band across a yellow tee — the field has to
+    # carry the body's broad falloff and nothing that belongs to the garment
+    # underneath, and a tank's edges are exactly the scale that got through.
+    k = (max(3, int(base.shape[0] * 0.10)) | 1)
+    field = cv2.GaussianBlur(g, (k, k), 0)
+    m = mask > 20
+    mean = float(field[m].mean()) or 1.0
+    # ±12%, not ±22%. Shading is meant to hint volume, and a deeper range lets any
+    # residual structure in the field stamp itself onto flat fabric.
+    ratio = np.clip(field / mean, 0.88, 1.12)
+    ratio = 1.0 + (ratio - 1.0) * float(np.clip(strength, 0.0, 2.0))
+    out = warped.astype(np.float32) * ratio[:, :, None]
+    return np.where(m[:, :, None], np.clip(out, 0, 255), warped).astype(np.uint8)
