@@ -34,7 +34,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from warp import mesh_warp, parts_warp, torso_warp
+from warp import mesh_warp, parts_warp, shoes_warp, torso_warp
 
 # ─────────────────────────────── device / precision ──────────────────────────
 
@@ -970,7 +970,15 @@ class HybridVTONPipeline:
                 g_bgr = np.array(garment)[:, :, ::-1]
                 sil = _flatlay_silhouette(g_bgr)
                 if sil is not None:
-                    if PARTS_WARP:
+                    if kind == "shoes":
+                        # Footwear is in every look and was the weakest slot: the
+                        # metrics reject shoes (no reference band applies), so
+                        # nothing measured them and the sampler invented one — a
+                        # brogue came back as a brown mass up the calf. A shoe is
+                        # nearly rigid and both feet are frontal, so a quad per
+                        # foot carries the real product: laces, sole, shape.
+                        warped = shoes_warp(g_bgr, sil, pose, mask_full)
+                    elif PARTS_WARP:
                         g_met = _garment_metrics(g_bgr, kind) or {}
                         warped = parts_warp(
                             g_bgr, sil, pose, kind, mask_full,

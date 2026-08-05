@@ -557,3 +557,85 @@ def parts_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
         return None
     cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
     return Warped(image=out, mask=mask, coverage=round(cov, 3))
+
+
+def shoes_warp(garment: np.ndarray, sil: np.ndarray, pose,
+               slot_mask: np.ndarray) -> Warped | None:
+    """A pair of shoes onto a pair of feet, one quad each.
+
+    THE EASIEST WARP IN THIS FILE, and the one with the most demo value: footwear
+    appears in every look, and it was the weakest slot — the metrics reject shoes
+    outright (no reference band applies to them), so nothing measured their length
+    and the sampler was left to invent a shoe. It returned a brown mass up the calf
+    from a brogue, which is what forced the shoe zone down from 7.5% of the figure
+    to 3% and left boots unrenderable.
+
+    Why it is easy: a shoe is nearly rigid, both feet are frontal, and the
+    flat-lay is a pair photographed side by side — so it splits into two connected
+    components and each maps onto one foot's own bounding box. No bend, no armhole,
+    none of what defeated the sleeves.
+
+    A single shoe in frame (one component) is mirrored for the other foot, which is
+    what a catalogue photo of one shoe means anyway.
+    """
+    n, lab, stats, cent = cv2.connectedComponentsWithStats((sil > 0).astype(np.uint8), 8)
+    if n < 2:
+        return None
+    order = sorted(range(1, n), key=lambda i: -stats[i, cv2.CC_STAT_AREA])
+    big = order[0]
+    parts = [big]
+    # A pair only if the second blob is a comparable object rather than a shadow.
+    if len(order) > 1 and stats[order[1], cv2.CC_STAT_AREA] > stats[big, cv2.CC_STAT_AREA] * 0.45:
+        parts.append(order[1])
+    parts.sort(key=lambda i: cent[i][0])          # left blob first, image order
+
+    pts = pose.pts
+    ys = [q[1] for q in pts if q]
+    if not ys:
+        return None
+    span = max(1.0, max(ys) - min(ys))
+    ankles = [(i, pts[i]) for i in (10, 13) if pts[i]]
+    if not ankles:
+        return None
+    ankles.sort(key=lambda a: a[1][0])             # left foot first, same order
+
+    h, w = pose.h, pose.w
+    out = np.zeros((h, w, 3), np.uint8)
+    filled = np.zeros((h, w), np.uint8)
+
+    for k, (_, ank) in enumerate(ankles):
+        # THE FOOT IS BELOW THE LAST KEYPOINT. COCO-18 stops at the ankle, so the
+        # foot's extent comes from the matte: rows under the ankle, columns near it.
+        pad = int(span * 0.075)
+        y0 = max(0, ank[1] - int(span * 0.02))
+        band = pose.silhouette[y0:h, max(0, ank[0] - pad):min(w, ank[0] + pad)]
+        if not band.any():
+            continue
+        ys_, xs_ = np.nonzero(band)
+        fx0 = max(0, ank[0] - pad) + int(xs_.min())
+        fx1 = max(0, ank[0] - pad) + int(xs_.max())
+        fy0, fy1 = y0 + int(ys_.min()), y0 + int(ys_.max())
+        if fx1 - fx0 < 6 or fy1 - fy0 < 6:
+            continue
+
+        blob = parts[min(k, len(parts) - 1)]
+        bx, by = stats[blob, cv2.CC_STAT_LEFT], stats[blob, cv2.CC_STAT_TOP]
+        bw, bh = stats[blob, cv2.CC_STAT_WIDTH], stats[blob, cv2.CC_STAT_HEIGHT]
+        one = ((lab == blob).astype(np.uint8) * 255)
+        img = garment
+        if len(parts) == 1 and k == 1:
+            # Mirror the single shoe for the second foot, so a left shoe does not
+            # appear twice.
+            one = cv2.flip(one, 1)
+            img = cv2.flip(garment, 1)
+            bx = one.shape[1] - (bx + bw)
+
+        src = np.float32([[bx, by], [bx + bw, by], [bx + bw, by + bh], [bx, by + bh]])
+        dst = np.float32([[fx0, fy0], [fx1, fy0], [fx1, fy1], [fx0, fy1]])
+        _quad_warp(img, one, src, dst, (h, w), out, filled)
+
+    mask = cv2.bitwise_and(filled, (slot_mask > 20).astype(np.uint8) * 255)
+    if not mask.any():
+        return None
+    cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
+    return Warped(image=out, mask=mask, coverage=round(cov, 3))
