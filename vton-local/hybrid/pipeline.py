@@ -34,7 +34,7 @@ import numpy as np
 import torch
 from PIL import Image
 
-from warp import torso_warp
+from warp import mesh_warp, torso_warp
 
 # ─────────────────────────────── device / precision ──────────────────────────
 
@@ -81,6 +81,14 @@ COLLAR_UP = float(os.getenv("VTON_COLLAR_UP", "0.045"))
 # behaviour and the rollback.
 WARP = os.getenv("VTON_WARP", "1") == "1"
 WARP_STRENGTH = float(os.getenv("VTON_WARP_STRENGTH", "0.55"))
+# The keypoint mesh is OFF by default because it measured WORSE than the quad it
+# was meant to replace: stripes came back wavy and a chest print was squeezed into
+# an hourglass, against 84-90% clean coverage from four corners. The triangulation
+# folds — the armpit and waist points are not consistent on the body side, and a
+# sleeve sharing a mesh with the torso shears it. Sleeves want their own quads
+# rather than one mesh over everything, which is the next thing to try, not a
+# tuning pass on this. VTON_MESH_WARP=1 to look at it again.
+MESH_WARP = os.getenv("VTON_MESH_WARP", "0") == "1"
 SIDE_PAD = float(os.getenv("VTON_SIDE_PAD", "0.035"))
 
 # SD 1.5 was trained at 512²; 768×1024 is off-distribution for it and shows up
@@ -953,7 +961,13 @@ class HybridVTONPipeline:
                 g_bgr = np.array(garment)[:, :, ::-1]
                 sil = _flatlay_silhouette(g_bgr)
                 if sil is not None:
-                    warped = torso_warp(g_bgr, sil, pose, kind, mask_full)
+                    if MESH_WARP:
+                        g_met = _garment_metrics(g_bgr, kind) or {}
+                        warped = mesh_warp(
+                            g_bgr, sil, pose, kind, mask_full,
+                            g_met.get("sleeve_ratio"), _split)
+                    if warped is None:
+                        warped = torso_warp(g_bgr, sil, pose, kind, mask_full)
             except Exception as e:  # noqa: BLE001 — a failed warp must not fail a render
                 print(f"[warp] skipped: {type(e).__name__}: {e}", flush=True)
                 warped = None
