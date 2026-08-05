@@ -74,14 +74,13 @@ def _panel(sil: np.ndarray, kind: str) -> tuple[int, int, int, int] | None:
         return None
     cx = (x0 + x1) / 2.0
     px0, px1 = int(round(cx - ref / 2)), int(round(cx + ref / 2))
-    if kind in ("upper", "full"):
-        # Start below the collar so the neckline is not stretched onto the chest;
-        # the sampler paints the collar, which it does well because a collar is
-        # plain fabric at a place the pose fixes exactly.
-        py0 = y0 + int(H * 0.06)
-    else:
-        py0 = y0
-    return (max(x0, px0), py0, min(x1, px1), y1)
+    # INCLUDE THE COLLAR. It was excluded first, on the reasoning that a collar is
+    # plain fabric at a place the pose fixes exactly — and measured, that was
+    # wrong: with the body warped in and denoising down at 0.55, the sampler had
+    # less freedom and returned a boat neck for a crew and a keyhole for a V. The
+    # flat-lay's own neckline is the right shape by definition, and the quad's top
+    # edge is the shoulder line, so it lands about where it belongs.
+    return (max(x0, px0), y0, min(x1, px1), y1)
 
 
 def torso_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
