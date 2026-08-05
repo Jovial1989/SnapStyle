@@ -110,14 +110,24 @@ def render(job: dict) -> str:
     # shoes — and why order matters. Each pass repaints only its own slot, so an
     # earlier garment cannot be undone by a later one.
     for i, (st, garment) in enumerate(zip(steps, garments)):
+        # NO DEFAULT SLOT. This used to fall back to "upper", and a step that
+        # arrived without a usable `kind` was silently painted onto the torso —
+        # a pair of jeans came back as a denim jacket, trousers untouched, in a
+        # test that had misnamed the field. That is exactly the signature of
+        # "it dresses me in random things", and it is indistinguishable from a
+        # bad render unless the job fails and says so. A wrong slot is a caller
+        # bug; guessing hides it, and the guess costs a GPU render either way.
+        kind = st.get("kind")
+        if kind not in ("upper", "lower", "full", "shoes"):
+            raise ValueError(f"step {i + 1} has no valid kind: {kind!r}")
         current = engine.generate(
             current, garment,
-            kind=st.get("kind", "upper"),
+            kind=kind,
             prompt_hint=st.get("hint", "the garment in the reference image"),
             seed=st.get("seed"),
             ip_scale=st.get("ip_scale"),
         )
-        print(f"  step {i + 1}/{len(steps)} {st.get('kind')}", flush=True)
+        print(f"  step {i + 1}/{len(steps)} {kind}", flush=True)
 
     buf = io.BytesIO()
     current.convert("RGB").save(buf, "JPEG", quality=92)
