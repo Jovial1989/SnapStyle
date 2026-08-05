@@ -573,7 +573,7 @@ class LooktokApi {
     // re-tapping a seen swap paints instantly, even offline).
     final key = sha256
         .convert(utf8.encode([
-          'fix:v15', base64Image, instruction, // v11: QA full-body restore + bg hygiene
+          'fix:v16', base64Image, instruction, // v11: QA full-body restore + bg hygiene
           targetZones.join(','), lockedZones.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,
@@ -649,7 +649,7 @@ class LooktokApi {
           // personPath REPLACES base64Image when the source is already in
           // Storage, so it has to be in the key — otherwise a chained swap and a
           // pixel-carrying one would collide on the same fingerprint.
-          'fix:v15', personPath ?? base64Image, instr,
+          'fix:v16', personPath ?? base64Image, instr,
           tz.join(','), lz.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,

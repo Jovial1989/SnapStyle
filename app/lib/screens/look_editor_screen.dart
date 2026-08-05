@@ -144,6 +144,9 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
   /// first swap of a session still ships pixels (the source photo is only on
   /// the device); every swap after it sends this path instead — ~2s of mobile
   /// uplink and ~1s of server restaging per tap.
+  // Kept for My Looks (what the last render was), NOT for chaining: rendering a
+  // swap on top of a previous render is what made artefacts compound. See the note
+  // at the `personPath: null` call below.
   String? _lastRenderPath;
   String? _baseB64; // memo of base64(_base)
   List<_Slot>? _slots;
@@ -1145,9 +1148,22 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
           referenceUrls: refs.urls,
           referenceZones: refs.zones,
           referenceHints: refs.hints,
-          // Only when this swap starts from a server render — a neutral base or
-          // the device photo has no path yet.
-          personPath: base == null ? _lastRenderPath : null,
+          // NEVER CHAIN ONTO THE PREVIOUS RENDER. Passing the last result made
+          // every swap start from the one before it, so an artefact became the
+          // next pass's input and multiplied: reported from the phone across six
+          // taps — hands turned into blue blocks once trousers were swapped, then
+          // the jeans came back cropped, then the shoes were dark smears. The skin
+          // protection that keeps denim off a forearm samples skin FROM THE INPUT,
+          // so once the hands were blue it stopped recognising them and the next
+          // pass painted over them freely.
+          //
+          // `_swapRefs` already carries EVERY worn slot, and the engine already
+          // dresses a clean base in order (full → upper → lower → shoes), so
+          // sending no path at all is the whole fix: each tap re-renders the full
+          // outfit from `.bare.png`. Three garments cost 4-6s instead of 1.5, and
+          // in exchange the result depends only on WHAT is worn, never on the
+          // order it was tapped in.
+          personPath: null,
           comboKey: key,
           tucked: tuckedSpec,
           tuckedKey: dualTuck ? _keyFor(sel, tuck: 1) : null,
