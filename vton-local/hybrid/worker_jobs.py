@@ -30,6 +30,7 @@ import concurrent.futures as cf
 import io
 import json
 import os
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -52,6 +53,22 @@ MAX_STEPS = int(os.getenv("VTON_MAX_STEPS_PER_JOB", "4"))
 IDLE_EXIT = float(os.getenv("VTON_IDLE_EXIT_SEC", "0"))
 
 engine = HybridVTONPipeline()
+
+_swapper = None
+_swapper_lock = threading.Lock()
+
+
+def face_swapper():
+    """Built on first use. Most jobs never swap — the base is prepared once and
+    cached — so three mediapipe solutions do not need to load in every worker."""
+    global _swapper
+    if _swapper is None:
+        with _swapper_lock:
+            if _swapper is None:
+                from faceswap import FaceSwapPipeline
+                _swapper = FaceSwapPipeline()
+    return _swapper
+
 
 _AUTH = {
     "apikey": SERVICE_KEY,
@@ -91,8 +108,12 @@ def _fetch_image(url: str) -> Image.Image:
 
 def render(job: dict) -> str:
     steps = (job.get("steps") or [])[:MAX_STEPS]
-    if not steps:
-        raise ValueError("job has no steps")
+    face_url = job.get("face_url")
+    # A job with neither a garment nor a face has nothing to do; one with a face
+    # and no garments is the "prepare this user's base" job, which is how the
+    # swap gets done and cached once instead of on every render.
+    if not steps and not face_url:
+        raise ValueError("job has no steps and no face_url")
 
     # PREFETCH EVERY INPUT AT ONCE. Downloading each garment just before its own
     # render put N-1 round trips on the critical path, and this box is a
@@ -100,10 +121,28 @@ def render(job: dict) -> str:
     # a ~5s job, so the win here is not the card going faster, it is the waiting
     # overlapping. (Rendering itself stays serial: one stream already saturates
     # the GPU, so concurrent diffusions would only trade order for nothing.)
-    urls = [job["person_url"]] + [st["url"] for st in steps]
+    urls = ([job["person_url"]] + ([face_url] if face_url else [])
+            + [st["url"] for st in steps])
     with cf.ThreadPoolExecutor(min(8, len(urls))) as ex:
         imgs = list(ex.map(_fetch_image, urls))
-    current, garments = imgs[0], imgs[1:]
+    current = imgs[0]
+    selfie = imgs[1] if face_url else None
+    garments = imgs[2:] if face_url else imgs[1:]
+
+    # IDENTITY FIRST, THEN CLOTHES. The order is forced: the swap needs the face
+    # unobstructed and the dressing passes never touch the face, so doing it the
+    # other way round would only risk a garment's collar crossing the oval. The
+    # swap is CPU-only (~0.15s) — it costs nothing next to a diffusion step, and
+    # it is what lets the rest of the pipeline assume an ideal body.
+    if selfie is not None:
+        t = time.time()
+        res = face_swapper().swap(current, selfie)
+        current = res.image
+        # Report rather than gate. A poor alignment is a caller problem — the
+        # selfie was not frontal — and the caller has the user to ask; failing the
+        # job here would spend the render and then throw it away.
+        print(f"  face rms={res.align_rms} up={res.upsampled}x "
+              f"trust={res.trustworthy} in {time.time() - t:.2f}s", flush=True)
 
     # SEQUENTIAL DRESSING: each render's output is the next one's input. That is
     # how a full outfit is built from single-slot masks — top, then bottom, then
