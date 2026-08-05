@@ -303,6 +303,17 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
         }
         for (final w in wardrobe.where(belongsHere).take(2)) {
           final label = (w['label'] ?? 'Your piece').toString();
+          // SHORTS ARE OFF THE MENU until the render base has bare legs — the
+          // engine measurably cannot render them (long navy trousers, a white
+          // fill band, denim tubes around the pocketed hands). The catalogue is
+          // already vetoed server-side in outfit-slots, but wardrobe items enter
+          // the rail HERE, client-side, and bypassed that veto: the user's own
+          // "navy shorts" kept reappearing after the server was clean, which
+          // cost an evening of chasing phantom cache. Same gate, same reason;
+          // lift both together with the minimal-base work.
+          if (RegExp(r'shorts|шорт', caseSensitive: false).hasMatch(label)) {
+            continue;
+          }
           alts.add(_Alt(label: label, source: 'wardrobe', instruction: 'their own $label', why: 'A piece you already own that fits this look.'));
         }
         // Styling ideas (each carries its own "why it's better") — 4 per slot.
