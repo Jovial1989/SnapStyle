@@ -1007,9 +1007,21 @@ class HybridVTONPipeline:
         # Blurred so the kept and repainted regions meet in a gradient rather than
         # a cut-out edge.
         drew = cv2.GaussianBlur((np.clip(drew, 0.0, 1.0) * 255).astype(np.uint8), (21, 21), 0)
-        alpha = ((mask_full.astype(np.float32) / 255.0) *
-                 (drew.astype(np.float32) / 255.0))[:, :, None]
-        blended = gen_full * alpha + base * (1.0 - alpha)
+        m = mask_full.astype(np.float32) / 255.0
+        alpha = (m * (drew.astype(np.float32) / 255.0))[:, :, None]
+
+        # WHAT TO FALL BACK TO depends on where we are in the mask. At the
+        # feathered EDGE the original is right: that is the boundary with the rest
+        # of the photo. But DEEP INSIDE, the original is the garment we were asked
+        # to replace, and keeping it is the worst of the three options. Measured
+        # on the hip strip of a look: the mask covered it, the sampler painted
+        # almost nothing there, and the composite returned a half-and-half blend
+        # of denim and the base's grey hem — the grey band reported from the
+        # phone. The fill is the new garment's own colour, so an unpainted patch
+        # in the core reads as a plain piece of that garment instead.
+        core = np.clip((m - 0.85) / 0.15, 0.0, 1.0)[:, :, None]
+        fallback = base * (1.0 - core) + fill_img.astype(np.float32) * core
+        blended = gen_full * alpha + fallback * (1.0 - alpha)
         return Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
 
     # -- base preparation ---------------------------------------------------
