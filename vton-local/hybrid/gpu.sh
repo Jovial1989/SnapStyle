@@ -48,8 +48,25 @@ SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 mkdir -p "$(dirname "$CACHE")"
 
 api() {  # api <METHOD> <path>
-  curl -fsS -X "$1" "https://rest.runpod.io/v1$2" \
-    -H "Authorization: Bearer $RUNPOD_API_KEY" -H 'Content-Type: application/json'
+  local body code
+  body=$(curl -sS -o /dev/stdout -w '\n%{http_code}' -X "$1" \
+    "https://rest.runpod.io/v1$2" \
+    -H "Authorization: Bearer $RUNPOD_API_KEY" -H 'Content-Type: application/json')
+  code=${body##*$'\n'}
+  body=${body%$'\n'*}
+  case "$code" in
+    2*) printf '%s' "$body"; return 0 ;;
+    401|403)
+      # Learned the hard way: the RUNPOD_API_KEY that RunPod injects INTO a pod is
+      # not an account key and cannot manage pods — it 403s here, and the pod's
+      # own runpodctl ships unauthenticated. This needs a key from
+      # console.runpod.io → Settings → API Keys.
+      echo "FAIL: RunPod rejected the key ($code). It must be an ACCOUNT key from" >&2
+      echo "      Settings → API Keys — a pod-injected key cannot control pods." >&2
+      return 1 ;;
+    404) echo "FAIL: pod $RUNPOD_POD_ID not found (terminated, or wrong id)" >&2; return 1 ;;
+    *)   echo "FAIL: RunPod API returned $code" >&2; return 1 ;;
+  esac
 }
 
 pod_json() { api GET "/pods/$RUNPOD_POD_ID"; }
