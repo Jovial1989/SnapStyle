@@ -1058,41 +1058,72 @@ class HybridVTONPipeline:
             edges = cv2.Canny(cv2.bilateralFilter(grey, 7, 60, 60), 80, 170)
             edges[mask > 20] = 0
 
+            # SKIN IS SMOOTH, AND THAT IS MEASURABLE. One arm in three came back
+            # ribbed with periodic diagonal stripes — a plain diffusion artefact,
+            # not a systematic error, so it is fixed by trying another seed rather
+            # than by another parameter. The test is mean |Laplacian| inside the
+            # zone against the SAME BODY'S forearm, which is original untouched
+            # pixels: real skin sets the scale, so this needs no absolute
+            # threshold and holds for any lighting or resolution. Once per avatar,
+            # so up to three attempts is cheap insurance on an image that every
+            # later render inherits.
+            ref = cv2.Laplacian(cv2.cvtColor(full, cv2.COLOR_BGR2GRAY),
+                                cv2.CV_32F)
+            skin_ref = float(np.abs(ref[skin_src > 0]).mean()) if int(skin_src.sum()) else 0.0
+
             # THE ADAPTER IS NOT WANTED HERE. It exists to impose a garment, and
             # this pass is the opposite of that; a flat skin swatch through it
             # only adds a colour the fill already carries. Turned down for the
             # pass and restored after, so a queued render is unaffected.
             pipe.set_ip_adapter_scale(0.2)
-            res = pipe(
-                prompt="a bare human arm, sleeveless, smooth natural skin, "
-                       "soft studio light, photographic",
-                negative_prompt="sleeve, short sleeve, cuff, hem, seam, fabric, "
-                                "cloth, textile, shirt, t-shirt, clothing, glove, "
-                                "tattoo, text, watermark, deformed",
-                image=_to_pil(init[sub][:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS),
-                mask_image=Image.fromarray(cm).resize((WORK_W, WORK_H), Image.LANCZOS),
-                control_image=[
-                    _to_pil(control_pose[sub]).resize((WORK_W, WORK_H), Image.LANCZOS),
-                    _to_pil(cv2.cvtColor(edges[sub], cv2.COLOR_GRAY2RGB)).resize(
-                        (WORK_W, WORK_H), Image.NEAREST),
-                ],
-                ip_adapter_image=Image.new("RGB", (224, 224), tuple(col[::-1])),
-                num_inference_steps=STEPS,
-                guidance_scale=float(os.getenv("VTON_CFG", "6.5")),
-                controlnet_conditioning_scale=[0.9, 0.45],
-                generator=(torch.Generator(device="cpu").manual_seed(seed)
-                           if seed is not None else None),
-            ).images[0]
+            best, best_energy = None, None
+            for attempt in range(3):
+                res = self._bare_arm_pass(pipe, init, mask, control_pose, edges,
+                                          sub, cm, col,
+                                          None if seed is None else seed + attempt * 101)
+                g = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
+                energy = float(np.abs(cv2.Laplacian(g, cv2.CV_32F))[cm > 20].mean())
+                if best_energy is None or energy < best_energy:
+                    best, best_energy = res, energy
+                if skin_ref and energy <= skin_ref * 1.6:
+                    break
             pipe.set_ip_adapter_scale(float(os.getenv("VTON_IP_SCALE", "0.75")))
-            _drain()
 
-            gen = cv2.resize(np.array(res)[:, :, ::-1], (cm.shape[1], cm.shape[0]),
-                             interpolation=cv2.INTER_LANCZOS4).astype(np.float32)
             k = max(5, round(span * 0.012)) | 1
             a = (cv2.GaussianBlur(cm, (k, k), 0).astype(np.float32) / 255.0)[:, :, None]
-            out[sub] = np.clip(gen * a + out[sub].astype(np.float32) * (1 - a), 0, 255)
+            out[sub] = np.clip(best.astype(np.float32) * a +
+                               out[sub].astype(np.float32) * (1 - a), 0, 255)
 
         return _to_pil(out[:, :, ::-1])
+
+    def _bare_arm_pass(self, pipe, init: np.ndarray, mask: np.ndarray,
+                       control_pose: np.ndarray, edges: np.ndarray,
+                       sub: tuple, cm: np.ndarray, col: list[int],
+                       seed: int | None) -> np.ndarray:
+        """One attempt at one arm, returned as a BGR crop. See `bare_arms`."""
+        res = pipe(
+            prompt="a bare human arm, sleeveless, smooth natural skin, "
+                   "soft studio light, photographic",
+            negative_prompt="sleeve, short sleeve, cuff, hem, seam, fabric, "
+                            "cloth, textile, shirt, t-shirt, clothing, glove, "
+                            "tattoo, text, watermark, deformed",
+            image=_to_pil(init[sub][:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS),
+            mask_image=Image.fromarray(cm).resize((WORK_W, WORK_H), Image.LANCZOS),
+            control_image=[
+                _to_pil(control_pose[sub]).resize((WORK_W, WORK_H), Image.LANCZOS),
+                _to_pil(cv2.cvtColor(edges[sub], cv2.COLOR_GRAY2RGB)).resize(
+                    (WORK_W, WORK_H), Image.NEAREST),
+            ],
+            ip_adapter_image=Image.new("RGB", (224, 224), tuple(col[::-1])),
+            num_inference_steps=STEPS,
+            guidance_scale=float(os.getenv("VTON_CFG", "6.5")),
+            controlnet_conditioning_scale=[0.9, 0.45],
+            generator=(torch.Generator(device="cpu").manual_seed(seed)
+                       if seed is not None else None),
+        ).images[0]
+        _drain()
+        return cv2.resize(np.array(res)[:, :, ::-1], (cm.shape[1], cm.shape[0]),
+                          interpolation=cv2.INTER_LANCZOS4)
 
     # -- introspection ------------------------------------------------------
 
