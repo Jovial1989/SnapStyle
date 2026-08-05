@@ -1294,6 +1294,22 @@ class HybridVTONPipeline:
                 need = int(bw / want) - bh
                 by0, by1 = max(0, by0 - need // 2), min(h - 1, by1 + need - need // 2)
 
+            # ERASE THE OLD GARMENT'S OUTLINE ABOVE THE ZONE TOO. Inside the zone
+            # the Canny map is already wiped, but a trouser leg continues from the
+            # band just ABOVE it, and ControlNet carries that edge straight into the
+            # zone — measured: the legs pass returned grey trouser with the base's
+            # printed emblem showing through, the same way the first arms pass
+            # returned a sleeve. The arms were fixed by starting at the joint so no
+            # garment cue remained; a leg cannot be cut at the hip without leaving
+            # the base naked, so the cue has to be removed instead.
+            edges = edges.copy()
+            above = np.zeros_like(mask)
+            ys0 = np.nonzero(mask > 20)[0]
+            if ys0.size:
+                top = int(ys0.min())
+                above[max(0, top - int(span * 0.07)):top, :] = 255
+                edges[cv2.bitwise_and(above, pose.silhouette) > 0] = 0
+
             init = full.copy()
             init[mask > 20] = col
             sub = (slice(by0, by1 + 1), slice(bx0, bx1 + 1))
