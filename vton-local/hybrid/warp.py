@@ -420,7 +420,8 @@ def _quad_warp(garment: np.ndarray, sil: np.ndarray, src: np.ndarray,
 
 def parts_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
                slot_mask: np.ndarray, sleeve_ratio: float | None,
-               split, sleeves: bool = True) -> Warped | None:
+               split, sleeves: bool = True,
+               trace: list | None = None) -> Warped | None:
     """DEFORMABLE PARTS: the torso is one quad, each sleeve is its own.
 
     Why not one mesh over all of it — measured, and this is the whole reason this
@@ -469,6 +470,8 @@ def parts_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     t_dst = np.float32([[x_l, sh_y], [x_r, sh_y],
                         [x_r, hip_y + span * 0.03], [x_l, hip_y + span * 0.03]])
     _quad_warp(garment, sil, t_src, t_dst, (h, w), out, filled)
+    if trace is not None:
+        trace.append(("torso", t_src.copy(), t_dst.copy()))
 
     # ── sleeves: a ribbon along the bones ─────────────────────────────────────
     for side, ids, x_edge in ((("l", arm_left, x_l), ("r", arm_right, x_r))
@@ -496,76 +499,58 @@ def parts_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
         g_seam = np.float32(kp["seam_" + side])
         g_top = np.float32(kp[f"cuff_{side}_top"])
         g_bot = np.float32(kp[f"cuff_{side}_bot"])
-        # MEASURE THE SLEEVE INSIDE THE SLEEVE. On a flat-lay the sleeve and the
-        # torso are ONE connected blob, so scanning the silhouette for the sleeve's
-        # width walks straight into the chest and never exits — measured: half-
-        # widths of 89 and 94 px on a sleeve whose axis is 94 px long, i.e. the
-        # scan hit its own cap both ways. Every ribbon and quad attempt was fed
-        # those numbers. Clipping to the sleeve's own quadrilateral first is what
-        # makes the measurement mean anything.
+        # NO WIDTH SCAN AT ALL. Both boundaries are interpolations between the
+        # sleeve's OWN FOUR CORNERS, subdivided along the arm. Scanning the
+        # silhouette for a width was wrong twice over: the sleeve and the torso are
+        # one connected blob so the scan walked into the chest (89 and 94 px on a
+        # 94 px axis), and even clipped, a perpendicular section near the armhole
+        # reaches inboard — traced, the second section's inner corner landed at
+        # x=324 with the torso spanning 257..514, i.e. 40 px inside the chest.
+        #
+        # The armhole on a body is not a cross-section of the arm: it runs down the
+        # side of the torso. So the ribbon is pinned at BOTH ends — the armhole edge
+        # at t=0, the cuff edge at t=1 — and every section between is a linear
+        # blend of the two. Each little quad is then nearly rectangular, the ribbon
+        # follows the elbow, and nothing can reach past the armpit.
         s_poly = np.zeros(sil.shape, np.uint8)
         cv2.fillConvexPoly(s_poly, cv2.convexHull(np.float32(
             [g_seam, g_top, g_bot, g_pit]).astype(np.int32)), 255)
         s_sil = cv2.bitwise_and((sil > 0).astype(np.uint8) * 255, s_poly)
 
-        a_mid, c_mid = (g_seam + g_pit) / 2, (g_top + g_bot) / 2
-        axis = c_mid - a_mid
-        g_len = float(np.hypot(*axis)) or 1.0
-        u_g = axis / g_len
-        n_g = np.float32([-u_g[1], u_g[0]])
-        # Orient the garment normal toward the sleeve's UPPER seam, which is the
-        # side that runs along the outside of a hanging arm.
-        if float(np.dot(n_g, g_top - c_mid)) < 0:
-            n_g = -n_g
-        scale = reach / g_len
+        # Body-side armhole edge and cuff edge.
+        b_sh = np.float32([x_edge, sh_y])
+        b_pit = np.float32([x_edge + (cx - x_edge) * 0.16, sh_y + span * 0.085])
+        path_end = split(chain, reach)[0]
+        cuff = np.float32(path_end[-1])
+        prev = np.float32(path_end[-2] if len(path_end) > 1 else chain[0])
+        d = cuff - prev
+        nd = float(np.hypot(*d)) or 1.0
+        n_b = np.float32([-d[1] / nd, d[0] / nd])
+        if float(n_b[0]) * (x_edge - cx) < 0:
+            n_b = -n_b
+        # The cuff keeps the sleeve's own proportions: its width scales with its
+        # length, the rule that stopped shorts stretching into trousers.
+        g_axis = float(np.hypot(*((g_top + g_bot) / 2 - (g_seam + g_pit) / 2))) or 1.0
+        half = max(span * 0.018,
+                   float(np.hypot(*(g_bot - g_top))) * (reach / g_axis) * 0.5)
+        b_cuff_up, b_cuff_dn = cuff + n_b * half, cuff - n_b * half
 
         N = 8
-        secs: list[tuple] = []
+        secs = []
         for i in range(N + 1):
             t = i / N
-            pg = a_mid + axis * t
-            # Half-widths measured on the flat-lay itself, so a tapered sleeve
-            # tapers and a wide one stays wide.
-            hw = []
-            for sgn in (1.0, -1.0):
-                d = 0.0
-                while d < g_len:
-                    q = pg + n_g * sgn * (d + 1.0)
-                    xi, yi = int(round(q[0])), int(round(q[1]))
-                    if not (0 <= xi < s_sil.shape[1] and 0 <= yi < s_sil.shape[0]):
-                        break
-                    if s_sil[yi, xi] == 0:
-                        break
-                    d += 1.0
-                hw.append(max(d, 1.0))
-            path = split(chain, max(t * reach, 1e-3))[0]
-            qb = np.float32(path[-1])
-            prev = np.float32(path[-2] if len(path) > 1 else chain[0])
-            dirv = qb - prev
-            nb = float(np.hypot(*dirv)) or 1.0
-            dirv = dirv / nb
-            n_b = np.float32([-dirv[1], dirv[0]])
-            if float(n_b[0]) * (x_edge - cx) < 0:
-                n_b = -n_b
-            up_b = qb + n_b * min(hw[0] * scale, span * 0.05)
-            dn_b = qb - n_b * min(hw[1] * scale, span * 0.05)
-            if i == 0:
-                # THE ARMHOLE IS NOT A CROSS-SECTION OF THE ARM. On the body it
-                # runs down the side of the torso, from the shoulder to the armpit,
-                # while every other section of a hanging sleeve is across the arm.
-                # Taking a perpendicular slice here put a 120 px band through the
-                # chest and smeared the torso that had just been warped correctly —
-                # the same damage as the three quad attempts, from the same place.
-                up_b = np.float32([x_edge, sh_y])
-                dn_b = np.float32([x_edge + (cx - x_edge) * 0.16,
-                                   sh_y + span * 0.085])
-            secs.append((pg + n_g * hw[0], pg - n_g * hw[1], up_b, dn_b))
+            secs.append((g_seam + (g_top - g_seam) * t,     # src outer edge
+                         g_pit + (g_bot - g_pit) * t,       # src inner edge
+                         b_sh + (b_cuff_up - b_sh) * t,     # dst outer edge
+                         b_pit + (b_cuff_dn - b_pit) * t))  # dst inner edge
 
-        for (a_up, a_dn, A_up, A_dn), (b_up, b_dn, B_up, B_dn) in zip(secs, secs[1:]):
-            _quad_warp(garment, s_sil,
-                       np.float32([a_up, b_up, b_dn, a_dn]),
-                       np.float32([A_up, B_up, B_dn, A_dn]),
-                       (h, w), out, filled)
+        for i, ((a_up, a_dn, A_up, A_dn), (b_up, b_dn, B_up, B_dn)) in enumerate(
+                zip(secs, secs[1:])):
+            sq = np.float32([a_up, b_up, b_dn, a_dn])
+            dq = np.float32([A_up, B_up, B_dn, A_dn])
+            _quad_warp(garment, s_sil, sq, dq, (h, w), out, filled)
+            if trace is not None:
+                trace.append((f"{side}{i}", sq.copy(), dq.copy()))
 
     mask = cv2.bitwise_and(filled, (slot_mask > 20).astype(np.uint8) * 255)
     if not mask.any():
