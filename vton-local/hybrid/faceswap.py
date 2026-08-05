@@ -153,6 +153,15 @@ class FaceSwapPipeline:
             refine_landmarks=True,      # adds iris points; steadies eye alignment
             min_detection_confidence=0.4,
         )
+        # Locators for the full-body case, where the mesh alone finds nothing.
+        # Both are lazy in mediapipe's own sense (weights load on construction),
+        # and both are cheap next to a diffusion step.
+        self._detector = mp.solutions.face_detection.FaceDetection(
+            model_selection=1,          # full range: the short-range model fails here
+            min_detection_confidence=0.3,
+        )
+        self._pose = mp.solutions.pose.Pose(
+            static_image_mode=True, model_complexity=1)
         self._lock = threading.Lock()
         self.tone = float(tone)
         # Built once: the union of the semantic groups, as a sorted index list.
@@ -165,14 +174,72 @@ class FaceSwapPipeline:
 
     # -- landmarks -----------------------------------------------------------
 
-    def _landmarks(self, bgr: np.ndarray, what: str) -> np.ndarray:
+    def _mesh_on(self, bgr: np.ndarray) -> np.ndarray | None:
         h, w = bgr.shape[:2]
         with self._lock:
             res = self._mesh.process(cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB))
         if not res.multi_face_landmarks:
-            raise FaceSwapError(f"no face found in the {what}")
+            return None
         lm = res.multi_face_landmarks[0].landmark
         return np.array([[p.x * w, p.y * h] for p in lm], np.float32)
+
+    def _roi(self, bgr: np.ndarray) -> tuple[int, int, int, int] | None:
+        """Where the head is, when the mesh could not find it unaided.
+
+        MEASURED, and it is the whole reason this method exists: FaceMesh finds
+        nothing in a 768×1152 full-body frame, where the face is about 68 px
+        across — and full-body IS what a studio base looks like. Two locators, in
+        order of directness:
+
+          FaceDetection(model_selection=1) — the FULL-RANGE model; the default
+          short-range one also found nothing in the same frame.
+          Pose head keypoints — nose, eyes and ears, which we already trust for
+          the dressing stage, and which work at any face size.
+
+        Both Apache-2.0, both already in mediapipe.
+        """
+        h, w = bgr.shape[:2]
+        rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+        with self._lock:
+            det = self._detector.process(rgb)
+        if det.detections:
+            b = det.detections[0].location_data.relative_bounding_box
+            cx, cy = (b.xmin + b.width / 2) * w, (b.ymin + b.height / 2) * h
+            r = max(b.width * w, b.height * h)
+        else:
+            with self._lock:
+                res = self._pose.process(rgb)
+            if not res.pose_landmarks:
+                return None
+            lm = res.pose_landmarks.landmark
+            nose, earA, earB = lm[0], lm[7], lm[8]
+            cx, cy = nose.x * w, nose.y * h
+            r = max(abs(earA.x - earB.x) * w, 24.0)
+        pad = r * 1.25          # room for chin and forehead, which the box clips
+        return (int(max(0, cx - pad)), int(max(0, cy - pad)),
+                int(min(w, cx + pad)), int(min(h, cy + pad)))
+
+    def _landmarks(self, bgr: np.ndarray, what: str) -> np.ndarray:
+        pts = self._mesh_on(bgr)
+        if pts is not None:
+            return pts
+        roi = self._roi(bgr)
+        if roi is None:
+            raise FaceSwapError(f"no face found in the {what}")
+        x0, y0, x1, y1 = roi
+        crop = bgr[y0:y1, x0:x1]
+        if crop.size == 0:
+            raise FaceSwapError(f"no face found in the {what}")
+        # Upscale so the crop reaches the resolution the mesh expects. A 163×177
+        # crop at ×4 was found where the full frame was not; the ceiling keeps a
+        # already-large crop from being blown up for nothing.
+        scale = float(np.clip(512.0 / max(crop.shape[:2]), 1.0, 6.0))
+        up = cv2.resize(crop, (int(crop.shape[1] * scale), int(crop.shape[0] * scale)),
+                        interpolation=cv2.INTER_CUBIC)
+        pts = self._mesh_on(up)
+        if pts is None:
+            raise FaceSwapError(f"no face found in the {what}")
+        return pts / scale + np.float32([x0, y0])
 
     @staticmethod
     def _interocular(pts: np.ndarray) -> float:
