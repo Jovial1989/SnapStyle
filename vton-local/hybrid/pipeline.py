@@ -705,10 +705,34 @@ def _garment_mask(p: Pose, kind: str,
     # trousers and shoes go BEHIND the arm, so the arm is not theirs to repaint.
     # 'upper' and 'full' keep the measured sleeve instead, which may legitimately
     # cover the forearm.
+    # THE HAND, NOT A DISC AROUND IT. A plain circle at the wrist protects the
+    # ORIGINAL pixels wholesale, and around a hand in a pocket those pixels are the
+    # OLD TROUSERS — so against new denim the protected disc read as a pale mitten,
+    # reported from the phone three times. Same medicine as the forearm: keep the
+    # skin-coloured part of the disc and let the garment have the rest.
+    skin_ref = None
+    if person is not None:
+        probe = np.zeros((h, w), np.uint8)
+        for a_i, b_i in ((4, 3), (7, 6)):
+            a, b = pts[a_i], pts[b_i]
+            if a and b:
+                cv2.line(probe, a, b, 255, max(4, round(span * 0.012)))
+        probe = cv2.bitwise_and(probe, p.silhouette)
+        if int(probe.sum()):
+            skin_ref = np.array(cv2.mean(person, mask=probe)[:3], np.float32)
+
     for wrist_i, elbow_i in ((4, 3), (7, 6)):
         wr, el = pts[wrist_i], pts[elbow_i]
         if wr:
-            cv2.circle(mask, wr, max(10, round(span * 0.055)), 0, -1)
+            r = max(10, round(span * 0.055))
+            disc = np.zeros((h, w), np.uint8)
+            cv2.circle(disc, wr, r, 255, -1)
+            if skin_ref is not None:
+                near = (np.abs(person.astype(np.float32) - skin_ref).max(axis=2) < 46)
+                grow = max(3, round(span * 0.006)) | 1
+                disc = cv2.bitwise_and(disc, cv2.dilate(
+                    (near.astype(np.uint8) * 255), np.ones((grow, grow), np.uint8)))
+            mask[disc > 0] = 0
         if kind in ("lower", "shoes") and wr and el:
             # BY SKIN COLOUR, NOT BY A FAT LINE. A corridor wide enough to hold
             # the forearm is much wider than the forearm, and everything else it
