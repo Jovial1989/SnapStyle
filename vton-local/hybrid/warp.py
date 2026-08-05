@@ -289,8 +289,17 @@ def garment_keypoints(sil: np.ndarray, kind: str) -> dict | None:
 
     return {
         "collar":     pt((left[0] + right[0]) / 2 if width[0] > 0 else W / 2, 0),
+        # THE OUTLINE AT THE TOP IS NOT THE SHOULDER SEAM. On a flat-lay the widest
+        # thing at 4% of the height is the pair of sleeve caps, so taking the
+        # outline there and mapping it to the body's shoulders squeezed the
+        # sleeves' fabric into the torso — measured as stripes bunched against both
+        # edges of the chest and a print crowded under a diagonal. The seam is
+        # where the sleeve leaves the body, which is the TORSO's own edge carried up
+        # to the shoulder row.
         "shoulder_l": pt(left[max(1, int(H * 0.04))], int(H * 0.04)),
         "shoulder_r": pt(right[max(1, int(H * 0.04))], int(H * 0.04)),
+        "seam_l":     pt(torso_l, int(H * 0.04)),
+        "seam_r":     pt(torso_r, int(H * 0.04)),
         # THE CUFF IS AN EDGE, NOT A POINT. Using one point twice made the sleeve
         # quad degenerate — two coincident corners — and a degenerate perspective
         # transform filled the whole frame with the border colour, wiping the
@@ -456,7 +465,7 @@ def parts_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     filled = np.zeros((h, w), np.uint8)
 
     # ── torso: shoulder seam to hem, the quad that already worked ──────────────
-    t_src = np.float32([kp["shoulder_l"], kp["shoulder_r"], kp["hem_r"], kp["hem_l"]])
+    t_src = np.float32([kp["seam_l"], kp["seam_r"], kp["hem_r"], kp["hem_l"]])
     t_dst = np.float32([[x_l, sh_y], [x_r, sh_y],
                         [x_r, hip_y + span * 0.03], [x_l, hip_y + span * 0.03]])
     _quad_warp(garment, sil, t_src, t_dst, (h, w), out, filled)
@@ -477,12 +486,20 @@ def parts_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
         axis = cuff - prev
         n = float(np.hypot(*axis)) or 1.0
         perp = np.float32([-axis[1] / n, axis[0] / n])
+        # POINT IT AWAY FROM THE TORSO, PER SIDE. One formula for both arms puts
+        # the perpendicular outward on one side and inward on the other, so the
+        # cuff's two ends swap on that arm and the sleeve comes out inside-out —
+        # the diagonal band of bunched stripes across the chest. On a flat-lay the
+        # sleeve's upper seam runs to the OUTER end of the cuff; on a hanging arm
+        # that is the end further from the body's centre line.
+        if float(perp[0]) * (x_edge - cx) < 0:
+            perp = -perp
 
         # THE CUFF KEEPS THE SLEEVE'S OWN PROPORTIONS. Its width is scaled by the
         # same factor as its length, which is what stopped shorts stretching into
         # trousers; a cuff sized from the arm instead would make every sleeve the
         # same width whatever the garment.
-        g_sh = np.float32(kp["shoulder_" + side])
+        g_sh = np.float32(kp["seam_" + side])
         g_pit = np.float32(kp["armpit_" + side])
         g_top = np.float32(kp[f"cuff_{side}_top"])
         g_bot = np.float32(kp[f"cuff_{side}_bot"])
