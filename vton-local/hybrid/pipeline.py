@@ -679,7 +679,14 @@ def _garment_mask(p: Pose, kind: str,
     # here: 17% of the old mask lay off the body. A garment WIDER than the
     # shoulders earns that room; one that is not, does not.
     if met:
-        row = int(min(h - 1, max(0, shoulder + span * 0.06)))
+        # Measure the body's width WHERE THIS SLOT LIVES. The chest row was used
+        # for every slot, and on a build whose hips-in-pixels run wide the lower
+        # allowance came out tens of pixels — denim slabbed sideways into the
+        # arm-hip gap on the free-arms base. The chest answers for tops, the hip
+        # row answers for trousers.
+        row = int(min(h - 1, max(0, (hip + span * 0.06)
+                                    if kind in ("lower", "shoes")
+                                    else (shoulder + span * 0.06))))
         occupied = np.flatnonzero(p.silhouette[row])
         body_w = float(occupied[-1] - occupied[0] + 1) if occupied.size else gw
         allow = max(8, int((gw - body_w) / 2))
