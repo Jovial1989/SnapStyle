@@ -61,6 +61,19 @@ OFFLOAD = os.getenv("VTON_OFFLOAD", "0") == "1"
 # picking a flash kernel. Never on MPS (no xformers backend there).
 XFORMERS = os.getenv("VTON_XFORMERS", "1") == "1" and torch.cuda.is_available()
 
+# Two mask constants that have to be CALIBRATED rather than reasoned about, so
+# they live here where a sweep can reach them. Both trade one visible defect for
+# another, and the window between is narrow:
+#   COLLAR_UP  how far above the shoulder keypoints the band starts, in figure
+#              heights. Too small and the base's own collar shows at the throat;
+#              too large and the sampler fills the neck, turning a crew neck into
+#              a mock neck (measured at 0.07).
+#   SIDE_PAD   drape allowance on each flank. Too small and the base garment
+#              shows along the sides; too large and the mask sits off the body,
+#              where the halo used to be painted.
+COLLAR_UP = float(os.getenv("VTON_COLLAR_UP", "0.03"))
+SIDE_PAD = float(os.getenv("VTON_SIDE_PAD", "0.035"))
+
 # SD 1.5 was trained at 512²; 768×1024 is off-distribution for it and shows up
 # as duplicated torsos. SDXL wants ~1 megapixel. Different defaults per base.
 WORK_W, WORK_H = (
@@ -536,14 +549,14 @@ def _garment_mask(p: Pose, kind: str,
         # so it is thinner than the neck below it), and walking up to where the
         # figure narrows to 55% of shoulder width stops at row 208, mid-throat.
         # The width profile through the neck is too shallow to threshold safely.
-        y0 = max(y0, shoulder - span * 0.03)
+        y0 = max(y0, shoulder - span * COLLAR_UP)
 
     if met and kind in ("upper", "full", "lower"):
         # SIDES AT THE GARMENT'S OWN WIDTH, not the figure's. The 14% figure pad
         # runs from wrist to wrist, so on a standing figure it put mask well
         # outside the body on both flanks — and the model filled that strip with
         # the halo that traced the silhouette. The pad here is for drape only.
-        pad = max(6, span * 0.035)
+        pad = max(6, span * SIDE_PAD)
         half = gw / 2.0 + pad
         x0, x1 = max(0, int(cx - half)), min(w - 1, int(cx + half))
         # …BUT NEVER NARROWER THAN THE BODY IT HAS TO COVER. Legs stand apart, so
