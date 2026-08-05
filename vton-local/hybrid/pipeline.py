@@ -472,18 +472,25 @@ def _garment_mask(p: Pose, kind: str,
     else:  # upper
         y0, y1 = shoulder - span * 0.07, hip + span * 0.10
         if met:
-            # WHERE THE HEM ACTUALLY LANDS. The mask cannot make the sampler paint
-            # further than it intends to — measured twice: with the band 83 px past
-            # the hip, the model put the hem at the hip both times and the strip
-            # below came back as exposed fill, a translucent film over the
-            # trousers with a hard horizontal edge. So the band ends just under
-            # the basics' hem for anything of ordinary length, and only a garment
-            # that measures DECISIVELY long (past the hip by a fifth of the
-            # figure) earns the extra room, because that is when the reference
-            # itself will make the sampler paint down there.
-            hem = shoulder + met["len_ratio"] * gw
-            y1 = (min(hem, hip + span * 0.55) if hem > hip + span * 0.20
-                  else hip + span * 0.03)
+            # THE HEM IS FIXED JUST UNDER THE BASICS', and len_ratio does NOT get a
+            # vote. Two reasons, both measured.
+            #
+            # First, the sampler paints the hem where its own prior puts it, not
+            # where the mask ends, and the strip between the two comes back as
+            # exposed fill — a film over the trousers with a hard horizontal edge.
+            #
+            # Second, the ratio cannot be mapped onto the body through one factor.
+            # It is a length over the garment's OWN width, and that width is a
+            # property of the cut: an oversized tee measured 1.61 and a slim
+            # V-neck 2.08. Multiplied by the same body-side width they predict
+            # hems 120 px apart for two shirts that are the same length in real
+            # life. Fixing that needs the garment's SHOULDER width, which the
+            # sleeves sit across in a flat-lay, so it is not reliably measurable.
+            #
+            # A long coat therefore will not render long. That is a known loss,
+            # and it costs less than the artefact it removes. len_ratio stays as a
+            # plausibility check on the flat-lay.
+            y1 = hip + span * 0.03
 
     if met and kind in ("upper", "full"):
         # THE THROAT IS NOT A COLLAR. Starting the band 7% of the figure above the
@@ -510,8 +517,18 @@ def _garment_mask(p: Pose, kind: str,
         # runs from wrist to wrist, so on a standing figure it put mask well
         # outside the body on both flanks — and the model filled that strip with
         # the halo that traced the silhouette. The pad here is for drape only.
-        half = gw / 2.0 + max(6, span * 0.035)
+        pad = max(6, span * 0.035)
+        half = gw / 2.0 + pad
         x0, x1 = max(0, int(cx - half)), min(w - 1, int(cx + half))
+        # …BUT NEVER NARROWER THAN THE BODY IT HAS TO COVER. Legs stand apart, so
+        # a band sized from the HIP width clipped 13 px of the far ankle, and the
+        # foot came back as a white blob beside the shoe. Widen to whatever the
+        # figure actually occupies inside these rows.
+        band = p.silhouette[max(0, int(y0)):int(y1) + 1]
+        occupied = np.flatnonzero(band.any(axis=0)) if band.size else np.array([])
+        if occupied.size:
+            x0 = min(x0, max(0, int(occupied[0] - pad)))
+            x1 = max(x1, min(w - 1, int(occupied[-1] + pad)))
 
     box = np.zeros((h, w), np.uint8)
     box[max(0, int(y0)):int(y1) + 1, x0:x1 + 1] = 255
