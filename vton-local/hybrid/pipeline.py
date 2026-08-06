@@ -1226,6 +1226,28 @@ class HybridVTONPipeline:
             w_edges[warped.mask == 0] = 0
             control_canny = cv2.cvtColor(cv2.bitwise_or(edges, w_edges),
                                          cv2.COLOR_GRAY2RGB)
+
+            # THE MASK MUST END WHERE THE GARMENT ENDS. The band's bottom is a fixed
+            # row (hip + 3% of the figure), and the warped tee's hem lands wherever
+            # its own hem lands — usually well above it. Everything between the two
+            # was mask over UNTOUCHED BASE, so denoising had to invent a transition
+            # from garment to trousers, and it invented a torn edge: the ragged
+            # horizontal cut across the bottom of every top, the single most visible
+            # defect left on the demo. Below the hem the sampler needs a few pixels
+            # to lay a contact shadow, not tens to hallucinate in.
+            #
+            # Only downward, and only in columns the warp actually reached. Trimming
+            # to the warp everywhere would be the other bug: coverage runs 56-90%, so
+            # the shoulders and side seams a partial warp missed still need mask if
+            # the garment is to be completed there at all.
+            if kind in ("upper", "full"):
+                a = warped.mask > 0
+                cols = a.any(axis=0)
+                if cols.any():
+                    hem = a.shape[0] - 1 - np.argmax(a[::-1], axis=0)
+                    allow = max(3, int(round(full.shape[0] * 0.012)))
+                    rows = np.arange(a.shape[0])[:, None]
+                    mask_full[(rows > (hem + allow)[None, :]) & cols[None, :]] = 0
         # ONE DRY LINE PER RENDER. Every mask defect this engine has had was
         # eventually pinned by a number, never by squinting at a phone screenshot
         # — and each time the number had to be re-derived by hand on the pod.
