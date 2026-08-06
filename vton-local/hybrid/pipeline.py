@@ -781,6 +781,32 @@ def _garment_mask(p: Pose, kind: str,
                     (near.astype(np.uint8) * 255), np.ones((grow, grow), np.uint8)))
             shield = cv2.bitwise_or(shield, disc)
 
+    # THE LOWER SLOT LIVES ON THE PELVIS AND THE LEGS, and that is knowable from
+    # the SKELETON — which is the point. MediaPipe's matte merges the hanging arms
+    # into the torso blob at hip height, so any mask built by intersecting the
+    # matte inherits the gap between arm and body; the warp then filled that gap
+    # with denim and the render grew two flat slabs sticking out sideways with a
+    # straight vertical cut. Two attempts trimmed it by columns and only shrank
+    # the slabs, because the matte was the thing lying. A pelvis quad plus a
+    # corridor per leg cannot contain that gap at all: it is lateral, and this
+    # shape is not. Generous on purpose — baggy jeans must still fit inside it.
+    if kind in ("lower", "shoes") and lh and rh:
+        zone = np.zeros((h, w), np.uint8)
+        hw = max(abs(lh[0] - rh[0]) * 0.95, span * 0.10)
+        top = min(lh[1], rh[1]) - span * 0.09
+        cxh = (lh[0] + rh[0]) / 2.0
+        cv2.fillConvexPoly(zone, np.int32([
+            [cxh - hw, top], [cxh + hw, top],
+            [cxh + hw, max(lh[1], rh[1]) + span * 0.06],
+            [cxh - hw, max(lh[1], rh[1]) + span * 0.06]]), 255)
+        for ids in ((8, 9, 10), (11, 12, 13)):
+            chain = [pts[i] for i in ids if pts[i]]
+            for a, b in zip(chain, chain[1:]):
+                cv2.line(zone, a, b, 255, int(max(20, span * 0.13)))
+            if pts[ids[2]]:      # the foot reaches past the last keypoint
+                cv2.circle(zone, pts[ids[2]], int(max(20, span * 0.09)), 255, -1)
+        mask = cv2.bitwise_and(mask, zone)
+
     mask[shield > 0] = 0
     mask = cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
     if True:
