@@ -800,7 +800,18 @@ def _garment_mask(p: Pose, kind: str,
     # change per step: the UPPER pass altered 1100-1700 px around each hand in
     # exactly its fill colour). Same class, two slots, one place to fix it.
     shield = np.zeros((h, w), np.uint8)
-    if kind in ("lower", "shoes"):
+    if kind in ("lower", "shoes") and int(not_garment.max()):
+        # THE COLOUR CARVE REPLACES THE ARM LINES, it does not join them. Both ran,
+        # and the lines were what still clipped the trousers: 70px thick around each
+        # arm's centreline, and the right shoulder keypoint sits INSIDE the trouser
+        # columns, so they carved 42px of fabric on one side and 37px on the other —
+        # the grey edges I chased through the band, the quad and the allowance. Read
+        # off one hip row: skin 272..298, real backdrop 300..312, fabric 314..526,
+        # backdrop 527..535, skin 540..570. The hands are OUTSIDE the trousers with
+        # actual background between; a line down the arm cannot express that, and the
+        # colour test does it exactly.
+        pass
+    elif kind in ("lower", "shoes"):
         for ids in ((2, 3, 4), (5, 6, 7)):
             chain = [pts[i] for i in ids if pts[i]]
             for a, b in zip(chain, chain[1:]):
