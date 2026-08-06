@@ -131,7 +131,13 @@ def torso_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
             return None
         half_top = abs(lh[0] - rh[0]) * 0.78
         cx_top = (lh[0] + rh[0]) / 2.0
-        y_top = min(lh[1], rh[1]) - span * 0.02
+        # UP TO THE MASK'S OWN TOP, not 2% above the hip. The lower mask starts at
+        # hip - 6% and the quad started at hip - 2%, so a 33px band of the mask had
+        # no warped pixels — the sampler declined it and the flat fill showed as a
+        # grey-blue strip right under the tee's hem (diag: mask top y=520, fill
+        # [128,100,74], the strip's exact colour). The waistband rides higher and
+        # disappears under the untucked hem, which is where a waistband lives.
+        y_top = min(lh[1], rh[1]) - span * 0.06
         # KEEP THE PANEL'S OWN ASPECT, then clamp at the ankle. Anchoring the
         # bottom to the ankle stretched SHORTS into trousers — found immediately
         # on a test set with a shorts category, which the catalogue did not have.
