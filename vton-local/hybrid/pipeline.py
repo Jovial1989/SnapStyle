@@ -1263,6 +1263,21 @@ class HybridVTONPipeline:
                     # no-op. 0.5% leaves ~6px, enough for a contact shadow.
                     r = max(3, int(round(full.shape[0] * 0.005))) | 1
                     room = cv2.dilate(warped.mask, np.ones((r, r), np.uint8))
+                    # AND THE SLEEVES ARE EXEMPT. A tight allowance is only safe where
+                    # the warp actually reached, and on the arms it does not: sleeve
+                    # warping is parked (a 2D quad degenerates at the armhole), so the
+                    # torso quad carries the whole 84% and the sleeve columns have no
+                    # alpha at all. At 17px that was invisible; at 6px the trim cut the
+                    # sleeve off and left a slice of bare arm and background through it.
+                    # The corridor the mask builds for the arms is exactly the region
+                    # that must survive this, so it is rebuilt here and added back.
+                    ys = [q[1] for q in pose.pts if q]
+                    span = max(1.0, max(ys) - min(ys)) if ys else 1.0
+                    for ids in ((2, 3, 4), (5, 6, 7)):
+                        chain = [pose.pts[i] for i in ids if pose.pts[i]]
+                        for a_pt, b_pt in zip(chain, chain[1:]):
+                            cv2.line(room, a_pt, b_pt, 255,
+                                     int(max(24, span * 0.13)))
                     y_arm = int(min(sh) + (max(hp) - min(sh)) * 0.35)
                     mask_full[y_arm:] = cv2.bitwise_and(mask_full[y_arm:],
                                                         room[y_arm:])
