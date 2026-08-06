@@ -36,13 +36,13 @@ _CHAINS: dict[str, tuple[int, int, int]] = {
     "left": (2, 3, 4),      # shoulder, elbow, wrist
     "right": (5, 6, 7),
 }
-_ALIASES: dict[str, tuple[str, ...]] = {
-    2: ("left_shoulder", "l_shoulder", "shoulder_l", "LShoulder"),
-    3: ("left_elbow", "l_elbow", "elbow_l", "LElbow"),
-    4: ("left_wrist", "l_wrist", "wrist_l", "LWrist"),
-    5: ("right_shoulder", "r_shoulder", "shoulder_r", "RShoulder"),
-    6: ("right_elbow", "r_elbow", "elbow_r", "RElbow"),
-    7: ("right_wrist", "r_wrist", "wrist_r", "RWrist"),
+_ALIASES: dict[int, tuple[str, ...]] = {
+    2: ("L_shoulder", "left_shoulder", "l_shoulder", "shoulder_l", "LShoulder"),
+    3: ("L_elbow", "left_elbow", "l_elbow", "elbow_l", "LElbow"),
+    4: ("L_wrist", "left_wrist", "l_wrist", "wrist_l", "LWrist"),
+    5: ("R_shoulder", "right_shoulder", "r_shoulder", "shoulder_r", "RShoulder"),
+    6: ("R_elbow", "right_elbow", "r_elbow", "elbow_r", "RElbow"),
+    7: ("R_wrist", "right_wrist", "r_wrist", "wrist_r", "RWrist"),
 }
 
 
