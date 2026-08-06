@@ -583,6 +583,45 @@ def _garment_mask(p: Pose, kind: str,
         # The width profile through the neck is too shallow to threshold safely.
         y0 = max(y0, shoulder - span * COLLAR_UP)
 
+    # WHAT IS NOT GARMENT, BY COLOUR, ONCE. Two things sit in the columns a pair of
+    # trousers needs: the arms hanging in front of the hips, and the sliver of
+    # backdrop between arm and body that MediaPipe's matte closes over. Geometry
+    # cannot separate either from the garment — the arm is IN FRONT of the hip, so
+    # the same columns hold both, which is why trimming by column only ever shrank
+    # the denim slabs while also clipping the jeans (measured at 0.95 and 0.85 hip
+    # widths: the base's grey trousers showed along both edges). The base image can
+    # separate them: skin is the arm, backdrop is the gap, and neither is trousers.
+    # Computed here because it answers two questions — how wide the band may be, and
+    # what must stay out of the repaint zone.
+    not_garment = np.zeros((h, w), np.uint8)
+    if kind in ("lower", "shoes") and person is not None:
+        corridor = np.zeros((h, w), np.uint8)
+        wide = np.zeros((h, w), np.uint8)
+        sample = np.zeros((h, w), np.uint8)
+        for ids in ((2, 3, 4), (5, 6, 7)):
+            chain = [pts[i] for i in ids if pts[i]]
+            for a, b in zip(chain, chain[1:]):
+                cv2.line(corridor, a, b, 255, int(max(24, span * 0.11)))
+                cv2.line(wide, a, b, 255, int(max(36, span * 0.18)))
+                cv2.line(sample, a, b, 255, max(4, round(span * 0.012)))
+        probe = cv2.bitwise_and(sample, p.silhouette)
+        if int(probe.sum()):
+            skin = np.array(cv2.mean(person, mask=probe)[:3], np.float32)
+            grow = max(3, round(span * 0.008)) | 1
+            near = (np.abs(person.astype(np.float32) - skin).max(axis=2) < 46)
+            not_garment = cv2.bitwise_and(corridor, cv2.dilate(
+                (near.astype(np.uint8) * 255), np.ones((grow, grow), np.uint8)))
+        # The backdrop is sampled from the frame's own corners rather than assumed
+        # white, and both tests are confined to an arm corridor so a pale garment
+        # elsewhere on the body is untouched.
+        back = np.float32([0, 0, 0])
+        for cy, cx in ((0, 0), (0, w - 6), (h - 6, 0), (h - 6, w - 6)):
+            back += np.array(cv2.mean(person[cy:cy + 6, cx:cx + 6])[:3], np.float32)
+        back /= 4.0
+        gap = cv2.bitwise_and(wide, (np.abs(person.astype(np.float32) - back)
+                                     .max(axis=2) < 30).astype(np.uint8) * 255)
+        not_garment = cv2.bitwise_or(not_garment, gap)
+
     if met and kind in ("upper", "full", "lower"):
         # SIDES AT THE GARMENT'S OWN WIDTH, not the figure's. The 14% figure pad
         # runs from wrist to wrist, so on a standing figure it put mask well
@@ -598,22 +637,20 @@ def _garment_mask(p: Pose, kind: str,
         occ_src = p.silhouette.copy()
         if kind in ("lower", "shoes"):
             # Columns owned by the hanging arms must not widen the band — at hip
-            # rows the figure's extremes ARE the arms.
-            for ids in ((2, 3, 4), (5, 6, 7)):
-                ch = [pts[i] for i in ids if pts[i]]
-                for a, b in zip(ch, ch[1:]):
-                    cv2.line(occ_src, a, b, 0, max(12, round(span * 0.085)))
-        # MEASURE THE WIDENING WHERE LEGS ARE, NOT WHERE HANDS ARE. The widening
-        # exists so the far ankle is not clipped, and the ankle is at the BOTTOM of
-        # the band — but taken across the whole band it also picked up the hip rows,
-        # where MediaPipe's matte merges the hanging arms into the torso blob. The
-        # band then reached the arms' outer edge, the warp filled that with denim,
-        # and the render grew two flat blue slabs sticking out at hip level with a
-        # straight vertical cut (the hands survived on top, being shielded, which is
-        # why this read as "hooks around the fists"). Rows below the upper third of
-        # the band answer the ankle question and contain no hands.
-        row_lo = int(y0 + (y1 - y0) * 0.35) if kind in ("lower", "shoes") else int(y0)
-        band = occ_src[max(0, row_lo):int(y1) + 1]
+            # rows the figure's extremes ARE the arms. Carved by COLOUR (skin and
+            # backdrop) rather than by a line down the arm: a line removes the
+            # centreline and leaves the arm's own width plus the whole gap behind
+            # it, so the band still reached the arms' outer edge.
+            occ_src = cv2.bitwise_and(occ_src, cv2.bitwise_not(not_garment))
+        # MEASURE IT ACROSS THE WHOLE BAND, INCLUDING THE HIPS. Skipping the upper
+        # third was a way to keep the merged arms out of the answer, and it worked —
+        # but it also meant the widest part of a pair of trousers was never measured,
+        # and the band fell back to the flat-lay's own width: 133 px of mask where
+        # the base carries 259 px of fabric (measured at the hip row, silhouette
+        # minus skin colour), i.e. HALF THE GARMENT. That is what left grey trouser
+        # showing along both edges — the defect I twice blamed on the arm guard.
+        # With the arms carved by colour the hip rows are safe to measure.
+        band = occ_src[max(0, int(y0)):int(y1) + 1]
         occupied = np.flatnonzero(band.any(axis=0)) if band.size else np.array([])
         if occupied.size:
             x0 = min(x0, max(0, int(occupied[0] - pad)))
@@ -815,49 +852,12 @@ def _garment_mask(p: Pose, kind: str,
                 cv2.line(zone, a, b, 255, int(max(20, span * 0.13)))
             if pts[ids[2]]:      # the foot reaches past the last keypoint
                 cv2.circle(zone, pts[ids[2]], int(max(20, span * 0.09)), 255, -1)
-        # THE ARM IS SEPARATED BY ITS SKIN, NOT BY ITS COLUMN. A lateral cut at the
-        # arm's x removed the garment too — the arm hangs IN FRONT of the hip, so
-        # those columns hold both, and x alone cannot tell them apart (measured: the
-        # jeans lost their right edge and the base's grey trousers showed through,
-        # exactly as narrowing the quad did). What can tell them apart is what the
-        # base image says: skin is the arm, fabric is not. Same discriminator the
-        # upper slot already uses for the hand.
-        if person is not None:
-            corridor = np.zeros((h, w), np.uint8)
-            sample = np.zeros((h, w), np.uint8)
-            for ids in ((2, 3, 4), (5, 6, 7)):
-                chain = [pts[i] for i in ids if pts[i]]
-                for a, b in zip(chain, chain[1:]):
-                    cv2.line(corridor, a, b, 255, int(max(24, span * 0.11)))
-                    cv2.line(sample, a, b, 255, max(4, round(span * 0.012)))
-            sample = cv2.bitwise_and(sample, p.silhouette)
-            if int(sample.sum()):
-                skin = np.array(cv2.mean(person, mask=sample)[:3], np.float32)
-                near = (np.abs(person.astype(np.float32) - skin).max(axis=2) < 46)
-                grow = max(3, round(span * 0.008)) | 1
-                arm = cv2.bitwise_and(corridor, cv2.dilate(
-                    (near.astype(np.uint8) * 255), np.ones((grow, grow), np.uint8)))
-                shield = cv2.bitwise_or(shield, arm)
-            # AND THE GAP BETWEEN ARM AND TORSO IS BACKGROUND, NOT FABRIC. That gap
-            # is what grew the denim slabs: MediaPipe's matte closes it, so it sits
-            # INSIDE the silhouette while being studio white, and the warp had no
-            # reason not to fill it. Skin cannot catch it — the gap is not skin — but
-            # the backdrop colour can, and nothing a garment needs shares it here
-            # (the slot is trousers and shoes). Sampled from the frame's own corners
-            # rather than assumed white, and confined to a wide arm corridor so a
-            # pale garment elsewhere is untouched.
-            back = np.float32([0, 0, 0])
-            for cy, cx in ((0, 0), (0, w - 6), (h - 6, 0), (h - 6, w - 6)):
-                back += np.array(cv2.mean(person[cy:cy + 6, cx:cx + 6])[:3], np.float32)
-            back /= 4.0
-            wide = np.zeros((h, w), np.uint8)
-            for ids in ((2, 3, 4), (5, 6, 7)):
-                chain = [pts[i] for i in ids if pts[i]]
-                for a, b in zip(chain, chain[1:]):
-                    cv2.line(wide, a, b, 255, int(max(36, span * 0.18)))
-            gap = cv2.bitwise_and(wide, (np.abs(person.astype(np.float32) - back)
-                                         .max(axis=2) < 30).astype(np.uint8) * 255)
-            shield = cv2.bitwise_or(shield, gap)
+        # The same colour carve that sized the band keeps the arms and the gap behind
+        # them out of the repaint zone — one test, both jobs, so the boundary the
+        # band was measured against and the boundary the sampler sees cannot drift
+        # apart. (The geometric arm lines above stay: they are the fallback when no
+        # base image is available to sample.)
+        shield = cv2.bitwise_or(shield, not_garment)
         mask = cv2.bitwise_and(mask, zone)
 
     mask[shield > 0] = 0
