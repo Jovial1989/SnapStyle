@@ -594,6 +594,7 @@ def _garment_mask(p: Pose, kind: str,
     # Computed here because it answers two questions — how wide the band may be, and
     # what must stay out of the repaint zone.
     not_garment = np.zeros((h, w), np.uint8)
+    zone = None
     if kind in ("lower", "shoes") and person is not None:
         corridor = np.zeros((h, w), np.uint8)
         wide = np.zeros((h, w), np.uint8)
@@ -891,6 +892,22 @@ def _garment_mask(p: Pose, kind: str,
         # painted that tail — measured at 13.8k px of soft fabric-coloured smear
         # around the figure, against a white background where it shows plainly.
         mask = cv2.bitwise_and(mask, reachable)
+
+    # WHICH CLIP TOOK WHAT, on one row. Four independent things narrow this mask —
+    # the band, the zone, the carve and the allowance — and a wrong answer looks
+    # identical whichever one produced it. Two full sessions went into blaming the
+    # wrong one of them, each time "fixed" by making something narrower, because the
+    # only number I had was the final width. VTON_MASK_TRACE=1 prints all four.
+    if os.getenv("VTON_MASK_TRACE") == "1":
+        def _ext(m, row):
+            r = np.flatnonzero(m[int(row)] > 20)
+            return f"{r[0]}..{r[-1]}({r[-1] - r[0]})" if r.size else "-"
+        probe_row = min(h - 1, int(hip))
+        print(f"[maskdbg] {kind} row={probe_row} box={_ext(box, probe_row)} "
+              f"zone={_ext(zone, probe_row) if zone is not None else '-'} "
+              f"carve={_ext(not_garment, probe_row)} "
+              f"shield={_ext(shield, probe_row)} final={_ext(mask, probe_row)}",
+              flush=True)
     return mask
 
 
