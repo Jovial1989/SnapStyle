@@ -137,6 +137,51 @@ Deno.serve(async (req) => {
     const affSteps = (meta.affiliate ?? [])
       .map((a) => ({ kind: slotOf(a.category), url: String(a.imageUrl ?? ""), label: String(a.name ?? "") }))
       .filter((a) => a.kind && /^https?:\/\//.test(a.url));
+    // GROUND INVENTED LOOKS IN THE CATALOGUE AT RENDER TIME. With the hosted
+    // image provider off, tier=inspiration was a guaranteed failure: the planner
+    // invents garments in TEXT, none match an affiliate row, so the engine gets
+    // zero steps and the fallback dies on the dead key — reproduced via the API:
+    // three renders, all 'gemini-image 400', dress=0 affiliate=0. The demo answer
+    // is the same one the editor already uses: swap the invented garment for the
+    // nearest real flat-lay we own. The look loses some of the planner's poetry
+    // and gains actually existing. Keyword-scored against the generated pool —
+    // no embeddings, so it cannot be rate-limited into failure.
+    if (hybridEnabled() && !(meta.dress ?? []).length && !affSteps.length) {
+      const wanted = (meta.garments ?? []).map((g: unknown) => String(g)).slice(0, 4);
+      if (wanted.length) {
+        const BOT = /(trouser|pant|jean|chino|jogger|short|skirt|slack)/i;
+        const SHO = /(shoe|sneaker|trainer|boot|loafer|derby|oxford|brogue|sandal|heel|mule)/i;
+        const { data: pool } = await db.from("affiliate_items")
+          .select("name, category, image_url")
+          .eq("source", "generated").eq("active", true)
+          // TODO(demo): the single demo account presents masculine; plumb the
+          // profile's gender through look_generations before wider users.
+          .or("gender.eq.male,gender.eq.unisex");
+        const used = new Set<string>();
+        for (const want of wanted) {
+          const slot = SHO.test(want) ? "shoes" : BOT.test(want) ? "bottom" : "top";
+          const kind = slotOf(slot);
+          if (!kind || [...used].some((u) => u.startsWith(slot + ":"))) continue;
+          const toks = want.toLowerCase().split(/[^a-zа-я]+/).filter((t) => t.length > 2);
+          let best: { name: string; image_url: string } | null = null;
+          let bestScore = -1;
+          for (const r of (pool ?? []) as { name: string; category: string; image_url: string }[]) {
+            if (r.category !== slot || used.has(slot + ":" + r.image_url)) continue;
+            const n = (r.name || "").toLowerCase();
+            const score = toks.reduce((acc, t) => acc + (n.includes(t) ? 1 : 0), 0);
+            if (score > bestScore) { best = r; bestScore = score; }
+          }
+          if (best && /^https?:\/\//.test(best.image_url)) {
+            used.add(slot + ":" + best.image_url);
+            affSteps.push({ kind, url: best.image_url, label: best.name });
+          }
+        }
+        if (affSteps.length) {
+          console.log("[render-look] grounded", JSON.stringify(
+            affSteps.map((a) => `${a.kind}:${a.label.slice(0, 24)}`)));
+        }
+      }
+    }
     if (hybridEnabled() && ((meta.dress ?? []).length || affSteps.length)) {
       try {
         const steps: DressStep[] = [];
