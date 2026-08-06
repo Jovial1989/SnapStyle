@@ -812,30 +812,29 @@ def _garment_mask(p: Pose, kind: str,
                 cv2.line(zone, a, b, 255, int(max(20, span * 0.13)))
             if pts[ids[2]]:      # the foot reaches past the last keypoint
                 cv2.circle(zone, pts[ids[2]], int(max(20, span * 0.09)), 255, -1)
-        # CUT LATERALLY AT EACH ARM'S INNER EDGE. The gap between a hanging arm and
-        # the hip is lateral, so removing everything OUTBOARD of the arm removes
-        # the gap without touching a millimetre of the pelvis. Narrowing the quad
-        # instead cost the garment (grey trousers along both edges at 0.85) — the
-        # arm's own x is the boundary the geometry actually has.
-        for ids in ((2, 3, 4), (5, 6, 7)):
-            chain = [pts[i] for i in ids if pts[i]]
-            if len(chain) < 2:
-                continue
-            # Where the arm crosses the hip line, interpolated along its chain.
-            hip_y = max(lh[1], rh[1])
-            ax = None
-            for a, b in zip(chain, chain[1:]):
-                if (a[1] - hip_y) * (b[1] - hip_y) <= 0 and b[1] != a[1]:
-                    t = (hip_y - a[1]) / (b[1] - a[1])
-                    ax = a[0] + (b[0] - a[0]) * t
-                    break
-            if ax is None:
-                ax = chain[-1][0]
-            pad = span * 0.012
-            if ax < cxh:
-                zone[:, :max(0, int(ax + pad))] = 0
-            else:
-                zone[:, min(w, int(ax - pad)):] = 0
+        # THE ARM IS SEPARATED BY ITS SKIN, NOT BY ITS COLUMN. A lateral cut at the
+        # arm's x removed the garment too — the arm hangs IN FRONT of the hip, so
+        # those columns hold both, and x alone cannot tell them apart (measured: the
+        # jeans lost their right edge and the base's grey trousers showed through,
+        # exactly as narrowing the quad did). What can tell them apart is what the
+        # base image says: skin is the arm, fabric is not. Same discriminator the
+        # upper slot already uses for the hand.
+        if person is not None:
+            corridor = np.zeros((h, w), np.uint8)
+            sample = np.zeros((h, w), np.uint8)
+            for ids in ((2, 3, 4), (5, 6, 7)):
+                chain = [pts[i] for i in ids if pts[i]]
+                for a, b in zip(chain, chain[1:]):
+                    cv2.line(corridor, a, b, 255, int(max(24, span * 0.11)))
+                    cv2.line(sample, a, b, 255, max(4, round(span * 0.012)))
+            sample = cv2.bitwise_and(sample, p.silhouette)
+            if int(sample.sum()):
+                skin = np.array(cv2.mean(person, mask=sample)[:3], np.float32)
+                near = (np.abs(person.astype(np.float32) - skin).max(axis=2) < 46)
+                grow = max(3, round(span * 0.008)) | 1
+                arm = cv2.bitwise_and(corridor, cv2.dilate(
+                    (near.astype(np.uint8) * 255), np.ones((grow, grow), np.uint8)))
+                shield = cv2.bitwise_or(shield, arm)
         mask = cv2.bitwise_and(mask, zone)
 
     mask[shield > 0] = 0
