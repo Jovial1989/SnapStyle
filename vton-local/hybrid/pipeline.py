@@ -1227,27 +1227,24 @@ class HybridVTONPipeline:
             control_canny = cv2.cvtColor(cv2.bitwise_or(edges, w_edges),
                                          cv2.COLOR_GRAY2RGB)
 
-            # THE MASK MUST END WHERE THE GARMENT ENDS. The band's bottom is a fixed
-            # row (hip + 3% of the figure), and the warped tee's hem lands wherever
-            # its own hem lands — usually well above it. Everything between the two
-            # was mask over UNTOUCHED BASE, so denoising had to invent a transition
-            # from garment to trousers, and it invented a torn edge: the ragged
-            # horizontal cut across the bottom of every top, the single most visible
-            # defect left on the demo. Below the hem the sampler needs a few pixels
-            # to lay a contact shadow, not tens to hallucinate in.
+            # WHEN THE WARP IS GOOD, IT OWNS THE SILHOUETTE. The band is a rectangle
+            # — it has to be, since a mask traced round the old clothes could never
+            # grow a different shape — and everything inside it that the warp did not
+            # reach got filled with flat garment colour. On a top that is most of the
+            # defect: the tee arrived as a yellow rectangle with ruler-straight sides
+            # and a hem that dissolved into a blur instead of ending, which is exactly
+            # the "flat, pasted on" read. The warp already knows the garment's outline
+            # — it carries it as its own alpha — so past a coverage threshold the mask
+            # follows the warp plus room for a hem edge and its contact shadow.
             #
-            # Only downward, and only in columns the warp actually reached. Trimming
-            # to the warp everywhere would be the other bug: coverage runs 56-90%, so
-            # the shoulders and side seams a partial warp missed still need mask if
-            # the garment is to be completed there at all.
-            if kind in ("upper", "full"):
-                a = warped.mask > 0
-                cols = a.any(axis=0)
-                if cols.any():
-                    hem = a.shape[0] - 1 - np.argmax(a[::-1], axis=0)
-                    allow = max(3, int(round(full.shape[0] * 0.012)))
-                    rows = np.arange(a.shape[0])[:, None]
-                    mask_full[(rows > (hem + allow)[None, :]) & cols[None, :]] = 0
+            # Gated on coverage, because the opposite bug is just as real: a warp that
+            # only found half the garment must NOT be allowed to lock in half a
+            # silhouette. Below the gate the band stays, and the sampler completes the
+            # shoulders and side seams the warp missed.
+            if kind in ("upper", "full") and warped.coverage >= 0.70:
+                r = max(5, int(round(full.shape[0] * 0.015))) | 1
+                room = cv2.dilate(warped.mask, np.ones((r, r), np.uint8))
+                mask_full = cv2.bitwise_and(mask_full, room)
         # ONE DRY LINE PER RENDER. Every mask defect this engine has had was
         # eventually pinned by a number, never by squinting at a phone screenshot
         # — and each time the number had to be re-derived by hand on the pod.
