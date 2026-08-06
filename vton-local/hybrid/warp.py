@@ -637,7 +637,27 @@ def shoes_warp(garment: np.ndarray, sil: np.ndarray, pose,
             img = cv2.flip(garment, 1)
             bx = one.shape[1] - (bx + bw)
 
-        src = np.float32([[bx, by], [bx + bw, by], [bx + bw, by + bh], [bx, by + bh]])
+        # COVER, NOT STRETCH AND NOT FIT. The two options tried before were the two
+        # bad ones. Stretching the blob's box onto the foot's box distorts by the
+        # ratio of their aspects, and on the catalogue's shoes that ratio is brutal:
+        # measured on the brogue, the flat-lay blob is 370x840 (aspect 0.44, a shoe
+        # seen from the SIDE) while a frontal foot's box is about 1.5 wide to 1 tall
+        # — a 3.5x squash, which is why the brogue arrived as a dark smear with a
+        # pale cap instead of a shoe. Preserving the aspect and fitting INSIDE the
+        # box was the other option, and it was measured worse for its own reason:
+        # coverage fell to 30-45% and the base's own shoe showed around the edges.
+        #
+        # Covering does both jobs — scale by the LARGER ratio so the box is filled
+        # completely, keep the aspect, and let the overflow fall outside (the slot
+        # mask clips it anyway, two lines below). A side view still cannot become a
+        # front view, but the leather, the colour and the local proportions survive.
+        bw_f, bh_f = float(fx1 - fx0), float(fy1 - fy0)
+        s = max(bw_f / max(1.0, bw), bh_f / max(1.0, bh))
+        cx_s, cy_s = bx + bw / 2.0, by + bh / 2.0
+        cx_d, cy_d = (fx0 + fx1) / 2.0, (fy0 + fy1) / 2.0
+        hw_s, hh_s = bw_f / (2.0 * s), bh_f / (2.0 * s)
+        src = np.float32([[cx_s - hw_s, cy_s - hh_s], [cx_s + hw_s, cy_s - hh_s],
+                          [cx_s + hw_s, cy_s + hh_s], [cx_s - hw_s, cy_s + hh_s]])
         dst = np.float32([[fx0, fy0], [fx1, fy0], [fx1, fy1], [fx0, fy1]])
         _quad_warp(img, one, src, dst, (h, w), out, filled)
 
