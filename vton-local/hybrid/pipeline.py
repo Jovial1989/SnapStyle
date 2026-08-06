@@ -832,20 +832,22 @@ def _garment_mask(p: Pose, kind: str,
     # shape is not. Generous on purpose — baggy jeans must still fit inside it.
     if kind in ("lower", "shoes") and lh and rh:
         zone = np.zeros((h, w), np.uint8)
-        # WIDE ON THE HIP, AND THE WIDTH IS MEASURED, NOT GUESSED. 0.85 clipped the
-        # jeans and 0.95 clipped them too — the base's grey trousers showed along
-        # both edges. Measuring the base settled it: at the hip line the trousers
-        # are 259px of fabric (silhouette minus skin colour) against 111px between
-        # the hip joints, i.e. a half-span of 1.17 — while 0.95 gave a 133px mask,
-        # barely half the garment. 1.4 leaves room for baggier cuts. Width was never
-        # the knob for the arm problem; the two colour tests below are.
-        hw = max(abs(lh[0] - rh[0]) * 1.4, span * 0.10)
+        # THE QUAD SHAPES, IT DOES NOT SIZE. Its width used to come from the hip
+        # landmarks, and that was the thing clipping the jeans through three
+        # attempts at the wrong knob: traced stage by stage, the band arrived 310px
+        # wide at the hip row and this quad cut it to 148 — the landmarks it scales
+        # from sit 53px apart on a figure carrying 259px of fabric, so no multiplier
+        # of them can be right. Width is now the band's, which was measured off the
+        # base; the quad only says WHERE the slot lives vertically, and the colour
+        # carve says which of those columns are arm rather than trousers.
+        cols = np.flatnonzero(box.any(axis=0))
+        bx0 = float(cols[0]) if cols.size else 0.0
+        bx1 = float(cols[-1]) if cols.size else float(w - 1)
         top = min(lh[1], rh[1]) - span * 0.09
-        cxh = (lh[0] + rh[0]) / 2.0
         cv2.fillConvexPoly(zone, np.int32([
-            [cxh - hw, top], [cxh + hw, top],
-            [cxh + hw, max(lh[1], rh[1]) + span * 0.06],
-            [cxh - hw, max(lh[1], rh[1]) + span * 0.06]]), 255)
+            [bx0, top], [bx1, top],
+            [bx1, max(lh[1], rh[1]) + span * 0.06],
+            [bx0, max(lh[1], rh[1]) + span * 0.06]]), 255)
         for ids in ((8, 9, 10), (11, 12, 13)):
             chain = [pts[i] for i in ids if pts[i]]
             for a, b in zip(chain, chain[1:]):
