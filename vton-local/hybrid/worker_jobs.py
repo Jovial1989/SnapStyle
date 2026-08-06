@@ -154,36 +154,51 @@ def render(job: dict) -> str:
         print(f"  face rms={res.align_rms} up={res.upsampled}x "
               f"trust={res.trustworthy} in {time.time() - t:.2f}s", flush=True)
 
-    # SEQUENTIAL DRESSING: each render's output is the next one's input. That is
-    # how a full outfit is built from single-slot masks — top, then bottom, then
-    # shoes — and why order matters. Each pass repaints only its own slot, so an
-    # earlier garment cannot be undone by a later one.
+    # UNIFIED BATCH FROM x0, NOT A CHAIN. Every layer is rendered against the
+    # SAME clean base with its own mask, and the layers are composited once at the
+    # end in the order the Edge Function sorted them. Until now this loop did
+    # `current = generate(current, …)`, so layer 2 denoised layer 1's output — a
+    # Markov chain, with all three of its costs:
+    #
+    #   * VAE cascade: the base was encoded and decoded once PER LAYER IN SERIES,
+    #     and that autoencoder is lossy, so high-frequency detail (skin, sharp
+    #     shadow edges) degraded with every garment added;
+    #   * Canny contamination: each layer's conditioning was read from the previous
+    #     RESULT, so an artefact became structural ground truth for the next layer
+    #     and got drawn around rather than removed;
+    #   * error compounding: a bad layer was amplified by every layer after it.
+    #
+    # The cost of independence is that garments cannot see each other. At the one
+    # place that matters — the waist — the Z order still puts the top's hem over
+    # the waistband, which is exactly what the sequential ordering bought.
+    layers: list[tuple[np.ndarray, np.ndarray]] = []
     for i, (st, garment) in enumerate(zip(steps, garments)):
-        # NO DEFAULT SLOT. This used to fall back to "upper", and a step that
-        # arrived without a usable `kind` was silently painted onto the torso —
-        # a pair of jeans came back as a denim jacket, trousers untouched, in a
-        # test that had misnamed the field. That is exactly the signature of
-        # "it dresses me in random things", and it is indistinguishable from a
-        # bad render unless the job fails and says so. A wrong slot is a caller
-        # bug; guessing hides it, and the guess costs a GPU render either way.
+        # NO DEFAULT SLOT. A step without a usable `kind` used to be painted onto
+        # the torso — jeans came back as a denim jacket in a test that had misnamed
+        # the field, which is indistinguishable from a bad render unless the job
+        # fails and says so.
         kind = st.get("kind")
         if kind not in ("upper", "lower", "full", "shoes"):
             raise ValueError(f"step {i + 1} has no valid kind: {kind!r}")
-        current = engine.generate(
+        img, cover = engine.generate(
             current, garment,
             kind=kind,
             prompt_hint=st.get("hint", "the garment in the reference image"),
-            # DETERMINISTIC BY DEFAULT. The app sends no seed, so every tap was a
-            # lottery — and the diag lines exposed it: the verified-clean renders
-            # were all seed=7 while the phone's waist ridge came from random seeds
-            # landing badly in the 90px hem/waistband overlap. Same outfit must
-            # give the same picture: it makes quality reproducible, bugs
-            # re-renderable, and the cache honest. A caller can still pass its own.
             seed=st.get("seed", 7),
             ip_scale=st.get("ip_scale"),
             pose=base_pose,
+            return_mask=True,
         )
+        layers.append((np.array(img.convert("RGB"))[:, :, ::-1].copy(), cover))
         print(f"  step {i + 1}/{len(steps)} {kind}", flush=True)
+
+    if layers:
+        out = np.array(current.convert("RGB"))[:, :, ::-1].astype(np.float32)
+        for img, cover in layers:
+            a = (cover.astype(np.float32) / 255.0)[:, :, None]
+            out = img.astype(np.float32) * a + out * (1.0 - a)
+        current = Image.fromarray(
+            np.clip(out, 0, 255).astype(np.uint8)[:, :, ::-1])
 
     buf = io.BytesIO()
     current.convert("RGB").save(buf, "JPEG", quality=92)

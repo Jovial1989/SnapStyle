@@ -942,7 +942,11 @@ class HybridVTONPipeline:
         # and every slot's mask shares the same silhouette by construction. The
         # person does not move between steps, so nothing is lost.
         pose: Pose | None = None,
-    ) -> Image.Image:
+        # Return the effective coverage alongside the image, so a caller can
+        # composite several INDEPENDENT layers itself instead of chaining them.
+        # See the unified-batch loop in worker_jobs.
+        return_mask: bool = False,
+    ) -> Image.Image | tuple[Image.Image, np.ndarray]:
         avatar = _fix_exif(avatar).convert("RGB")
         garment = _fix_exif(garment).convert("RGB")
         if ip_scale is not None:
@@ -1203,7 +1207,15 @@ class HybridVTONPipeline:
         core = (core * (pose.silhouette > 0))[:, :, None]
         fallback = base * (1.0 - core) + fill_img.astype(np.float32) * core
         blended = gen_full * alpha + fallback * (1.0 - alpha)
-        return Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
+        out_img = Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
+        if not return_mask:
+            return out_img
+        # WHERE THIS LAYER WROTE ANYTHING — the sampler's own alpha plus the fill
+        # core it falls back to. Not the raw mask: where the sampler declined and
+        # the core was zero this is zero, so compositing layers with it reproduces
+        # exactly what this method would have written and nothing else.
+        wrote = alpha[:, :, 0] + (1.0 - alpha[:, :, 0]) * core[:, :, 0]
+        return out_img, (np.clip(wrote, 0.0, 1.0) * 255).astype(np.uint8)
 
     # -- base preparation ---------------------------------------------------
 
