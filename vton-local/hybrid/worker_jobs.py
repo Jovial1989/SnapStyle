@@ -35,6 +35,7 @@ import time
 import urllib.error
 import urllib.request
 
+import numpy as np
 from PIL import Image
 
 from pipeline import DEVICE, HybridVTONPipeline
@@ -129,6 +130,15 @@ def render(job: dict) -> str:
     selfie = imgs[1] if face_url else None
     garments = imgs[2:] if face_url else imgs[1:]
 
+    # THE JOB'S GEOMETRY COMES FROM THE CLEAN BASE, ONCE. Re-reading pose per
+    # step computed each slot's mask on a different pixel state, so the upper
+    # and lower boundaries did not have to agree — the waist-seam class. The
+    # person cannot move between steps of one job. (Read AFTER the face swap
+    # would be wrong the other way: the swap only touches the face oval, which
+    # no garment mask depends on, so the clean base is the right x0 either way.)
+    base_pose = engine.reader.read(
+        np.array(current.convert("RGB"))[:, :, ::-1].copy())
+
     # IDENTITY FIRST, THEN CLOTHES. The order is forced: the swap needs the face
     # unobstructed and the dressing passes never touch the face, so doing it the
     # other way round would only risk a garment's collar crossing the oval. The
@@ -171,6 +181,7 @@ def render(job: dict) -> str:
             # re-renderable, and the cache honest. A caller can still pass its own.
             seed=st.get("seed", 7),
             ip_scale=st.get("ip_scale"),
+            pose=base_pose,
         )
         print(f"  step {i + 1}/{len(steps)} {kind}", flush=True)
 
