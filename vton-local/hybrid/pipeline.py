@@ -595,7 +595,11 @@ def _garment_mask(p: Pose, kind: str,
     # what must stay out of the repaint zone.
     not_garment = np.zeros((h, w), np.uint8)
     zone = None
-    if kind in ("lower", "shoes") and person is not None:
+    # TROUSERS ONLY. Shoes never had the hip problem — the arms are nowhere near the
+    # feet, and their own per-foot quad already places them — but they DID pick up the
+    # widened band this carve enables, and the toe came back capped in white. A guard
+    # belongs where the defect is.
+    if kind == "lower" and person is not None:
         corridor = np.zeros((h, w), np.uint8)
         wide = np.zeros((h, w), np.uint8)
         sample = np.zeros((h, w), np.uint8)
@@ -648,13 +652,19 @@ def _garment_mask(p: Pose, kind: str,
         # foot came back as a white blob beside the shoe. Widen to whatever the
         # figure actually occupies inside these rows.
         occ_src = p.silhouette.copy()
-        if kind in ("lower", "shoes"):
+        carved = bool(int(not_garment.max()))
+        if carved:
             # Columns owned by the hanging arms must not widen the band — at hip
             # rows the figure's extremes ARE the arms. Carved by COLOUR (skin and
             # backdrop) rather than by a line down the arm: a line removes the
             # centreline and leaves the arm's own width plus the whole gap behind
             # it, so the band still reached the arms' outer edge.
             occ_src = cv2.bitwise_and(occ_src, cv2.bitwise_not(not_garment))
+        elif kind in ("lower", "shoes"):
+            for ids in ((2, 3, 4), (5, 6, 7)):
+                ch = [pts[i] for i in ids if pts[i]]
+                for a, b in zip(ch, ch[1:]):
+                    cv2.line(occ_src, a, b, 0, max(12, round(span * 0.085)))
         # MEASURE IT ACROSS THE WHOLE BAND, INCLUDING THE HIPS. Skipping the upper
         # third was a way to keep the merged arms out of the answer, and it worked —
         # but it also meant the widest part of a pair of trousers was never measured,
@@ -662,8 +672,12 @@ def _garment_mask(p: Pose, kind: str,
         # the base carries 259 px of fabric (measured at the hip row, silhouette
         # minus skin colour), i.e. HALF THE GARMENT. That is what left grey trouser
         # showing along both edges — the defect I twice blamed on the arm guard.
-        # With the arms carved by colour the hip rows are safe to measure.
-        band = occ_src[max(0, int(y0)):int(y1) + 1]
+        # With the arms carved by colour the hip rows are safe to measure. Without the
+        # carve they are not, and skipping the upper third is still the best available
+        # answer — that is the path shoes take.
+        row_lo = int(y0) if carved else (
+            int(y0 + (y1 - y0) * 0.35) if kind in ("lower", "shoes") else int(y0))
+        band = occ_src[max(0, row_lo):int(y1) + 1]
         occupied = np.flatnonzero(band.any(axis=0)) if band.size else np.array([])
         if occupied.size:
             x0 = min(x0, max(0, int(occupied[0] - pad)))
