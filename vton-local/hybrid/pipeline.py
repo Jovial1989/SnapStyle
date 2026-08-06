@@ -604,11 +604,21 @@ def _garment_mask(p: Pose, kind: str,
                 cv2.line(corridor, a, b, 255, int(max(24, span * 0.11)))
                 cv2.line(wide, a, b, 255, int(max(36, span * 0.18)))
                 cv2.line(sample, a, b, 255, max(4, round(span * 0.012)))
+        # BY CHROMA, NOT BY RGB DISTANCE. An RGB ball of radius 46 around skin also
+        # contains mid grey — and the base wears grey trousers, so the first version
+        # of this test carved the garment it was meant to protect: measured, it
+        # covered 419 px of the hip row where the fabric is 259, and the mask came out
+        # 148. Skin is separable from grey by its WARMTH rather than its brightness
+        # (Cr well above 128 while grey sits on it), and chroma is also what survives
+        # the shading down an arm. The backdrop needs the opposite pairing — white and
+        # grey share chroma, so it is caught by luminance plus neutrality.
+        ycc = cv2.cvtColor(person, cv2.COLOR_BGR2YCrCb).astype(np.float32)
         probe = cv2.bitwise_and(sample, p.silhouette)
         if int(probe.sum()):
-            skin = np.array(cv2.mean(person, mask=probe)[:3], np.float32)
+            ref = np.array(cv2.mean(ycc, mask=probe)[:3], np.float32)
             grow = max(3, round(span * 0.008)) | 1
-            near = (np.abs(person.astype(np.float32) - skin).max(axis=2) < 46)
+            near = ((np.abs(ycc[:, :, 1] - ref[1]) < 12)
+                    & (np.abs(ycc[:, :, 2] - ref[2]) < 12))
             not_garment = cv2.bitwise_and(corridor, cv2.dilate(
                 (near.astype(np.uint8) * 255), np.ones((grow, grow), np.uint8)))
         # The backdrop is sampled from the frame's own corners rather than assumed
@@ -616,10 +626,12 @@ def _garment_mask(p: Pose, kind: str,
         # elsewhere on the body is untouched.
         back = np.float32([0, 0, 0])
         for cy, cx in ((0, 0), (0, w - 6), (h - 6, 0), (h - 6, w - 6)):
-            back += np.array(cv2.mean(person[cy:cy + 6, cx:cx + 6])[:3], np.float32)
+            back += np.array(cv2.mean(ycc[cy:cy + 6, cx:cx + 6])[:3], np.float32)
         back /= 4.0
-        gap = cv2.bitwise_and(wide, (np.abs(person.astype(np.float32) - back)
-                                     .max(axis=2) < 30).astype(np.uint8) * 255)
+        gap = cv2.bitwise_and(wide, (((np.abs(ycc[:, :, 0] - back[0]) < 25)
+                                      & (np.abs(ycc[:, :, 1] - back[1]) < 8)
+                                      & (np.abs(ycc[:, :, 2] - back[2]) < 8))
+                                     .astype(np.uint8) * 255))
         not_garment = cv2.bitwise_or(not_garment, gap)
 
     if met and kind in ("upper", "full", "lower"):
