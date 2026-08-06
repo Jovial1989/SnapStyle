@@ -29,6 +29,7 @@ Geometry-only, NumPy and OpenCV, no model.
 """
 from __future__ import annotations
 
+import cv2
 import numpy as np
 
 # COCO-18, the ordering PoseReader emits. Left/right are the image's, not the body's.
@@ -91,7 +92,7 @@ def capsule(shape: tuple[int, int], a, b, r_a: float, r_b: float) -> np.ndarray:
 
 
 def arm_shield(shape: tuple[int, int], keypoints, scale: float = 1.0,
-               hand: bool = True) -> np.ndarray:
+               hand: bool = True, hand_scale: float = 1.5) -> np.ndarray:
     """Both arms as tapered capsules, plus a disc for each hand. uint8, 0 or 255.
 
     RADII COME FROM THE SKELETON, not from the frame. The forearm's own length is the
@@ -101,9 +102,14 @@ def arm_shield(shape: tuple[int, int], keypoints, scale: float = 1.0,
     conservative: an over-wide shield costs garment, and on this projection garment is
     what shares the columns.
 
-    The hand disc is separate and larger than the wrist joint suggests, because the
-    wrist keypoint marks the joint while the hand extends past it — and a hand is the
-    one thing diffusion mangles unmistakably.
+    THE TERMINAL NODE IS NOT A JOINT, IT IS A BLOB. A line from elbow to wrist stops
+    describing the occlusion exactly where the occlusion gets big: fingers, a fist, and
+    in a mirror selfie the phone held between both hands — a lump sitting over the
+    waistline that no segment can express. So each wrist gets a disc of hand_scale x
+    the arm's own radius (1.5 by default), AND the capsule continues past the wrist
+    along the forearm's direction, because a phone is held forward of the joint rather
+    than centred on it. The disc alone would miss the device; the capsule alone would
+    miss the spread of the fingers.
     """
     h, w = shape
     shield = np.zeros((h, w), np.uint8)
@@ -128,18 +134,18 @@ def arm_shield(shape: tuple[int, int], keypoints, scale: float = 1.0,
         if el is not None and wr is not None:
             shield |= capsule((h, w), el, wr, r_el, r_wr).astype(np.uint8) * 255
             if hand:
-                # Past the wrist, along the forearm's own direction — a fist sits
-                # beyond the joint, not centred on it.
+                r_hand = r_el * hand_scale
                 ux, uy = (wr[0] - el[0]) / unit, (wr[1] - el[1]) / unit
                 tip = (wr[0] + ux * 0.45 * unit, wr[1] + uy * 0.45 * unit)
-                shield |= capsule((h, w), wr, tip, r_wr * 1.15,
-                                  r_wr * 1.25).astype(np.uint8) * 255
+                shield |= capsule((h, w), wr, tip, r_hand,
+                                  r_hand * 0.85).astype(np.uint8) * 255
     return shield
 
 
 def apply_kinematic_shield(raw_mask: np.ndarray, pose_keypoints, *,
                            scale: float = 1.0, hand: bool = True,
-                           return_shield: bool = False):
+                           hand_scale: float = 1.5, buffer: int = 0,
+                           feather: int = 0, return_shield: bool = False):
     """Subtract both arms' capsules from a garment mask.
 
     M' = M \\ (M_left_arm ∪ M_right_arm), as a strict boolean subtraction on the
@@ -148,15 +154,35 @@ def apply_kinematic_shield(raw_mask: np.ndarray, pose_keypoints, *,
     paint a denim ring around each fist. Anything that must stay out of a repaint zone
     has to be subtracted after every operation that grows the mask, not only before.
 
+    THE SUBTRACTION IS ABSOLUTE AND THE EDGE IS STILL SOFT — both, not one or the
+    other, and the order is what makes that possible. `buffer` dilates the shield
+    before subtracting, so the cut sits a few pixels clear of the bone and the sampler
+    has room to put a crease or a contact shadow there instead of a hard crop.
+    `feather` then blurs the mask so the denim does not meet the void along a stair-
+    stepped binary edge — and the shield is subtracted AGAIN afterwards, because a
+    Gaussian bleeds masked values straight back into the hole you just punched. That is
+    not a theoretical worry: at k=29 on this figure it bled ~15px and painted a denim
+    ring around each fist. Feather without the second subtraction is the bug it was
+    meant to fix, wearing a softer edge.
+
     raw_mask may be bool, 0/1 or 0/255; the result matches its dtype family (uint8
     0/255 for integer input, bool for bool input).
     """
     if raw_mask.ndim != 2:
         raise ValueError(f"raw_mask must be 2-D, got shape {raw_mask.shape}")
-    shield = arm_shield(raw_mask.shape, pose_keypoints, scale=scale, hand=hand)
+    shield = arm_shield(raw_mask.shape, pose_keypoints, scale=scale, hand=hand,
+                        hand_scale=hand_scale)
+    if buffer > 0:
+        k = int(buffer) * 2 + 1
+        shield = cv2.dilate(shield, np.ones((k, k), np.uint8))
+    hard = shield > 0
     if raw_mask.dtype == np.bool_:
-        out = raw_mask & ~(shield > 0)
+        out = raw_mask & ~hard
     else:
         out = raw_mask.copy()
-        out[shield > 0] = 0
+        out[hard] = 0
+        if feather > 0:
+            k = int(feather) | 1
+            out = cv2.GaussianBlur(out, (k, k), 0)
+            out[hard] = 0                      # …and again, after the blur
     return (out, shield) if return_shield else out
