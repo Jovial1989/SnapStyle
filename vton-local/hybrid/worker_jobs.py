@@ -180,15 +180,27 @@ def render(job: dict) -> str:
         kind = st.get("kind")
         if kind not in ("upper", "lower", "full", "shoes"):
             raise ValueError(f"step {i + 1} has no valid kind: {kind!r}")
+        # CONDITIONING WEIGHTS TRAVEL WITH THE STEP. A printed tee and a plain one
+        # want different balances — obey the Canny map harder, let the adapter's
+        # global colour lead less — and until now those were literals inside the
+        # engine, so trying a balance meant editing the pod. Omitted keys fall back
+        # to the engine's env defaults, so an unchanged job renders unchanged.
         img, cover = engine.generate(
             current, garment,
             kind=kind,
             prompt_hint=st.get("hint", "the garment in the reference image"),
             seed=st.get("seed", 7),
             ip_scale=st.get("ip_scale"),
+            pose_scale=st.get("pose_scale"),
+            canny_scale=st.get("canny_scale"),
+            core_protect=st.get("core_protect"),
             pose=base_pose,
             return_mask=True,
         )
+        print(f"  cond {kind}: ip={st.get('ip_scale') or 'env'} "
+              f"canny={st.get('canny_scale') or 'env'} "
+              f"core={st.get('core_protect') or 'env'} seed={st.get('seed', 7)}",
+              flush=True)
         layers.append((np.array(img.convert("RGB"))[:, :, ::-1].copy(), cover))
         print(f"  step {i + 1}/{len(steps)} {kind}", flush=True)
 

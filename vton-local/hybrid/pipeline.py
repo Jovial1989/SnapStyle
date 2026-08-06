@@ -95,6 +95,17 @@ MESH_WARP = os.getenv("VTON_MESH_WARP", "0") == "1"
 # for the same reason: each trades the property this engine is built on — the
 # garment's own pixels, its own colour — for a different kind of realism, and neither
 # has earned that trade on measurement yet. VTON_TPS=1 / VTON_POISSON=1 to weigh them.
+# CONDITIONING WEIGHTS, out where they can be swept. Both were literals in the
+# call, so weighing "obey the Canny print harder" against "let the adapter lead"
+# meant editing the file on the pod between samples.
+POSE_SCALE = float(os.getenv("VTON_POSE_SCALE", "0.9"))
+CANNY_SCALE = float(os.getenv("VTON_CANNY_SCALE", "0.45"))
+# RE-INJECT THE WARP'S OWN PIXELS IN THE DEEP CORE. Distance-transform weighted, so
+# the centre of a panel keeps the flat-lay exactly while the edges stay the sampler's
+# to shade and fold. 0 disables. Default off: it trades the sampler's folds for the
+# source print, and which of those a given garment needs is a measurement, not a
+# guess — the pod was down when this landed, so nothing has weighed it yet.
+CORE_PROTECT = float(os.getenv("VTON_CORE_PROTECT", "0"))
 TPS_WARP = os.getenv("VTON_TPS", "0") == "1"
 POISSON = os.getenv("VTON_POISSON", "0") == "1"
 # Deformable parts — torso quad plus a quad per sleeve — is the right idea and is
@@ -1100,6 +1111,12 @@ class HybridVTONPipeline:
         # slow enough that the knob never got measured properly. The adapter's
         # scale is cheap to set on a live pipeline, so a job can carry its own.
         ip_scale: float | None = None,
+        # Per-call conditioning weights. A printed tee wants the Canny map obeyed
+        # harder and the adapter's global colour turned down; a plain one does not
+        # care. Defaults come from the env so a sweep needs no code change.
+        pose_scale: float | None = None,
+        canny_scale: float | None = None,
+        core_protect: float | None = None,
         # ONE GEOMETRY FOR THE WHOLE OUTFIT. Without this, every step re-reads
         # pose and matte from the PREVIOUS step's output, so the upper and lower
         # masks are computed on different pixel states and their boundaries need
@@ -1358,6 +1375,10 @@ class HybridVTONPipeline:
         # argument until now, and argument has been wrong twice. VTON_DUMP=<dir>
         # writes the four arrays that decide the render, named by slot so a
         # three-layer look does not overwrite itself.
+        pose_scale = POSE_SCALE if pose_scale is None else float(pose_scale)
+        canny_scale = CANNY_SCALE if canny_scale is None else float(canny_scale)
+        core_protect = CORE_PROTECT if core_protect is None else float(core_protect)
+
         dump = os.getenv("VTON_DUMP")
         if dump:
             os.makedirs(dump, exist_ok=True)
@@ -1396,7 +1417,7 @@ class HybridVTONPipeline:
                 guidance_scale=float(os.getenv("VTON_CFG", "6.5")),
                 strength=(WARP_STRENGTH if warped is not None
                           else float(os.getenv("VTON_STRENGTH", "0.99"))),
-                controlnet_conditioning_scale=[0.9, 0.45],
+                controlnet_conditioning_scale=[pose_scale, canny_scale],
                 generator=gen,
             ).images[0]
         _drain()
@@ -1471,6 +1492,27 @@ class HybridVTONPipeline:
         core = (core * (pose.silhouette > 0))[:, :, None]
         fallback = base * (1.0 - core) + fill_img.astype(np.float32) * core
         blended = gen_full * alpha + fallback * (1.0 - alpha)
+
+        # THE DEEP CORE MAY KEEP THE SOURCE PIXELS. A single scalar strength is the
+        # only denoising knob the pipeline exposes, and it applies to the whole mask
+        # — so the centre of a panel, where a print lives, is denoised exactly as
+        # hard as the boundary, where the sampler's folds and shading are wanted. The
+        # distance transform separates the two by geometry: far from any edge is
+        # "inside the garment", near an edge is "where it meets the body".
+        #
+        # Weighted, not switched, and gated on the layer having written something —
+        # re-injecting warp pixels where the sampler declined would put garment back
+        # into a region the composite deliberately left alone.
+        if core_protect > 0 and warped is not None:
+            d = cv2.distanceTransform((warped.mask > 20).astype(np.uint8),
+                                      cv2.DIST_L2, 5)
+            mx = float(d.max())
+            if mx > 1e-6:
+                prot = np.clip((d / mx - 0.2) * 2.0, 0.0, 1.0) * core_protect
+                prot = (prot * (alpha[:, :, 0] > 0.05))[:, :, None]
+                blended = (warped.image[:, :, ::-1].astype(np.float32) * prot
+                           + blended * (1.0 - prot))
+
         out_img = Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
         if not return_mask:
             return out_img
