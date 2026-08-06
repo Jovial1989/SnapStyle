@@ -1241,10 +1241,21 @@ class HybridVTONPipeline:
             # only found half the garment must NOT be allowed to lock in half a
             # silhouette. Below the gate the band stays, and the sampler completes the
             # shoulders and side seams the warp missed.
+            # AND ONLY BELOW THE ARMHOLE. Applied to the whole band this exposed the
+            # base's own grey basics across the collar and one shoulder: up there the
+            # warp's alpha stops short of where the old garment actually is, and the
+            # band's first job — cover every pixel of what is being replaced — outranks
+            # its silhouette. Below the armhole nothing of the base tee remains to
+            # uncover, and that is where the dissolving hem lives.
             if kind in ("upper", "full") and warped.coverage >= 0.70:
-                r = max(5, int(round(full.shape[0] * 0.015))) | 1
-                room = cv2.dilate(warped.mask, np.ones((r, r), np.uint8))
-                mask_full = cv2.bitwise_and(mask_full, room)
+                sh = [pose.pts[i][1] for i in (2, 5) if pose.pts[i]]
+                hp = [pose.pts[i][1] for i in (8, 11) if pose.pts[i]]
+                if sh and hp:
+                    r = max(5, int(round(full.shape[0] * 0.015))) | 1
+                    room = cv2.dilate(warped.mask, np.ones((r, r), np.uint8))
+                    y_arm = int(min(sh) + (max(hp) - min(sh)) * 0.35)
+                    mask_full[y_arm:] = cv2.bitwise_and(mask_full[y_arm:],
+                                                        room[y_arm:])
         # ONE DRY LINE PER RENDER. Every mask defect this engine has had was
         # eventually pinned by a number, never by squinting at a phone screenshot
         # — and each time the number had to be re-derived by hand on the pod.
