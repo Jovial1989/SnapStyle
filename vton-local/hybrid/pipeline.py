@@ -1251,7 +1251,17 @@ class HybridVTONPipeline:
                 sh = [pose.pts[i][1] for i in (2, 5) if pose.pts[i]]
                 hp = [pose.pts[i][1] for i in (8, 11) if pose.pts[i]]
                 if sh and hp:
-                    r = max(5, int(round(full.shape[0] * 0.015))) | 1
+                    # THE ALLOWANCE HAS TO BE SMALLER THAN THE OVERHANG IT TRIMS.
+                    # Pinned by row: the warp's alpha ends at 602, the mask runs to
+                    # 614, and in that 12px gap init IS the base — so the sampler,
+                    # refining at strength 0.55, kept the base's grey and painted it
+                    # at the feather's own weight (row 605: mask 58, warp 0, output
+                    # RGB 160,150,139). That is the grey haze under every hem, and the
+                    # hard-hem experiment turned it into a bar. At 1.5% of the figure
+                    # this dilation was 17px — wider than the 12px it needed to cut,
+                    # so it cut nothing, which is why the first attempt measured as a
+                    # no-op. 0.5% leaves ~6px, enough for a contact shadow.
+                    r = max(3, int(round(full.shape[0] * 0.005))) | 1
                     room = cv2.dilate(warped.mask, np.ones((r, r), np.uint8))
                     y_arm = int(min(sh) + (max(hp) - min(sh)) * 0.35)
                     mask_full[y_arm:] = cv2.bitwise_and(mask_full[y_arm:],
