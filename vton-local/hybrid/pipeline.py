@@ -756,7 +756,10 @@ def _garment_mask(p: Pose, kind: str,
             for a, b in zip(chain, chain[1:]):
                 cv2.line(shield, a, b, 255, max(12, round(span * 0.085)))
             if pts[ids[2]]:
-                cv2.circle(shield, pts[ids[2]], max(12, round(span * 0.07)), 255, -1)
+                # A fist is wider than the wrist joint the keypoint marks, and
+                # nothing below the waist is ever in front of it — so this radius
+                # can be generous without costing anything a garment needs.
+                cv2.circle(shield, pts[ids[2]], max(14, round(span * 0.085)), 255, -1)
     else:
         skin_ref = None
         if person is not None:
@@ -792,7 +795,10 @@ def _garment_mask(p: Pose, kind: str,
     # shape is not. Generous on purpose — baggy jeans must still fit inside it.
     if kind in ("lower", "shoes") and lh and rh:
         zone = np.zeros((h, w), np.uint8)
-        hw = max(abs(lh[0] - rh[0]) * 0.95, span * 0.10)
+        # 0.85, not 0.95: at 0.95 the quad's edge still reached the near arm and
+        # left a denim tab beside the left fist. The warped panel's own half-width
+        # is hip_px*0.78, so 0.85 still contains the garment with room for drape.
+        hw = max(abs(lh[0] - rh[0]) * 0.85, span * 0.10)
         top = min(lh[1], rh[1]) - span * 0.09
         cxh = (lh[0] + rh[0]) / 2.0
         cv2.fillConvexPoly(zone, np.int32([
