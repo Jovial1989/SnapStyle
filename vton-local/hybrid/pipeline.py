@@ -732,6 +732,7 @@ def _garment_mask(p: Pose, kind: str,
     # fist — the known lesser evil; the real cure for that pose is the minimal
     # base. The upper slot keeps the skin-tested hand disc: a sleeve may
     # legitimately cover any part of the arm, so only the hand is carved there.
+    shield = None
     if kind in ("lower", "shoes"):
         shield = np.zeros((h, w), np.uint8)
         for ids in ((2, 3, 4), (5, 6, 7)):
@@ -766,6 +767,15 @@ def _garment_mask(p: Pose, kind: str,
             mask[disc > 0] = 0
 
     mask = cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
+    if shield is not None:
+        # SUBTRACT THE ARM SHIELD AGAIN, AFTER THE FEATHER. It was cut out of the
+        # binary mask, but the Gaussian feather (k≈29) bleeds masked values ~15px
+        # back INTO the shield — so the sampler painted a faint denim ring around
+        # each fist, the blue hooks visible beside the hands on the phone. Same
+        # lesson the bare-arm carve already recorded: anything that must stay out
+        # of the repaint zone must be subtracted after every operation that grows
+        # the mask, not only before.
+        mask[shield > 0] = 0
     if reachable is not None:
         # The feather has to respect the allowance too. Clipping only the binary
         # mask left the blur's tail hanging outside the body, and the sampler
