@@ -901,6 +901,7 @@ def _garment_mask(p: Pose, kind: str,
         mask = cv2.bitwise_and(mask, zone)
 
     mask[shield > 0] = 0
+    hard = mask.copy()
     mask = cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
     if True:
         # SUBTRACT THE ARM SHIELD AGAIN, AFTER THE FEATHER. It was cut out of the
@@ -911,6 +912,17 @@ def _garment_mask(p: Pose, kind: str,
         # of the repaint zone must be subtracted after every operation that grows
         # the mask, not only before.
         mask[shield > 0] = 0
+    if kind in ("upper", "full"):
+        # A HEM IS AN EDGE. The feather is 29px on this figure and it is right for
+        # every other boundary — a collar, a sleeve, a side seam all sit against the
+        # body and want a soft handover — but the hem sits against the TROUSERS, and
+        # blurring it over 29px is what made the tee dissolve downward instead of
+        # ending. That soft gradient is the whole "flat, pasted on" read: no edge, no
+        # contact shadow, nothing for an eye to read as cloth stopping. The binary
+        # mask already has the edge in the right place, so the last rows keep it.
+        hem_lo = int(max(0, min(h - 1, y1 - span * 0.02)))
+        mask[hem_lo:] = hard[hem_lo:]
+
     if reachable is not None:
         # The feather has to respect the allowance too. Clipping only the binary
         # mask left the blur's tail hanging outside the body, and the sampler
