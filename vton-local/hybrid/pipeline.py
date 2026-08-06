@@ -795,10 +795,11 @@ def _garment_mask(p: Pose, kind: str,
     # shape is not. Generous on purpose — baggy jeans must still fit inside it.
     if kind in ("lower", "shoes") and lh and rh:
         zone = np.zeros((h, w), np.uint8)
-        # 0.85, not 0.95: at 0.95 the quad's edge still reached the near arm and
-        # left a denim tab beside the left fist. The warped panel's own half-width
-        # is hip_px*0.78, so 0.85 still contains the garment with room for drape.
-        hw = max(abs(lh[0] - rh[0]) * 0.85, span * 0.10)
+        # WIDE ON THE HIP — the quad has to hold the garment, and at 0.85 the jeans
+        # themselves were clipped: the base's grey trousers showed along both
+        # edges. Width is the wrong knob for the arm problem; the cut below is the
+        # right one.
+        hw = max(abs(lh[0] - rh[0]) * 0.95, span * 0.10)
         top = min(lh[1], rh[1]) - span * 0.09
         cxh = (lh[0] + rh[0]) / 2.0
         cv2.fillConvexPoly(zone, np.int32([
@@ -811,6 +812,30 @@ def _garment_mask(p: Pose, kind: str,
                 cv2.line(zone, a, b, 255, int(max(20, span * 0.13)))
             if pts[ids[2]]:      # the foot reaches past the last keypoint
                 cv2.circle(zone, pts[ids[2]], int(max(20, span * 0.09)), 255, -1)
+        # CUT LATERALLY AT EACH ARM'S INNER EDGE. The gap between a hanging arm and
+        # the hip is lateral, so removing everything OUTBOARD of the arm removes
+        # the gap without touching a millimetre of the pelvis. Narrowing the quad
+        # instead cost the garment (grey trousers along both edges at 0.85) — the
+        # arm's own x is the boundary the geometry actually has.
+        for ids in ((2, 3, 4), (5, 6, 7)):
+            chain = [pts[i] for i in ids if pts[i]]
+            if len(chain) < 2:
+                continue
+            # Where the arm crosses the hip line, interpolated along its chain.
+            hip_y = max(lh[1], rh[1])
+            ax = None
+            for a, b in zip(chain, chain[1:]):
+                if (a[1] - hip_y) * (b[1] - hip_y) <= 0 and b[1] != a[1]:
+                    t = (hip_y - a[1]) / (b[1] - a[1])
+                    ax = a[0] + (b[0] - a[0]) * t
+                    break
+            if ax is None:
+                ax = chain[-1][0]
+            pad = span * 0.012
+            if ax < cxh:
+                zone[:, :max(0, int(ax + pad))] = 0
+            else:
+                zone[:, min(w, int(ax - pad)):] = 0
         mask = cv2.bitwise_and(mask, zone)
 
     mask[shield > 0] = 0
