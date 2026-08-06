@@ -1,0 +1,298 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Looktok · локальный стенд</title>
+<style>
+  :root {
+    --bg: #0b0b0c; --panel: #16161a; --panel2: #101013; --line: #26262c; --ink: #f2f2f4;
+    --dim: #8b8b95; --dim2: #5f5f68; --accent: #2f6bff;
+    --good: #29a37a; --warn: #d9822b; --bad: #d9534f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.55 ui-sans-serif, -apple-system, "SF Pro Text", system-ui; }
+  header { padding: 18px 24px; border-bottom: 1px solid var(--line); }
+  .brand { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  h1 { margin: 0; font-size: 17px; letter-spacing: -0.01em; font-weight: 650; }
+  .model { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .legend { margin: 10px 0 0; color: var(--dim); font-size: 13px; max-width: 780px; }
+  .legend b { color: var(--ink); font-weight: 600; }
+
+  main { display: grid; grid-template-columns: 320px 1fr; min-height: calc(100vh - 96px); }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  aside { border-right: 1px solid var(--line); padding: 18px; }
+  section { padding: 20px 24px 60px; overflow: auto; }
+
+  .drop { border: 1.5px dashed var(--line); border-radius: 12px; padding: 22px 14px;
+          text-align: center; color: var(--dim); cursor: pointer; transition: .15s; }
+  .drop:hover, .drop.on { border-color: var(--accent); color: var(--ink); background: #12141c; }
+  .drop img { max-width: 100%; max-height: 240px; border-radius: 8px; display: block; margin: 0 auto; }
+
+  .step { margin-top: 16px; }
+  .step h3 { margin: 0 0 2px; font-size: 12px; text-transform: uppercase;
+             letter-spacing: .08em; color: var(--dim2); font-weight: 700; }
+  .step p { margin: 0 0 8px; font-size: 12.5px; color: var(--dim); }
+  button { width: 100%; background: var(--panel); color: var(--ink);
+           border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px;
+           font: inherit; font-weight: 550; cursor: pointer; text-align: left; }
+  button:hover:not(:disabled) { border-color: var(--accent); }
+  button:disabled { opacity: .4; cursor: default; }
+  button.go { background: var(--accent); border-color: var(--accent); }
+  button + button { margin-top: 7px; }
+  .keys { margin-top: 20px; font-size: 12px; color: var(--dim2); line-height: 1.7; }
+  .keys s { text-decoration: none; color: var(--warn); }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+          padding: 16px 18px; margin-bottom: 14px; }
+  .where { font-size: 11.5px; text-transform: uppercase; letter-spacing: .07em;
+           color: var(--dim2); font-weight: 700; margin: 0 0 10px; }
+  .score { font-size: 40px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+  .score small { font-size: 15px; color: var(--dim); font-weight: 500; }
+  .sum { font-size: 16.5px; margin: 8px 0 0; }
+
+  .pin { display: grid; grid-template-columns: 66px 1fr; gap: 12px;
+         padding: 11px 0; border-top: 1px solid var(--line); }
+  .pin:first-of-type { border-top: 0; padding-top: 0; }
+  .sev { font-size: 11px; text-transform: uppercase; letter-spacing: .06em;
+         font-weight: 700; padding-top: 3px; }
+  .sev.good { color: var(--good); } .sev.tip { color: var(--warn); } .sev.issue { color: var(--bad); }
+  .pin b { display: block; } .pin span { color: var(--dim); font-size: 14px; display: block; }
+
+  .looks { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+  .look { background: var(--panel2); border: 1px solid var(--line); border-radius: 11px; padding: 14px; }
+  .look h4 { margin: 0 0 9px; font-size: 13px; letter-spacing: .02em; color: var(--dim); }
+  .look .ph { height: 84px; border: 1px dashed var(--line); border-radius: 8px; display: grid;
+              place-items: center; color: var(--dim2); font-size: 11.5px; text-align: center;
+              margin-bottom: 10px; padding: 0 8px; }
+  .piece { font-size: 14px; padding: 3px 0 3px 15px; position: relative; }
+  .piece::before { content: ""; position: absolute; left: 2px; top: 10px;
+                   width: 5px; height: 5px; border-radius: 50%; background: var(--dim2); }
+  .piece i { color: var(--dim); font-style: normal; font-size: 13px; }
+
+  .slot { border-top: 1px solid var(--line); padding: 12px 0; }
+  .slot:first-of-type { border-top: 0; }
+  .slot h4 { margin: 0 0 3px; font-size: 12px; text-transform: uppercase;
+             letter-spacing: .06em; color: var(--dim2); }
+  .now { font-size: 15px; margin-bottom: 7px; }
+  .now em { color: var(--dim); font-style: normal; }
+  .idea { font-size: 14px; padding: 3px 0 3px 16px; position: relative; color: #cfcfd6; }
+  .idea::before { content: "·"; position: absolute; left: 3px; color: var(--dim2); }
+  .idea.rec { color: var(--ink); font-weight: 550; }
+  .idea.rec::before { content: "★"; color: var(--accent); font-size: 10px; top: 5px; }
+  .idea i { color: var(--dim); font-style: normal; }
+
+  .t { color: var(--dim2); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .err { color: var(--bad); }
+  pre { background: var(--panel2); border: 1px solid var(--line); border-radius: 9px;
+        padding: 12px; overflow: auto; font-size: 12px; color: #b8b8c2; max-height: 55vh; }
+  .empty { color: var(--dim); padding: 44px 0; text-align: center; }
+  .spin { display: inline-block; width: 12px; height: 12px; border: 2px solid var(--line);
+          border-top-color: var(--accent); border-radius: 50%; animation: s .7s linear infinite;
+          vertical-align: -2px; margin-right: 8px; }
+  @keyframes s { to { transform: rotate(360deg); } }
+</style>
+
+<header>
+  <div class="brand">
+    <h1>Looktok · локальный стенд</h1>
+    <span class="model" id="model">…</span>
+  </div>
+  <p class="legend">
+    Это <b>мозг</b> приложения, целиком на этом Mac: он смотрит фото и выдаёт текст —
+    оценку, что надето, чем заменить. <b>Картинки он не рисует</b>: превью луков и
+    примерку на тебе делает генератор изображений (сейчас это OpenAI), он отдельно.
+    Ниже — те же данные, что уходят в экран Review my outfit.
+  </p>
+</header>
+
+<main>
+  <aside>
+    <div class="drop" id="drop">
+      <div id="dropText">Перетащи фото аутфита<br><span class="t">или клик, чтобы выбрать</span></div>
+      <img id="preview" hidden>
+    </div>
+    <button id="bSample" style="margin-top:12px">Взять пример фото</button>
+
+    <div class="step">
+      <h3>Шаг 1 · экран Review</h3>
+      <p>Оценка 1–10 и разбор по пинам — то, что видно под фото после анализа.</p>
+      <button class="go" id="bCritique" disabled>Оценить аутфит</button>
+    </div>
+
+    <div class="step">
+      <h3>Шаг 2 · карточки луков</h3>
+      <p>Что на тебе надето по слотам и 4 замены на каждый слот. Из этого приложение
+         собирает предложенные луки.</p>
+      <button id="bSlots" disabled>Предложить луки</button>
+    </div>
+
+    <div class="step">
+      <h3>Шаг 3 · онбординг и гардероб</h3>
+      <p>Профиль тела считается один раз при регистрации; распознавание вещи — при
+         добавлении в гардероб.</p>
+      <button id="bProfile" disabled>Профиль тела</button>
+      <button id="bItem" disabled>Распознать вещь</button>
+    </div>
+
+    <div class="step">
+      <h3>Проверка</h3>
+      <button id="bRaw" disabled>Сырой JSON (что уйдёт в бэкенд)</button>
+    </div>
+
+    <p class="keys">
+      Каждый прогон — 0 запросов наружу и $0.<br>
+      <s>Примерка на аватаре</s> — здесь её нет: это генерация картинки.
+    </p>
+  </aside>
+
+  <section id="out"><div class="empty">Возьми пример фото и нажми «Оценить аутфит»</div></section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  let file = null, lastRaw = null;
+
+  fetch("/health").then(r => r.json())
+    .then(h => $("model").textContent =
+      (h.model || "").replace("mlx-community/", "") + (h.ok ? " · готов" : " · загружается"))
+    .catch(() => $("model").textContent = "воркер не отвечает");
+
+  const drop = $("drop");
+  const picker = Object.assign(document.createElement("input"), { type: "file", accept: "image/*" });
+  drop.onclick = () => picker.click();
+  picker.onchange = () => picker.files[0] && setFile(picker.files[0]);
+  drop.ondragover = (e) => { e.preventDefault(); drop.classList.add("on"); };
+  drop.ondragleave = () => drop.classList.remove("on");
+  drop.ondrop = (e) => {
+    e.preventDefault(); drop.classList.remove("on");
+    const f = [...e.dataTransfer.files].find(f => f.type.startsWith("image/"));
+    if (f) setFile(f);
+  };
+
+  function setFile(f) {
+    file = f;
+    const img = $("preview");
+    img.src = URL.createObjectURL(f);
+    img.hidden = false;
+    $("dropText").hidden = true;
+    for (const b of ["bCritique", "bSlots", "bProfile", "bItem"]) $(b).disabled = false;
+  }
+
+  const esc = (s) => String(s ?? "").replace(/[<>&]/g, c => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;" }[c]));
+  function busy(l) {
+    $("out").innerHTML = `<div class="empty"><span class="spin"></span>${l} — модель считает на этом Mac…</div>`;
+    if (window.matchMedia("(max-width: 900px)").matches)
+      $("out").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function call(path, extra) {
+    const fd = new FormData();
+    fd.append("image", file, file.name);
+    for (const [k, v] of Object.entries(extra || {})) fd.append(k, v);
+    const t0 = performance.now();
+    const r = await fetch(path, { method: "POST", body: fd });
+    const ms = performance.now() - t0;
+    const body = await r.json().catch(() => ({ error: "не JSON" }));
+    if (!r.ok) throw new Error(body.detail || body.error || r.status);
+    lastRaw = body; $("bRaw").disabled = false;
+    return { body, ms };
+  }
+
+  function run(path, label, render, extra) {
+    busy(label);
+    call(path, extra)
+      .then(({ body, ms }) => {
+        $("out").innerHTML = render(body) +
+          `<p class="t">${label} · ${(ms / 1000).toFixed(1)} с на этом Mac · $0</p>`;
+        if (window.matchMedia("(max-width: 900px)").matches)
+          $("out").scrollIntoView({ behavior: "smooth", block: "start" });
+      })
+      .catch(e => $("out").innerHTML = `<div class="card err">Ошибка: ${esc(e.message)}</div>`);
+  }
+
+  // ── Шаг 1: то, что рисуется под фото на экране Review ──
+  $("bCritique").onclick = () => run("/critique", "Оценка аутфита", (d) => {
+    if (d.analyzable === false)
+      return `<div class="card"><p class="where">фото не подходит</p>${esc(d.note)}</div>`;
+    const pins = (d.hotspots || []).map(h => `
+      <div class="pin">
+        <div class="sev ${esc(h.severity)}">${{ good: "ок", tip: "идея", issue: "проблема" }[h.severity] || esc(h.severity)}</div>
+        <div><b>${esc(h.title)}</b><span>${esc(h.detail)}</span>
+        ${h.fix ? `<span>→ ${esc(h.fix)}</span>` : ""}</div>
+      </div>`).join("");
+    return `<div class="card">
+        <p class="where">экран Review · шапка с оценкой</p>
+        <div class="score">${d.overall?.score ?? "?"}<small>/10</small></div>
+        <p class="sum">${esc(d.overall?.summary)}</p>
+      </div>
+      <div class="card"><p class="where">экран Review · пины на фото</p>${pins ||
+        "<span class='t'>замечаний нет</span>"}</div>`;
+  });
+
+  // ── Шаг 2: слоты → собранные луки (как это делает look-boards) ──
+  $("bSlots").onclick = () => run("/slots", "Предложенные луки", (d) => {
+    const slots = d.slots || [];
+    const by = (name) => slots.find(s => s.slot === name);
+    const top = by("top"), bottom = by("bottom"), shoes = by("shoes");
+
+    // 4 лука: k-я идея верха × k-я идея низа (+ обувь), ровно как в проде
+    let looksHtml = "";
+    if (top?.ideas?.length && bottom?.ideas?.length) {
+      const n = Math.min(4, top.ideas.length, bottom.ideas.length);
+      const cards = [];
+      for (let k = 0; k < n; k++) {
+        const t = top.ideas[k], b = bottom.ideas[k];
+        const s = shoes?.ideas?.[k % (shoes.ideas.length || 1)];
+        cards.push(`<div class="look">
+          <h4>Лук ${k + 1}${t.recommended || b.recommended ? " · рекомендация" : ""}</h4>
+          <div class="ph">картинку этого лука рисует<br>генератор изображений</div>
+          <div class="piece">${esc(t.garment)} <i>— ${esc(t.why)}</i></div>
+          <div class="piece">${esc(b.garment)} <i>— ${esc(b.why)}</i></div>
+          ${s ? `<div class="piece">${esc(s.garment)}</div>` : ""}
+        </div>`);
+      }
+      looksHtml = `<div class="card">
+        <p class="where">экран Review · ряд карточек луков</p>
+        <div class="looks">${cards.join("")}</div></div>`;
+    } else {
+      looksHtml = `<div class="card"><p class="where">карточки луков</p>
+        <span class="t">не собрать: модель не увидела одновременно верх и низ
+        (для лука нужны оба слота)</span></div>`;
+    }
+
+    const raw = slots.map(s => `
+      <div class="slot"><h4>${esc(s.slot)}</h4>
+        <div class="now">сейчас: <em>${esc(s.item)}</em></div>
+        ${(s.ideas || []).map(i => `<div class="idea ${i.recommended ? "rec" : ""}">
+          ${esc(i.garment)} <i>— ${esc(i.why)}</i></div>`).join("")}
+      </div>`).join("");
+
+    return looksHtml + `<div class="card">
+        <p class="where">внутренние данные · слоты и все замены (пол: ${esc(d.gender_presentation)})</p>
+        ${raw || "<span class='t'>слоты не найдены</span>"}</div>`;
+  });
+
+  // ── Шаг 3 ──
+  $("bProfile").onclick = () => run("/body-profile", "Профиль тела", (d) => {
+    const m = d.estimated_measurements || {};
+    const ru = { chest_cm: "грудь", waist_cm: "пояс", hip_cm: "бёдра", inseam_cm: "шаговый" };
+    const rows = Object.entries(m).map(([k, v]) =>
+      `<div class="idea">${esc(ru[k] || k)}: ${v?.min}–${v?.max} см</div>`).join("");
+    return `<div class="card">
+        <p class="where">онбординг · записывается в профиль один раз</p>
+        <div class="score" style="font-size:24px">${esc(d.body_type || "—")}</div>
+        <p class="sum">${esc(d.proportions?.description)}</p></div>
+      <div class="card"><p class="where">оценка диапазонами, а не измерение</p>${rows}
+        <div class="t" style="margin-top:8px">уверенность ${d.confidence ?? "?"}</div></div>
+      <div class="card"><p class="where">заметки стилиста → влияют на подбор</p>
+        ${(d.styling_notes || []).map(n => `<div class="idea">${esc(n)}</div>`).join("")}</div>`;
+  }, { height_cm: 183 });
+
+  $("bItem").onclick = () => run("/classify-item", "Распознавание вещи", (d) =>
+    `<div class="card"><p class="where">гардероб · добавление вещи</p>
+      <div class="score" style="font-size:22px">${esc(d.label)}</div>
+      <p class="sum">слот: ${esc(d.category)}</p></div>`);
+
+  $("bRaw").onclick = () => $("out").innerHTML =
+    `<div class="card"><p class="where">это уходит в Edge Function как есть — формат совпадает с Gemini</p>
+      <pre>${esc(JSON.stringify(lastRaw, null, 2))}</pre></div>`;
+</script>

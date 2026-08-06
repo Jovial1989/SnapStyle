@@ -722,3 +722,133 @@ def apply_shading(warped: np.ndarray, mask: np.ndarray, base: np.ndarray,
     ratio = 1.0 + (ratio - 1.0) * float(np.clip(strength, 0.0, 2.0))
     out = warped.astype(np.float32) * ratio[:, :, None]
     return np.where(m[:, :, None], np.clip(out, 0, 255), warped).astype(np.uint8)
+
+
+def tps_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
+             slot_mask: np.ndarray, rows: int = 9, cols: int = 7,
+             wrap: float = 1.0) -> Warped | None:
+    """Thin-plate spline onto the body, with the torso treated as a CYLINDER.
+
+    A quad maps a plane to a plane. A body is not a plane, and the tell is the print:
+    on a real tee the graphic compresses toward the sides as the fabric turns away
+    from the camera, and a homography cannot express that at all — it can only shear.
+    That missing foreshortening is what reads as an applique.
+
+    The correction is orthographic projection of a cylinder. The flat-lay IS the
+    unrolled surface, so a point u away from the garment's centre line lies at arc
+    length u on the cylinder, at angle u/R, and the camera sees it at
+
+        x = R * sin(u / R),     R = half the BODY's own width on that row
+
+    which is identity at the centre and compresses to zero derivative at the profile.
+    Rows come from the body's silhouette so the fit is the body's, not a rectangle's;
+    `wrap` scales how much of the cylinder the garment is assumed to cover (1.0 wraps
+    the full visible half; lower values keep more of the print flat).
+
+    TPS is what turns that grid of correspondences into a smooth deformation: it is
+    the interpolant that minimises the bending energy of a thin sheet, which is a
+    reasonable stand-in for cloth that resists creasing. cv2's shape transformer
+    solves exactly that system (U(r) = r² log r radial basis plus an affine term).
+
+    Off by default. Kept behind VTON_TPS because the last non-rigid warp tried here —
+    a single Delaunay mesh over torso and sleeves — measured worse than the quad:
+    wavy stripes and a chest print squeezed into an hourglass. Non-rigid is only an
+    improvement when the correspondences are right; when they are not, it is a
+    licence to distort.
+    """
+    panel = _panel(sil, kind)
+    if panel is None:
+        return None
+    gx0, gy0, gx1, gy1 = panel
+    gw, gh = float(gx1 - gx0), float(gy1 - gy0)
+    if gw < 8 or gh < 8:
+        return None
+
+    ys_m, xs_m = np.nonzero(slot_mask > 20)
+    if not ys_m.size:
+        return None
+    ty0, ty1 = int(ys_m.min()), int(ys_m.max())
+    if ty1 - ty0 < 8:
+        return None
+
+    h, w = pose.h, pose.w
+    src_pts, dst_pts = [], []
+    for r in range(rows):
+        fy = r / (rows - 1.0)
+        ty = ty0 + fy * (ty1 - ty0)
+        row = slot_mask[min(h - 1, int(round(ty)))] > 20
+        occ = np.flatnonzero(row)
+        if occ.size < 4:
+            continue
+        bx0, bx1 = float(occ[0]), float(occ[-1])
+        cxb = 0.5 * (bx0 + bx1)
+        R = max(1.0, 0.5 * (bx1 - bx0))
+        for c in range(cols):
+            fx = c / (cols - 1.0)
+            src_pts.append([gx0 + fx * gw, gy0 + fy * gh])
+            # Arc length across the visible half, then projected. wrap=1 puts the
+            # garment's own edge at the cylinder's profile, where sin flattens.
+            u = (fx - 0.5) * 2.0 * R * wrap
+            theta = np.clip(u / R, -np.pi / 2, np.pi / 2)
+            dst_pts.append([cxb + R * np.sin(theta), ty])
+    if len(src_pts) < 12:
+        return None
+
+    src = np.asarray(src_pts, np.float32).reshape(1, -1, 2)
+    dst = np.asarray(dst_pts, np.float32).reshape(1, -1, 2)
+    matches = [cv2.DMatch(i, i, 0) for i in range(src.shape[1])]
+
+    tps = cv2.createThinPlateSplineShapeTransformer()
+    # OpenCV's convention: estimateTransformation(target, source, matches) then
+    # warpImage(source_image) produces the image sampled into the target frame.
+    tps.estimateTransformation(dst, src, matches)
+
+    pad = np.zeros((h, w, 3), np.uint8)
+    ph, pw = min(h, garment.shape[0]), min(w, garment.shape[1])
+    pad[:ph, :pw] = garment[:ph, :pw]
+    pad_sil = np.zeros((h, w), np.uint8)
+    pad_sil[:ph, :pw] = sil[:ph, :pw]
+
+    out = tps.warpImage(pad, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
+    msk = tps.warpImage(pad_sil, flags=cv2.INTER_NEAREST,
+                        borderMode=cv2.BORDER_CONSTANT)
+    msk = cv2.erode((msk > 0).astype(np.uint8) * 255,
+                    np.ones((3, 3), np.uint8))
+    mask = cv2.bitwise_and(msk, (slot_mask > 20).astype(np.uint8) * 255)
+    if not mask.any():
+        return None
+    cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
+    return Warped(image=out, mask=mask, coverage=round(cov, 3))
+
+
+def harmonise_poisson(init: np.ndarray, warped: np.ndarray, mask: np.ndarray,
+                      mode: int = cv2.NORMAL_CLONE) -> np.ndarray:
+    """Gradient-domain paste of the warped garment into the base frame.
+
+    Solves ∇²f = ∇·v over the mask with f fixed to the base on the boundary, which is
+    what cv2.seamlessClone does: it keeps the garment's TEXTURE (its gradients) and
+    takes its absolute level from the surroundings, so a studio-lit flat-lay inherits
+    the photograph's own light instead of announcing itself with a seam.
+
+    THE RISK IS THE WHOLE POINT OF THE WARP. Dirichlet boundaries do not merely adjust
+    brightness — they drag the interior's colour toward whatever the boundary carries.
+    Paste a yellow tee against grey basics and Poisson will happily desaturate it,
+    which destroys the one property the warp exists to preserve. That is why this is
+    a flag rather than the default, and why the caller should measure the garment's
+    mean colour against the flat-lay's before and after.
+    """
+    m = (mask > 20).astype(np.uint8) * 255
+    ys, xs = np.nonzero(m)
+    if not ys.size:
+        return init
+    # seamlessClone needs the patch's centre and a mask with a clear border; a mask
+    # touching the frame edge makes it throw.
+    m[0, :] = m[-1, :] = m[:, 0] = m[:, -1] = 0
+    ys, xs = np.nonzero(m)
+    if not ys.size:
+        return init
+    centre = (int((xs.min() + xs.max()) / 2), int((ys.min() + ys.max()) / 2))
+    try:
+        return cv2.seamlessClone(warped, init, m, centre, mode)
+    except cv2.error:
+        return init

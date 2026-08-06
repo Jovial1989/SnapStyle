@@ -1,0 +1,111 @@
+---
+import Layout from "../layouts/Layout.astro";
+import Screen from "../components/Screen.astro";
+---
+
+<Layout
+  title="Contact — Looktok"
+  description="Looktok is not a store and never will be — no ads, no affiliate deals. For press, collaboration, or anything else, this reaches the founder directly."
+  path="/partners"
+>
+  <section class="section head">
+    <div class="wrap head__grid">
+      <div class="head__copy">
+        <span class="label label--sig" data-i18n="partners.label">Contact</span>
+        <h1 class="h1" data-i18n="partners.h1">Press, questions, or just want to reach me?</h1>
+        <p class="lead" data-i18n="partners.lead">Looktok isn't a store — no ads, no affiliate deals, nothing sold on the side. If you're from the press, thinking about working together, or just have something to say, this goes straight to me.</p>
+      </div>
+      <div class="head__shot">
+        <Screen src="/img/home.webp" alt="The Looktok home screen." max="240px" />
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap contact reveal">
+      <div class="ct__l">
+        <h2 class="h2" data-i18n="partners.get">Get in touch</h2>
+        <p class="muted" data-i18n="partners.get_p">Tell me who you are and what you have in mind. I read everything.</p>
+        <div class="direct">
+          <a href="mailto:petrov.cpay@gmail.com" class="btn" data-i18n="partners.email">Email me</a>
+          <a href="https://www.linkedin.com/in/petrovkyrylo/" target="_blank" rel="noopener" class="btn btn--ghost">LinkedIn</a>
+        </div>
+      </div>
+
+      <form class="ct__form" id="pform" novalidate>
+        <div class="field">
+          <label for="f-name" data-i18n="partners.f_name">Name</label>
+          <input id="f-name" name="name" type="text" required autocomplete="name" />
+          <span class="err" data-for="f-name"></span>
+        </div>
+        <div class="field">
+          <label for="f-email" data-i18n="partners.f_email">Email</label>
+          <input id="f-email" name="email" type="email" required autocomplete="email" />
+          <span class="err" data-for="f-email"></span>
+        </div>
+        <div class="field">
+          <label for="f-co" data-i18n="partners.f_co">Company (optional)</label>
+          <input id="f-co" name="company" type="text" autocomplete="organization" />
+        </div>
+        <div class="field">
+          <label for="f-msg" data-i18n="partners.f_msg">What do you have in mind?</label>
+          <textarea id="f-msg" name="message" rows="4" required></textarea>
+          <span class="err" data-for="f-msg"></span>
+        </div>
+        <button type="submit" class="btn btn--sig" data-i18n="partners.send">Send</button>
+        <p class="ok" id="pok" hidden data-i18n="partners.ok">Thanks — opening your mail app with it drafted. If nothing opens, write to petrov.cpay@gmail.com.</p>
+      </form>
+    </div>
+  </section>
+</Layout>
+
+<script>
+  const f = document.getElementById("pform") as HTMLFormElement | null;
+  if (f) {
+    const ok = document.getElementById("pok") as HTMLElement;
+    const setErr = (id: string, msg: string) => {
+      const s = f.querySelector(`.err[data-for="${id}"]`) as HTMLElement | null;
+      if (s) s.textContent = msg;
+      const inp = document.getElementById(id);
+      if (inp) inp.setAttribute("aria-invalid", msg ? "true" : "false");
+    };
+    f.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const name = (f.name as any).value.trim();
+      const email = (f.email as any).value.trim();
+      const msg = (f.message as any).value.trim();
+      const company = (f.company as any).value.trim();
+      const t = (k: string, f: string) => (window as any).lookT?.(k, f) ?? f;
+      let bad = false;
+      setErr("f-name", name ? "" : ((bad = true), t("partners.err_name", "Your name, please.")));
+      setErr("f-email", /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? "" : ((bad = true), t("partners.err_email", "A valid email, please.")));
+      setErr("f-msg", msg ? "" : ((bad = true), t("partners.err_msg", "A line about the idea helps.")));
+      if (bad) return;
+      const body = `From: ${name}${company ? " (" + company + ")" : ""}\nEmail: ${email}\n\n${msg}`;
+      window.location.href = `mailto:petrov.cpay@gmail.com?subject=${encodeURIComponent("Looktok — " + name)}&body=${encodeURIComponent(body)}`;
+      ok.hidden = false;
+    });
+  }
+</script>
+
+<style>
+  .head { padding-top: clamp(var(--s-5), 5vw, var(--s-7)); }
+  .head__grid { display: grid; grid-template-columns: 1.25fr 0.75fr; gap: var(--s-5); align-items: center; }
+  .head__shot { display: flex; justify-content: center; }
+  .head .label { display: block; margin-bottom: var(--s-2); }
+  .head .lead { margin-top: var(--s-3); }
+  @media (max-width: 820px) { .head__grid { grid-template-columns: 1fr; } .head__shot { order: -1; } }
+  .contact { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: var(--s-6); align-items: start; }
+  .ct__l .muted { margin-top: var(--s-1); }
+  .direct { display: flex; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
+  .ct__form { display: grid; gap: var(--s-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: var(--s-4); box-shadow: var(--shadow-soft); }
+  .field { display: grid; gap: 6px; }
+  label { font-size: var(--t-small); font-weight: 500; }
+  input, textarea { font: inherit; font-size: 0.9375rem; padding: 12px 14px; border: 1.5px solid var(--line); border-radius: var(--radius); background: var(--bg); color: var(--ink); }
+  input:focus, textarea:focus { border-color: var(--sig); outline: none; }
+  [aria-invalid="true"] { border-color: #C0392B; }
+  .err { color: #C0392B; font-size: var(--t-small); min-height: 1em; }
+  .ct__form .btn { justify-self: start; }
+  .ok { color: var(--good); font-size: 0.9375rem; }
+  @media (max-width: 820px) { .contact { grid-template-columns: 1fr; } }
+</style>

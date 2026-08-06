@@ -1,0 +1,10 @@
+# Apache 2.0 / BSD stack ONLY — no Ultralytics/YOLO, no GPL/AGPL (hard rule).
+fastapi==0.115.*
+uvicorn==0.32.*
+python-multipart==0.0.*
+numpy==1.26.*
+opencv-python-headless==4.10.*   # Apache 2.0
+mediapipe==0.10.*                # Apache 2.0 — PoseLandmarker (point prompts)
+torch==2.4.*                     # BSD-3
+# Meta SAM 2 — Apache 2.0. Pinned commit for reproducible builds.
+git+https://github.com/facebookresearch/sam2.git

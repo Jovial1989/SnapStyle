@@ -1,0 +1,256 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+const pad = (i) => String(i + 1).padStart(2, "0");
+const steps = [
+  ["Photo", "One full-length shot — no quiz, no measurements.", "hiw.s1_t", "hiw.s1_b"],
+  ["Read", "Five criteria, one honest verdict — in about 15 seconds.", "hiw.s2_t", "hiw.s2_b"],
+  ["Render", "The better version, styled on your own photo.", "hiw.s3_t", "hiw.s3_b"],
+  ["Save", "Keep the looks — and the brands to shop later.", "hiw.s4_t", "hiw.s4_b"],
+];
+const evals = [
+  ["Fit", "Where the garment pulls, bunches or hangs — sleeve and hem breaks, shoulder seams, waist.", "hiw.ev1_t", "hiw.ev1_b"],
+  ["Proportion", "How the pieces balance against your build — top-to-bottom ratio, where the eye lands.", "hiw.ev2_t", "hiw.ev2_b"],
+  ["Footwear", "Whether the shoes carry the outfit or fight it — formality, colour, bulk.", "hiw.ev3_t", "hiw.ev3_b"],
+  ["Layering", "What each layer adds, and where one is doing nothing but adding weight.", "hiw.ev4_t", "hiw.ev4_b"],
+  ["Colour temperature", "Whether the palette holds together or one piece pulls warm against the rest.", "hiw.ev5_t", "hiw.ev5_b"],
+];
+---
+
+<Layout
+  title="How Looktok works — what the AI actually reads"
+  description="What Looktok evaluates in your outfit, how it matches you with pieces from global brands, and what happens to your photo."
+  path="/how-it-works"
+>
+  <section class="section head">
+    <div class="wrap head__grid">
+      <div class="head__copy">
+        <span class="label label--sig" data-i18n="hiw.label">How it works</span>
+        <h1 class="h1" data-i18n="hiw.h1">A specific read — then a fix you can actually wear.</h1>
+        <p class="lead" data-i18n="hiw.lead">Looktok looks at the same things a good stylist would, names them plainly, and pairs every note with a concrete change. Here's exactly what that means.</p>
+      </div>
+      <div class="head__shot">
+        <!-- Same proof language as the home hero: the founder's real photo →
+             Looktok's actual render of him. No stock model. -->
+        <!-- THE READ, visualized: one large photo under a soft scanner with
+             the critique pinned to the body — this page explains the reading,
+             the home page shows the transformation. No duplicate banners. -->
+        <div class="readcard">
+          <img class="readcard__img" src="/img/founder-before.webp" alt="The founder's real mirror selfie being read by the AI." loading="eager" decoding="async" fetchpriority="high" />
+          <div class="readcard__band" aria-hidden="true"></div>
+          <span class="rdot rdot--flip" style="--x:72%;--y:26%"><i></i><em data-i18n="hiw.ev2_t">Proportion</em></span>
+          <span class="rdot" style="--x:22%;--y:52%"><i></i><em data-i18n="hiw.ev1_t">Fit</em></span>
+          <span class="rdot rdot--flip" style="--x:64%;--y:86%"><i></i><em data-i18n="hiw.ev3_t">Footwear</em></span>
+          <div class="verdict" role="img" aria-label="Rating before the fix 2.9 of 5, after 4.7 of 5">
+            <span class="verdict__score">2.9<i>/5</i></span>
+            <span class="verdict__arr" aria-hidden="true">→</span>
+            <span class="verdict__score verdict__score--sig">4.7<i>/5</i></span>
+          </div>
+                </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section steps">
+    <div class="wrap">
+      <span class="label label--sig reveal" data-i18n="hiw.steps_label">From photo to new you</span>
+      <div class="steps__grid">
+        {steps.map(([t, b, tk, bk], i) => (
+          <div class="step reveal">
+            <span class="step__n">{pad(i)}</span>
+            <h3 class="h2" data-i18n={tk}>{t}</h3>
+            <p class="muted" data-i18n={bk}>{b}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <span class="label reveal" data-i18n="hiw.eval_label">What it evaluates</span>
+      <div class="evals">
+        {evals.map(([t, b, tk, bk], i) => (
+          <div class="ev reveal">
+            <span class="ev__n" aria-hidden="true">{pad(i)}</span>
+            <h2 class="h2" data-i18n={tk}>{t}</h2>
+            <p class="muted" data-i18n={bk}>{b}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <section class="section commerce">
+    <div class="wrap two">
+      <div class="reveal">
+        <span class="label label--sig" data-i18n="hiw.ba_label">Smart commerce</span>
+        <h2 class="h1" data-i18n="hiw.ba_h">Not on a model. On you.</h2>
+        <p class="lead" data-i18n="hiw.ba_p">Looktok doesn't just suggest cuts and colours — every idea is rendered on your own photo, and the whole look adapts to how you're actually built. What you see is how it sits on you.</p>
+      </div>
+      <div class="reveal">
+        <span class="label label--sig" data-i18n="hiw.insp_label">Your personal boutique</span>
+        <h2 class="h1" data-i18n="hiw.insp_h">Love the look? Keep it.</h2>
+        <p class="lead" data-i18n="hiw.insp_p">Save the looks you love to your gallery, with the brand names as your shopping list for later. No storefront, no checkout — Looktok is about how you look, not what you're sold.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- PRIVACY -->
+  <section id="privacy" class="section privacy">
+    <div class="wrap narrow reveal">
+      <span class="label label--sig" data-i18n="hiw.priv_label">Your photo &amp; privacy</span>
+      <h2 class="h1" data-i18n="hiw.priv_h">Your photo is the whole product. We treat it that way.</h2>
+      <p class="lead" data-i18n="hiw.priv_lead">This is a body-image-adjacent product, so we won't hand-wave this.</p>
+      <div class="privgrid">
+        <div class="priv">
+          <h3 class="h2" data-i18n="hiw.priv1_t">Private by default</h3>
+          <p class="muted" data-i18n="hiw.priv1_b">Your photos and renders live in private storage, readable only from your account.</p>
+        </div>
+        <div class="priv">
+          <h3 class="h2" data-i18n="hiw.priv2_t">Used for one thing</h3>
+          <p class="muted" data-i18n="hiw.priv2_b">The photo exists to produce your read and your renders. It's never sold or handed to advertisers.</p>
+        </div>
+        <div class="priv">
+          <h3 class="h2" data-i18n="hiw.priv3_t">Delete any time</h3>
+          <p class="muted" data-i18n="hiw.priv3_b">Deleting a look deletes its files. Want everything gone? One email — the account and its data are erased.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section cta">
+    <div class="wrap reveal" style="text-align:center">
+      <h2 class="display" data-i18n="hiw.cta_h">See it on your own photo.</h2>
+      <p class="lead" style="margin-inline:auto;text-align:center" data-i18n="hiw.cta_lead">The read is only half of it — the better version is styled on you.</p>
+      <a href="/#get" class="btn" style="margin-top:var(--s-3)" data-i18n="cta.get">Get the app</a>
+    </div>
+  </section>
+</Layout>
+
+
+<style>
+  .head { padding-top: clamp(var(--s-5), 5vw, var(--s-7)); padding-bottom: var(--s-4); overflow: hidden; }
+  /* Same monumental graphite register as the home hero. */
+  .head__copy .h1 {
+    font-size: clamp(2.5rem, 1.8rem + 2.9vw, 4rem);
+    letter-spacing: -0.04em;
+    line-height: 1.06;
+    background: linear-gradient(135deg, #0F0F11 0%, #33332F 55%, #56564F 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .head__copy { position: relative; }
+  .head__copy::before {
+    content: ""; position: absolute; inset: -14% -18%; z-index: -1;
+    background: radial-gradient(50% 46% at 40% 42%, rgba(255, 255, 255, 0.95), rgba(255, 255, 255, 0) 72%);
+    filter: blur(8px); pointer-events: none;
+  }
+  .head__grid { display: grid; grid-template-columns: 1.02fr 0.98fr; gap: var(--s-5); align-items: center; }
+  .head__shot { display: flex; justify-content: center; }
+  /* The READ card: one photo, a breathing volumetric scan band, critique
+     dots pinned to the body. Distinct from the home hero's slider. */
+  .readcard {
+    position: relative; width: min(430px, 100%); aspect-ratio: 3 / 4.1;
+    border-radius: 28px; overflow: hidden;
+    box-shadow: 0 44px 88px -32px rgba(10, 10, 10, 0.5);
+  }
+  .readcard__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .readcard__band {
+    position: absolute; left: 0; right: 0; height: 34%;
+    background: linear-gradient(to bottom,
+      rgba(46, 91, 255, 0) 0%, rgba(46, 91, 255, 0.16) 38%,
+      rgba(255, 255, 255, 0.22) 50%, rgba(46, 91, 255, 0.16) 62%,
+      rgba(46, 91, 255, 0) 100%);
+    animation: readscan 5.2s ease-in-out infinite alternate;
+    top: -10%;
+  }
+  @keyframes readscan { to { top: 76%; } }
+  @media (prefers-reduced-motion: reduce) { .readcard__band { animation: none; opacity: 0; } }
+  .rdot { position: absolute; left: var(--x); top: var(--y); transform: translateY(-50%); display: flex; align-items: center; gap: 7px; z-index: 2; }
+  .rdot i {
+    width: 9px; height: 9px; border-radius: 50%; background: var(--sig); flex: none;
+    box-shadow: 0 0 0 4px rgba(46, 91, 255, 0.22);
+    animation: rdotpulse 2.4s ease-in-out infinite;
+  }
+  .rdot em {
+    font-style: normal; font-size: 0.55rem; font-weight: 700; letter-spacing: 0.08em;
+    text-transform: uppercase; white-space: nowrap; color: var(--ink);
+    padding: 4px 9px; border-radius: 999px; background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 4px 12px -4px rgba(10, 10, 10, 0.3);
+  }
+  .rdot--flip { flex-direction: row-reverse; left: auto; right: calc(100% - var(--x)); }
+  @keyframes rdotpulse { 50% { box-shadow: 0 0 0 7px rgba(46, 91, 255, 0.1); } }
+  .verdict {
+    position: absolute; left: 16px; bottom: 16px; z-index: 3;
+    display: flex; align-items: baseline; gap: 8px;
+    padding: 11px 16px; border-radius: 16px;
+    background: rgba(255, 255, 255, 0.25);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    pointer-events: none;
+  }
+  .verdict__score { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.03em; color: var(--ink); }
+  .verdict__score i { font-style: normal; font-size: 0.72rem; font-weight: 700; opacity: 0.65; }
+  .verdict__score--sig { color: var(--sig); }
+  .verdict__arr { color: var(--ink); font-weight: 700; opacity: 0.6; }
+  .head .label { display: block; margin-bottom: var(--s-2); }
+  .head .lead { margin-top: var(--s-3); }
+  @media (max-width: 820px) { .head__grid { grid-template-columns: 1fr; } .head__shot { order: -1; } }
+  /* Process rail — four beats from photo to the new you. */
+  .steps { padding-top: var(--s-4); }
+  .steps__grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--s-4); margin-top: var(--s-4); }
+  .step { border-top: 1px solid var(--line); padding-top: var(--s-2); position: relative; }
+  .step:not(:last-child)::after {
+    content: "→"; position: absolute; top: var(--s-2);
+    right: calc(var(--s-4) / -2 - 7px);
+    color: var(--sig); font-weight: 700; opacity: 0.55;
+  }
+  .step::before { content: ""; position: absolute; top: -1px; left: 0; width: 44px; height: 2px; background: var(--sig); }
+  .step__n { display: block; font-size: 0.7rem; font-weight: 800; letter-spacing: 0.14em; color: var(--sig); margin-bottom: 8px; }
+  .step .muted { margin-top: 6px; }
+  .evals { display: grid; grid-template-columns: repeat(2, 1fr); gap: var(--s-4) var(--s-5); margin-top: var(--s-4); }
+  .ev { position: relative; border-top: 2px solid var(--ink); padding-top: var(--s-2); padding-right: 92px; transition: border-color 0.25s ease; }
+  .ev:hover { border-color: var(--sig); }
+  .ev:hover .ev__n { -webkit-text-stroke-color: rgba(46, 91, 255, 0.45); }
+  .ev .muted { margin-top: 6px; }
+  /* Oversized ghost numeral — the brand's editorial index. */
+  .ev__n {
+    position: absolute; top: calc(var(--s-2) - 4px); right: 0;
+    font-size: 64px; font-weight: 900; letter-spacing: -3px; line-height: 0.9;
+    color: transparent; -webkit-text-stroke: 1.2px rgba(10, 10, 10, 0.16);
+    user-select: none;
+  }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: var(--s-5); }
+  .two .label { display: block; margin-bottom: var(--s-1); }
+  /* Dark editorial band — the commerce promise gets the ink register. */
+  .commerce .two {
+    background: var(--ink); border-radius: var(--radius-lg);
+    padding: clamp(var(--s-4), 4vw, var(--s-6));
+  }
+  .commerce .h1 { color: var(--on-ink); }
+  .commerce .lead { color: #C9C9C4; }
+  .privacy { background: var(--surface); border-radius: var(--radius-lg); margin-inline: var(--s-3); }
+  .privacy .label { display: block; margin-bottom: var(--s-2); }
+  .privgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-4); margin-top: var(--s-4); }
+  .priv { border-top: 2px solid var(--ink); padding-top: var(--s-2); }
+  .priv .muted { margin-top: 6px; }
+  .cta .lead { margin-top: var(--s-2); }
+  .cta .display {
+    background: linear-gradient(135deg, #0F0F11 0%, #33332F 55%, #56564F 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  @media (max-width: 820px) {
+    .evals, .two, .privgrid { grid-template-columns: 1fr; }
+    .step:not(:last-child)::after { display: none; }
+      .verdict { left: 12px; bottom: 12px; padding: 9px 13px; }
+    .verdict__score { font-size: 1.15rem; }
+    .ev { padding-right: 76px; }
+    .ev__n { font-size: 52px; }
+    .steps__grid { grid-template-columns: 1fr 1fr; }
+    .verdict { flex-wrap: wrap; }
+  }
+</style>

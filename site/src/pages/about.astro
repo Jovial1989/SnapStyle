@@ -1,0 +1,87 @@
+---
+import Layout from "../layouts/Layout.astro";
+
+const schema = {
+  "@context": "https://schema.org",
+  "@type": "Person",
+  name: "Kyrylo Petrov",
+  jobTitle: "Founder, Looktok",
+  sameAs: ["https://www.linkedin.com/in/petrovkyrylo/"],
+};
+const principles = [
+  ["Brand-agnostic", "The read names a cut and a fix, never a label. Your call what to do with it.", "about.pr1_t", "about.pr1_b"],
+  ["Honest over flattering", "A straight answer beats a nice one. It leads with what works, then what to change.", "about.pr2_t", "about.pr2_b"],
+  ["Inspiration, not commerce", "Not a store. Tie advice to a sale and it stops being honest.", "about.pr3_t", "about.pr3_b"],
+];
+---
+
+<Layout
+  title="About Looktok — Kyrylo Petrov"
+  description="Why I built Looktok: after fifteen years across ecommerce and retail, the plainest question was still unanswered — does this actually look good on me?"
+  path="/about"
+  schema={schema}
+>
+  <section class="section head">
+    <div class="wrap about">
+      <div class="story">
+        <span class="label label--sig" data-i18n="about.label">About</span>
+        <h1 class="h1" data-i18n="about.h1">I build the products I wish existed.</h1>
+
+        <p data-i18n="about.p1">I'm Kyrylo Petrov. I've spent more than fifteen years as an entrepreneur — a serial one, across several industries, with a long stretch inside software development and consultancy.</p>
+
+        <p data-i18n="about.p2">The through-line was ecommerce and retail. I ran audits and assessments on other people's projects, shaped their tech, extended their teams, and fixed the parts that broke when they tried to scale. You learn a lot about how retail actually works from that seat — including how badly all of it answers one plain question: <span class="serif">does this actually look good on me?</span></p>
+
+        <p data-i18n="about.p3">Looktok came out of that. I built it with my team to do the thing none of that retail infrastructure does well — give a person an honest, specific read on what they're wearing, in real time, and then show them a better version styled on their own photo.</p>
+
+        <p class="big" data-i18n="about.big">That's the whole idea. Not a store. A straight answer.</p>
+
+        <!-- [DECISION: omitted] "Previously / Also building" credibility line —
+             layout leaves room; drop-in <p class="prev">…</p> here, no reflow. -->
+
+        <a href="https://www.linkedin.com/in/petrovkyrylo/" target="_blank" rel="noopener" class="btn btn--ghost li" data-i18n="about.li">Connect on LinkedIn →</a>
+      </div>
+
+      <aside class="portrait">
+        <div class="frame">
+          <img src="/img/founder.webp" alt="Kyrylo Petrov, founder of Looktok" width="400" height="400" loading="lazy" decoding="async" />
+        </div>
+        <span class="cap muted">Kyrylo Petrov · Founder</span>
+      </aside>
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap">
+      <span class="label reveal" data-i18n="about.stand_label">What the product stands on</span>
+      <div class="principles">
+        {principles.map(([t, b, tk, bk]) => (
+          <div class="pr reveal"><h2 class="h2" data-i18n={tk}>{t}</h2><p class="muted" data-i18n={bk}>{b}</p></div>
+        ))}
+      </div>
+    </div>
+  </section>
+</Layout>
+
+<style>
+  .head { padding-top: clamp(var(--s-5), 5vw, var(--s-7)); }
+  .about { display: grid; grid-template-columns: 1.3fr 0.7fr; gap: var(--s-6); align-items: start; }
+  .story .label { display: block; margin-bottom: var(--s-2); }
+  .story .h1 { margin-bottom: var(--s-4); }
+  .story p { font-size: var(--t-lead); line-height: 1.6; color: var(--ink-soft); margin-top: var(--s-3); max-width: 62ch; }
+  .story .big { font-weight: var(--w-black); color: var(--ink); font-size: clamp(1.4rem, 1rem + 1.6vw, 2rem); line-height: 1.25; letter-spacing: -0.02em; text-wrap: balance; margin-top: var(--s-4); max-width: 20ch; }
+  .serif { font-size: 1.08em; }
+  .li { margin-top: var(--s-4); }
+  .portrait { max-width: 300px; }
+  .portrait .frame { border-radius: var(--radius-lg); overflow: hidden; box-shadow: var(--shadow-soft); position: sticky; top: 96px; }
+  .portrait .frame img { display: block; width: 100%; aspect-ratio: 1 / 1; object-fit: cover; }
+  .portrait .cap { display: block; margin-top: var(--s-2); font-size: var(--t-small); }
+  .principles { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--s-5); margin-top: var(--s-4); }
+  .pr { border-top: 2px solid var(--ink); padding-top: var(--s-2); }
+  .pr .muted { margin-top: 6px; }
+  @media (max-width: 860px) {
+    .about { grid-template-columns: 1fr; }
+    .portrait { max-width: 320px; }
+    .portrait .frame { position: static; }
+    .principles { grid-template-columns: 1fr; }
+  }
+</style>

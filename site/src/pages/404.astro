@@ -1,0 +1,22 @@
+---
+import Layout from "../layouts/Layout.astro";
+---
+<Layout title="Not found — Looktok" description="That page isn't here." path="/404">
+  <section class="section nf">
+    <div class="wrap">
+      <span class="label label--sig">404</span>
+      <h1 class="display" data-i18n="nf.h">This one didn't<br />make the cut.</h1>
+      <p class="lead" data-i18n="nf.lead">The page you're after isn't here. The honest read still is.</p>
+      <div class="row">
+        <a href="/" class="btn" data-i18n="nf.back">Back to home</a>
+        <a href="/how-it-works" class="btn btn--ghost" data-i18n="nav.hiw">How it works</a>
+      </div>
+    </div>
+  </section>
+</Layout>
+<style>
+  .nf { padding-top: clamp(var(--s-6), 8vw, var(--s-8)); text-align: center; }
+  .nf .label { display: block; margin-bottom: var(--s-2); }
+  .nf .lead { margin: var(--s-3) auto 0; text-align: center; }
+  .row { display: flex; gap: var(--s-2); justify-content: center; margin-top: var(--s-4); flex-wrap: wrap; }
+</style>

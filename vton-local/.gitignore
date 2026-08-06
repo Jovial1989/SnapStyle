@@ -1,0 +1,4 @@
+fixtures/
+.venv*/
+CatVTON/
+__pycache__/

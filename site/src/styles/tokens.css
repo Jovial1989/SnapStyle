@@ -1,0 +1,144 @@
+/* ── Looktok marketing — design tokens (brand register) ──────────────────
+   Mirrors the app's "Editorial Luxury" language: stark tinted black/white,
+   oversized Black-weight display, one accent = Electric Blue. */
+
+@font-face {
+  font-family: "Geist";
+  src: url("/fonts/Geist-Variable.woff2") format("woff2");
+  font-weight: 100 900;
+  font-display: swap;
+  font-style: normal;
+}
+
+:root {
+  /* Colour — tinted neutrals, never pure #000/#fff/#888 */
+  --ink: #0A0A0A;
+  --ink-soft: #33332F;
+  --bg: #F8F8F6;
+  --surface: #FFFFFF;
+  --surface-2: #EFEFEC;
+  --muted: #6B6B67;   /* darkened to pass WCAG 4.5:1 on --bg and white */
+  --line: #E4E4E0;
+  --sig: #2E5BFF;          /* Electric Blue — the only accent */
+  --sig-wash: #ECF0FF;     /* ~10% tint */
+  --good: #1E9E6A;
+  --on-ink: #F8F8F6;
+
+  /* Type — Geist display + text, one family, two weights in play */
+  /* Geist covers Latin/Cyrillic/Vietnamese; the CJK + Thai faces are per-glyph
+     fallbacks so zh/ko/th render in a proper system face, not tofu. */
+  --font: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial,
+    "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC",
+    "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR",
+    "Thonburi", "Noto Sans Thai", sans-serif;
+  --w-black: 800;
+  --w-med: 500;
+  --w-reg: 400;
+
+  /* Fluid type scale — 4 sizes per view max */
+  --t-display: clamp(2.75rem, 1.6rem + 5.7vw, 6rem);   /* hero */
+  --t-h1: clamp(2.1rem, 1.3rem + 4vw, 4rem);           /* section heads */
+  --t-h2: clamp(1.5rem, 1.1rem + 1.8vw, 2.25rem);
+  --t-lead: clamp(1.06rem, 0.98rem + 0.5vw, 1.3rem);   /* lead paragraph */
+  --t-body: 1.0625rem;
+  --t-small: 0.8125rem;
+  --t-label: 0.6875rem;                                /* all-caps labels */
+
+  /* 8pt spacing */
+  --s-1: 8px;  --s-2: 16px; --s-3: 24px; --s-4: 32px;
+  --s-5: 48px; --s-6: 64px; --s-7: 96px; --s-8: 128px;
+
+  --radius: 14px;
+  --radius-lg: 28px;
+  --shadow-soft: 0 14px 40px -12px rgba(10, 10, 10, 0.16);
+  --wrap: 1120px;
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; -webkit-text-size-adjust: 100%; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font);
+  font-weight: var(--w-reg);
+  font-size: var(--t-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  /* faint paper texture (matches the app's frosted canvas) */
+  background-image: radial-gradient(rgba(10, 10, 10, 0.02) 1px, transparent 1px);
+  background-size: 4px 4px;
+}
+
+a { color: inherit; text-decoration: none; }
+img { display: block; max-width: 100%; height: auto; }
+:focus-visible { outline: 2.5px solid var(--sig); outline-offset: 3px; border-radius: 4px; }
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.wrap { max-width: var(--wrap); margin-inline: auto; padding-inline: var(--s-3); }
+.section { padding-block: clamp(var(--s-6), 4vw + 2rem, var(--s-8)); }
+.stack > * + * { margin-top: var(--s-2); }
+
+/* ── Type helpers ───────────────────────────────────────────────────────── */
+.display { font-weight: var(--w-black); font-size: var(--t-display); line-height: 0.96; letter-spacing: -0.03em; }
+.h1 { font-weight: var(--w-black); font-size: var(--t-h1); line-height: 1.0; letter-spacing: -0.025em; }
+.h2 { font-weight: var(--w-black); font-size: var(--t-h2); line-height: 1.08; letter-spacing: -0.02em; }
+.lead { font-size: var(--t-lead); color: var(--ink-soft); line-height: 1.5; max-width: 60ch; }
+.muted { color: var(--muted); }
+.label {
+  font-size: var(--t-label); font-weight: var(--w-black); letter-spacing: 0.18em;
+  text-transform: uppercase; color: var(--muted);
+}
+.label--sig { color: var(--sig); }
+.serif { font-family: "Instrument Serif", Georgia, serif; font-weight: 400; font-style: italic; }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex; align-items: center; gap: var(--s-1);
+  background: var(--ink); color: var(--on-ink);
+  padding: 13px 22px; border-radius: var(--radius);
+  font-weight: var(--w-med); font-size: 0.9375rem; border: 0; cursor: pointer;
+  transition: transform 0.15s var(--ease), background 0.15s var(--ease);
+}
+.btn:hover { transform: translateY(-2px); }
+.btn--ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); }
+.btn--ghost:hover { border-color: var(--ink); }
+.btn--sig { background: var(--sig); }
+
+/* store buttons row */
+.stores { display: flex; flex-wrap: wrap; gap: var(--s-2); }
+
+/* ── Scroll reveal (transform + opacity only) ───────────────────────────── */
+.reveal { opacity: 0; transform: translateY(18px); transition: opacity 0.6s var(--ease), transform 0.6s var(--ease); will-change: opacity, transform; }
+.reveal.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
+
+/* ── Screenshot / device frame ──────────────────────────────────────────── */
+.phone {
+  border-radius: 34px;
+  background: var(--ink);
+  padding: 8px;
+  box-shadow: var(--shadow-soft);
+  width: 100%;
+  max-width: 300px;
+}
+.phone__scr { border-radius: 27px; overflow: hidden; background: var(--surface-2); aspect-ratio: 9 / 19.5; }
+.phone__scr img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.ph-placeholder {
+  width: 100%; height: 100%; display: grid; place-items: center; text-align: center;
+  background: var(--surface-2); color: var(--muted); padding: var(--s-3);
+  font-size: var(--t-small);
+}
+
+/* ── Hero key-phrase gradient (span injected via i18n — must stay global) ── */
+.display .grad {
+  background: linear-gradient(103deg, var(--ink) 0%, #3D3D39 52%, #8A8A82 115%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}

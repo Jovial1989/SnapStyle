@@ -1,0 +1,4 @@
+import"./hoisted.BKk8vh7-.js";const e=document.getElementById("pform");if(e){const c=document.getElementById("pok"),m=(a,t)=>{const n=e.querySelector(`.err[data-for="${a}"]`);n&&(n.textContent=t);const o=document.getElementById(a);o&&o.setAttribute("aria-invalid",t?"true":"false")};e.addEventListener("submit",a=>{a.preventDefault();const t=e.name.value.trim(),n=e.email.value.trim(),o=e.message.value.trim(),i=e.company.value.trim(),s=(u,l)=>window.lookT?.(u,l)??l;let r=!1;if(m("f-name",t?"":(r=!0,s("partners.err_name","Your name, please."))),m("f-email",/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(n)?"":(r=!0,s("partners.err_email","A valid email, please."))),m("f-msg",o?"":(r=!0,s("partners.err_msg","A line about the idea helps."))),r)return;const d=`From: ${t}${i?" ("+i+")":""}
+Email: ${n}
+
+${o}`;window.location.href=`mailto:petrov.cpay@gmail.com?subject=${encodeURIComponent("Looktok — "+t)}&body=${encodeURIComponent(d)}`,c.hidden=!1})}

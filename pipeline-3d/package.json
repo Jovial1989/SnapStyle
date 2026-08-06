@@ -1,0 +1,36 @@
+{
+  "name": "looktok-pipeline-3d",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "2D flat-lay → textured .glb garment assets. Batch script + HTTP microservice sharing one build core.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "batch": "tsx batch.ts",
+    "dev": "tsx watch server.ts",
+    "start": "node dist/server.js",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "vton": "tsx watch vton.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.699.0",
+    "@fal-ai/serverless-client": "^0.15.0",
+    "@gltf-transform/core": "^4.1.1",
+    "@gltf-transform/extensions": "^4.1.1",
+    "@gltf-transform/functions": "^4.1.1",
+    "@supabase/supabase-js": "^2.47.10",
+    "@types/ws": "^8.18.1",
+    "express": "^4.21.2",
+    "sharp": "^0.33.5",
+    "ws": "^8.21.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

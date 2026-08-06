@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<!-- viewport-fit=cover + safe-area padding keeps the canvas under the notch
+     without the page scrolling inside the WebView. -->
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>LookTok · 3D engine</title>
+<style>
+  /* Every layer must be transparent, not just the renderer: html and body
+     default to opaque white and would sit between the canvas and Flutter. */
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    /* No tap highlight / long-press menu — this is a 3D surface, not a page. */
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    /* Vertical drags orbit the camera instead of bouncing the WebView. */
+    overscroll-behavior: none;
+    touch-action: none;
+  }
+  #stage { position: fixed; inset: 0; }
+  canvas { display: block; }
+</style>
+<div id="stage"></div>
+<script type="importmap">
+  { "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script type="module" src="./main.js"></script>

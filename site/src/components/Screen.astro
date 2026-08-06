@@ -1,0 +1,25 @@
+---
+// One consistent phone frame across the whole site. Pass `src` for a real
+// export, or `placeholder` to reserve the exact space (no reflow when reals drop
+// in). `alt` is required for real images.
+interface Props {
+  src?: string;
+  alt?: string;
+  placeholder?: string; // label shown until a real export exists
+  eager?: boolean; // set on the LCP hero image
+  max?: string; // override max-width
+}
+const { src, alt = "", placeholder, eager = false, max } = Astro.props;
+---
+
+<div class="phone" style={max ? `max-width:${max}` : undefined}>
+  <div class="phone__scr">
+    {src ? (
+      <img src={src} alt={alt} loading={eager ? "eager" : "lazy"} decoding="async" fetchpriority={eager ? "high" : "auto"} />
+    ) : (
+      <div class="ph-placeholder">
+        <span>[NEED: export]<br />{placeholder}</span>
+      </div>
+    )}
+  </div>
+</div>

@@ -1,0 +1,84 @@
+---
+const p = Astro.url.pathname.replace(/\/$/, "") || "/";
+const links = [
+  { href: "/", label: "Product", key: "nav.product" },
+  { href: "/how-it-works", label: "How it works", key: "nav.hiw" },
+  { href: "/about", label: "About", key: "nav.about" },
+  { href: "/partners", label: "Contact", key: "nav.partners" },
+];
+const isActive = (href: string) => (href === "/" ? p === "/" : p.startsWith(href));
+---
+
+<header>
+  <nav class="wrap">
+    <a href="/" class="logo" aria-label="Looktok home">
+      <svg class="mark" viewBox="0 0 100 100" aria-hidden="true">
+        <g fill="none" stroke="currentColor" stroke-width="9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 34V22h12M78 34V22H66M22 66v12h12M78 66v12H66" />
+        </g>
+        <circle cx="50" cy="50" r="16" fill="currentColor" />
+        <circle cx="50" cy="50" r="7" fill="var(--sig)" />
+      </svg>
+      <span>look<span class="dot">tok</span></span>
+    </a>
+
+    <div class="links" role="navigation" aria-label="Primary">
+      {links.map((l) => (
+        <a href={l.href} class:list={["nav-a", { on: isActive(l.href) }]} data-i18n={l.key} aria-current={isActive(l.href) ? "page" : undefined}>{l.label}</a>
+      ))}
+    </div>
+
+    <div class="right">
+      <select class="lang" aria-label="Language"></select>
+      <a href="/#get" class="btn get" data-i18n="cta.get">Get the app</a>
+      <details class="menu">
+        <summary aria-label="Menu"><span></span><span></span></summary>
+        <div class="sheet">
+          {links.map((l) => <a href={l.href} data-i18n={l.key}>{l.label}</a>)}
+          <a href="/#get" class="btn get" data-i18n="cta.get">Get the app</a>
+          <select class="lang" aria-label="Language"></select>
+        </div>
+      </details>
+    </div>
+  </nav>
+</header>
+
+<style>
+  header { position: sticky; top: 0; z-index: 20; backdrop-filter: blur(12px); background: color-mix(in srgb, var(--bg) 78%, transparent); border-bottom: 1px solid var(--line); }
+  nav { display: flex; align-items: center; justify-content: space-between; height: 68px; }
+  .logo { display: inline-flex; align-items: center; gap: 9px; font-weight: 800; font-size: 1.4rem; letter-spacing: -0.045em; color: var(--ink); }
+  .mark { width: 26px; height: 26px; }
+  .dot { color: var(--sig); }
+  .links { display: flex; gap: var(--s-3); }
+  .nav-a { font-weight: 500; font-size: 0.9375rem; color: var(--ink-soft); padding: 6px 2px; border-bottom: 2px solid transparent; }
+  .nav-a:hover { color: var(--ink); }
+  .nav-a.on { color: var(--ink); border-color: var(--sig); }
+  .right { display: flex; align-items: center; gap: var(--s-2); }
+  .get { padding: 10px 18px; font-size: 0.875rem; }
+
+  .lang {
+    appearance: none; -webkit-appearance: none;
+    font: inherit; font-size: 0.875rem; font-weight: 500; color: var(--ink-soft);
+    background: transparent; border: 1px solid var(--line); border-radius: 10px;
+    padding: 8px 30px 8px 12px; cursor: pointer; line-height: 1;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B6B67' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+  }
+  .lang:hover { color: var(--ink); border-color: var(--ink-soft); }
+  .lang:focus-visible { outline: 2px solid var(--sig); outline-offset: 2px; }
+
+  .menu { display: none; }
+  .menu summary { list-style: none; cursor: pointer; width: 40px; height: 40px; display: grid; align-content: center; gap: 5px; justify-items: center; }
+  .menu summary::-webkit-details-marker { display: none; }
+  .menu summary span { width: 20px; height: 2px; background: var(--ink); border-radius: 2px; }
+  .sheet { position: absolute; right: var(--s-3); top: 64px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow-soft); padding: var(--s-2); display: grid; gap: var(--s-1); min-width: 200px; }
+  .sheet a:not(.btn) { padding: 10px 12px; border-radius: 10px; font-weight: 500; }
+  .sheet a:not(.btn):hover { background: var(--surface-2); }
+  .sheet .btn { justify-content: center; margin-top: 4px; }
+  .sheet .lang { width: 100%; margin-top: 4px; }
+
+  @media (max-width: 760px) {
+    .links, .right > .get, .right > .lang { display: none; }
+    .menu { display: block; }
+  }
+</style>

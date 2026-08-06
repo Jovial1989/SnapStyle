@@ -1,0 +1,50 @@
+---
+// Both store CTAs, driven by the single config in consts.ts. Swap the URLs
+// there at launch — every instance updates. Until a listing is live, its pill
+// carries a small, honest "Soon" tag but still reads as a real button.
+import { APP_STORE_URL, GOOGLE_PLAY_URL, APP_STORE_LIVE, GOOGLE_PLAY_LIVE } from "../consts";
+interface Props { align?: "start" | "center"; }
+const { align = "start" } = Astro.props;
+const stores = [
+  { href: APP_STORE_URL, name: "App Store", live: APP_STORE_LIVE, icon: "apple" },
+  { href: GOOGLE_PLAY_URL, name: "Google Play", live: GOOGLE_PLAY_LIVE, icon: "play" },
+];
+---
+
+<div class="stores" id="get" style={align === "center" ? "justify-content:center" : undefined}>
+  {stores.map((s) => (
+    <a class="store" href={s.href} aria-label={`Get Looktok on ${s.name}`}>
+      {s.icon === "apple" ? (
+        <svg class="store__ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M17.05 12.54c-.02-2.02 1.65-2.99 1.72-3.04-.94-1.37-2.4-1.56-2.92-1.58-1.24-.13-2.42.73-3.05.73-.63 0-1.6-.71-2.63-.69-1.35.02-2.6.79-3.29 2-1.4 2.43-.36 6.03 1 8.01.67.97 1.46 2.06 2.5 2.02 1-.04 1.38-.65 2.59-.65 1.2 0 1.55.65 2.6.63 1.08-.02 1.76-.99 2.42-1.96.76-1.12 1.08-2.21 1.09-2.27-.02-.01-2.09-.8-2.11-3.18zM15.1 6.6c.55-.67.93-1.6.82-2.53-.8.03-1.77.53-2.34 1.2-.51.59-.96 1.54-.84 2.44.89.07 1.8-.45 2.36-1.11z"/></svg>
+      ) : (
+        <svg class="store__ic" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3.6 2.4 13 12 3.6 21.6c-.3-.2-.5-.5-.5-.9V3.3c0-.4.2-.7.5-.9zm10.9 10.9 2.6 2.6-8.9 5 6.3-7.6zm3.9-3.7 2.6 1.5c.5.3.5 1.1 0 1.4l-2.6 1.5-2.9-2.2 2.9-2.2zm-2.9-.9L8.2 3l8.9 5-2.6 2.6z"/></svg>
+      )}
+      <span class="store__t">
+        <small data-i18n="store.on">Get it on</small>
+        <strong>{s.name}</strong>
+      </span>
+      {!s.live && <span class="store__soon" data-i18n="store.soon">Soon</span>}
+    </a>
+  ))}
+</div>
+
+<style>
+  .stores { display: flex; flex-wrap: wrap; gap: var(--s-2); margin-top: var(--s-4); }
+  .store {
+    display: inline-flex; align-items: center; gap: 10px; position: relative;
+    background: var(--ink); color: var(--on-ink);
+    padding: 10px 18px; border-radius: var(--radius);
+    transition: transform 0.15s var(--ease);
+  }
+  .store:hover { transform: translateY(-1px); }
+  .store__ic { width: 22px; height: 22px; flex: none; }
+  .store__t { display: inline-flex; flex-direction: column; line-height: 1.1; }
+  .store__t small { font-size: 0.7rem; color: #B9B9B4; }
+  .store__t strong { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+  .store__soon {
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase;
+    color: #B9B9B4; background: transparent;
+    border: 1px solid rgba(255, 255, 255, 0.26);
+    padding: 2px 8px; border-radius: 999px; margin-left: 2px;
+  }
+</style>

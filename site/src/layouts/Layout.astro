@@ -1,0 +1,83 @@
+---
+import "../styles/tokens.css";
+import Header from "../components/Header.astro";
+import Footer from "../components/Footer.astro";
+
+interface Props {
+  title: string;
+  description: string;
+  path?: string; // e.g. "/about"
+  ogImage?: string;
+  schema?: unknown; // JSON-LD object
+}
+const { title, description, path = "/", ogImage = "/img/og.jpg", schema } = Astro.props;
+const site = "https://looktok.pages.dev";
+const canonical = new URL(path, site).href;
+const ogUrl = new URL(ogImage, site).href;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Cg fill='none' stroke='%230A0A0A' stroke-width='9' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M22 34V22h12M78 34V22H66M22 66v12h12M78 66v12H66'/%3E%3C/g%3E%3Ccircle cx='50' cy='50' r='16' fill='%230A0A0A'/%3E%3Ccircle cx='50' cy='50' r='7' fill='%232E5BFF'/%3E%3C/svg%3E"
+    />
+    <link rel="preload" href="/fonts/Geist-Variable.woff2" as="font" type="font/woff2" crossorigin />
+
+    <!-- Open Graph / Twitter -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Looktok" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={canonical} />
+    <meta property="og:image" content={ogUrl} />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogUrl} />
+
+    {schema && <script type="application/ld+json" set:html={JSON.stringify(schema)} />}
+  </head>
+  <body>
+    <a href="#main" class="skip">Skip to content</a>
+    <Header />
+    <main id="main"><slot /></main>
+    <Footer />
+
+    <!-- Language switcher + translations (client-side, mirrors the original site). -->
+    <script is:inline src="/i18n.js"></script>
+
+    <script>
+      // Scroll-reveal: transform + opacity only, honours reduced motion.
+      const rm = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const els = document.querySelectorAll(".reveal");
+      if (rm || !("IntersectionObserver" in window)) {
+        els.forEach((el) => el.classList.add("in"));
+      } else {
+        const io = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((e) => {
+              if (e.isIntersecting) {
+                (e.target as HTMLElement).classList.add("in");
+                io.unobserve(e.target);
+              }
+            });
+          },
+          { rootMargin: "0px 0px -12% 0px", threshold: 0.1 },
+        );
+        els.forEach((el) => io.observe(el));
+      }
+    </script>
+
+    <style>
+      .skip { position: absolute; left: -9999px; top: 8px; background: var(--ink); color: var(--on-ink); padding: 10px 16px; border-radius: 10px; z-index: 100; }
+      .skip:focus { left: 8px; }
+    </style>
+  </body>
+</html>

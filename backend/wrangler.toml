@@ -1,0 +1,9 @@
+name = "snapstyle-api"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+account_id = "262c70f5917cee3f8c85b8de607ce31e"
+
+# Non-secret vars. Secrets (GEMINI_API_KEY, SUPABASE_*) via: wrangler secret put <NAME>
+[vars]
+GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL_PROFILE = "gemini-2.5-pro"

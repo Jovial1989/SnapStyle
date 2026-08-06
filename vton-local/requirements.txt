@@ -1,0 +1,14 @@
+# Apple Silicon (arm64) — torch wheels ship MPS support out of the box.
+# Python 3.10–3.12. Create the venv with the system arm64 python, NOT rosetta.
+torch>=2.4
+torchvision>=0.19
+diffusers==0.29.2
+transformers==4.44.2
+accelerate>=0.33
+huggingface_hub>=0.24
+safetensors>=0.4
+fastapi>=0.112
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+pillow>=10.3
+numpy<2

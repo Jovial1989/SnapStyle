@@ -1,0 +1,392 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Looktok 3D — mannequin prototype</title>
+<style>
+  html,body{margin:0;height:100%;background:#F8F8F8;font:14px -apple-system,system-ui;overflow:hidden}
+  #stage{position:fixed;inset:0}
+  #hud{position:fixed;left:0;right:0;bottom:0;padding:14px 16px calc(14px + env(safe-area-inset-bottom));display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;white-space:nowrap;}
+    #hud::-webkit-scrollbar{display:none}
+  .chip{padding:10px 16px;border-radius:999px;border:1px solid #E4E4E1;background:#fff;color:#0A0A0A;
+        font-weight:700;font-size:13px;cursor:pointer;user-select:none}
+  .chip.on{background:#0A0A0A;color:#fff;border-color:#0A0A0A}
+  #brand{position:fixed;top:calc(12px + env(safe-area-inset-top));left:16px;font-weight:800;
+         letter-spacing:-.3px;color:#0A0A0A}
+  #brand i{font-style:normal;color:#8C8C88;font-weight:600}
+</style>
+<div id="stage"></div>
+<div id="brand">looktok <i>· 3D atelier</i></div>
+<div id="hud"></div>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.js" } }
+</script>
+<script type="module">
+// three.js vendored locally — no CDN: works in the app WebView (strict CSP)
+// and in the dev preview alike.
+import * as THREE from 'three';
+import { GLTFLoader } from './vendor/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from './vendor/jsm/controls/OrbitControls.js';
+import { AsciiEffect } from './vendor/jsm/effects/AsciiEffect.js';
+import { RoomEnvironment } from './vendor/jsm/environments/RoomEnvironment.js';
+import { RGBELoader } from './vendor/jsm/loaders/RGBELoader.js';
+import { installOcclusion, regionFromGarment, SLOT_INSETS } from './occlusion.js';
+
+// ALIGNMENT MODE: the viewer is a spatial proxy — 2D garment images scaled
+// and anchored to the parametric body — not a photoreal end-product. The full
+// 3D garment path stays behind this flag for rollback.
+const MODE_25D = true;
+
+const stage = document.getElementById('stage');
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+// Filmic pipeline — the first step toward the "WebGL head demo" look: ACES
+// tone mapping + image-based lighting instead of flat clay shading.
+renderer.toneMapping = MODE_25D ? THREE.NoToneMapping : THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.05;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xF6F5F2);            // ivory studio
+const pmrem = new THREE.PMREMGenerator(renderer);
+// Studio HDRI (CC0, shipped with the app — no network dependency). The
+// procedural RoomEnvironment stays as the fallback so a missing/corrupt file
+// degrades to the old look instead of a black avatar.
+if (!MODE_25D) {
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+  new RGBELoader().load('./tex/studio.hdr', (hdr) => {
+    hdr.mapping = THREE.EquirectangularReflectionMapping;
+    scene.environment = pmrem.fromEquirectangular(hdr).texture;
+    hdr.dispose();
+  }, undefined, () => console.warn('studio.hdr missing — RoomEnvironment fallback'));
+}
+const camera = new THREE.PerspectiveCamera(34, innerWidth/innerHeight, 0.1, 50);
+camera.position.set(0, 1.35, 3.4);
+
+// Bound to the stage CONTAINER so orbit keeps working when the ASCII effect
+// swaps the canvas for its character grid.
+const controls = new OrbitControls(camera, stage);
+controls.target.set(0, 1.0, 0);
+controls.enableDamping = true;
+controls.minDistance = 1.6; controls.maxDistance = 6;
+controls.maxPolarAngle = Math.PI * 0.62;
+
+// Classic 3-point studio rig over the HDRI base. The HDRI carries ambience
+// and reflections; the rig carves FORM — key models the face, fill lifts the
+// shadow side just enough to stay soft, rim separates the dark side from the
+// backdrop. Hemisphere is dialed down: with IBL it was double-counting.
+scene.add(new THREE.HemisphereLight(0xffffff, 0xDDD8D0, 0.35));
+const key = new THREE.DirectionalLight(0xFFF6EC, 1.7);            // warm key
+key.position.set(2.5, 4, 3);
+key.castShadow = true;
+key.shadow.mapSize.set(2048, 2048);
+key.shadow.radius = 6;                                            // PCFSoft blur
+key.shadow.bias = -0.0002;
+key.shadow.camera.near = 1; key.shadow.camera.far = 12;
+scene.add(key);
+const fill = new THREE.PointLight(0xE8EDF5, 14, 9, 1.8);          // cool fill
+fill.position.set(-2.2, 1.6, 2.4);
+scene.add(fill);
+const rim = new THREE.DirectionalLight(0xFFFFFF, 1.2);
+rim.position.set(-1.5, 3.2, -2.6); scene.add(rim);
+
+// Floor: subtle contact shadow disc.
+const floor = new THREE.Mesh(
+  new THREE.CircleGeometry(1.6, 48),
+  new THREE.ShadowMaterial({ opacity: 0.14 }));
+floor.rotation.x = -Math.PI/2; floor.receiveShadow = true;
+scene.add(floor);
+
+const loader = new GLTFLoader();
+
+// Anatomical anchors, measured from whatever body is actually loaded — the
+// personalized avatar's proportions drive garment scale, which is the whole
+// point of the alignment proxy.
+let anatomy = null;
+function measureAnatomy(root) {
+  const v = new THREE.Vector3();
+  let H = 0;
+  const pts = [];
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const pos = o.geometry.attributes.position;
+    for (let i = 0; i < pos.count; i += 4) {       // every 4th vert is plenty
+      v.fromBufferAttribute(pos, i).applyMatrix4(o.matrixWorld);
+      pts.push([v.x, v.y, v.z]);
+      if (v.y > H) H = v.y;
+    }
+  });
+  const slice = (f) => {
+    let half = 0, zFront = 0;
+    for (const [x, y, z] of pts)
+      if (Math.abs(y - f * H) < 0.02 * H) {
+        half = Math.max(half, Math.abs(x));
+        zFront = Math.max(zFront, z);
+      }
+    return { half, zFront, y: f * H };
+  };
+  return { H, shoulder: slice(0.82), chest: slice(0.73), waist: slice(0.63), hip: slice(0.52) };
+}
+
+// 2.5D garment: the flat-lay itself, chroma-keyed and pinned to the body.
+// Scale rule: tops match shoulder width, bottoms match hip width.
+const planeTex = new THREE.TextureLoader();
+function placePlane(kind, item) {
+  planeTex.load(item.img, (tex) => {
+    if (!anatomy) return;
+    tex.colorSpace = THREE.SRGBColorSpace;
+    const a = anatomy;
+    const aspect = tex.image.height / tex.image.width;
+    const w = kind === 'top' ? a.shoulder.half * 2 * 1.30 : a.hip.half * 2 * 1.25;
+    const topY = kind === 'top' ? a.shoulder.y + 0.02 * a.H : a.waist.y + 0.03 * a.H;
+    const h = w * aspect;
+    const mat = new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide });
+    // Chroma-key: flat-lays ship on white, not with alpha. Kill near-white,
+    // low-saturation pixels on the GPU — same rule the cutout code uses.
+    mat.onBeforeCompile = (sh) => {
+      sh.fragmentShader = sh.fragmentShader.replace(
+        '#include <map_fragment>',
+        `#include <map_fragment>
+        {
+          float mx = max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b));
+          float mn = min(diffuseColor.r, min(diffuseColor.g, diffuseColor.b));
+          if (mn > 0.86 && (mx - mn) < 0.10) discard;
+        }`);
+    };
+    mat.customProgramCacheKey = () => 'chromakey';
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+    mesh.position.set(0, topY - h / 2, Math.max(a.chest.zFront, a.hip.zFront) + 0.05);
+    mesh.renderOrder = (LAYER[kind] ?? LAYER.top).order;
+    if (slots[kind]) scene.remove(slots[kind]);
+    const root = new THREE.Group();
+    root.add(mesh);
+    slots[kind] = root;
+    scene.add(root);
+  });
+}
+const slots = { body: null, top: null, bottom: null, shoes: null };
+
+// BODY OCCLUSION: the avatar is one mesh, so covered skin is removed in the
+// shader instead of by inflating the garments. setOcclusion() is installed on
+// the body material the moment the body loads; every worn piece then
+// contributes the box it covers.
+let setOcclusion = null;
+function refreshOcclusion() {
+  if (!setOcclusion) return;
+  const regions = [];
+  for (const kind of ['top', 'bottom', 'shoes']) {
+    const worn = slots[kind];
+    if (!worn) continue;
+    const r = regionFromGarment(worn, THREE, SLOT_INSETS[kind]);
+    if (r) regions.push(r);
+  }
+  setOcclusion(regions);
+}
+
+// ONE shared fabric weave for every garment: embedding 2K maps per GLB made
+// each garment ~9MB; a single 512 normal map costs ~60KB and gives cloth its
+// thread structure (flat colour is exactly what read as plastic).
+const texLoader = new THREE.TextureLoader();
+const WEAVE = {
+  knit:  texLoader.load('./tex/weave_nor.jpg'),
+  denim: texLoader.load('./tex/denim_nor.jpg'),
+};
+for (const t of Object.values(WEAVE)) {
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.repeat.set(9, 9);
+}
+const FABRIC = { tee: 'knit', shorts: 'denim', chinos: 'denim' };
+
+// Depth discipline: body first, then bottoms, tops last. renderOrder decides
+// DRAW order; polygonOffset pulls each layer toward the camera in the DEPTH
+// BUFFER, so a waistband tucked under a hem cannot z-fight it. Negative
+// factor = closer; tops get the strongest pull because they sit outermost.
+const LAYER = {
+  body:   { order: 1, offset:  0 },
+  bottom: { order: 2, offset: -1 },
+  shoes:  { order: 2, offset: -1 },
+  top:    { order: 3, offset: -2 },
+};
+
+function place(kind, item) {
+  if (MODE_25D && kind !== 'body' && item.img) { placePlane(kind, item); return; }
+  const url = typeof item === 'string' ? item : item.url ?? item.glb;
+  loader.load(url, (g) => {
+    if (slots[kind]) scene.remove(slots[kind]);
+    const root = g.scene;
+    const layer = LAYER[kind] ?? LAYER.top;
+    root.traverse(o => {
+      if (!o.isMesh) return;
+      o.castShadow = true;
+      o.receiveShadow = false;
+      o.renderOrder = layer.order;
+      if (o.material && kind !== 'body') {
+        const m = o.material;
+        m.polygonOffset = true;
+        m.polygonOffsetFactor = layer.offset;
+        m.polygonOffsetUnits = layer.offset;
+        // Honor a cut-out alpha channel (asymmetric pieces ship their shape
+        // in alpha). alphaTest is a hard cutout — no depth-sorting cost; on
+        // textures without alpha it is a no-op, so it is safe to always set.
+        if (m.map && m.alphaTest === 0) {
+          m.alphaTest = 0.05;
+          m.transparent = false;    // cutout, not blend: blend breaks depth
+        }
+        m.needsUpdate = true;
+      }
+      const weave = WEAVE[FABRIC[(url.match(/(\w+)\.glb/) || [])[1]]];
+      if (weave && o.material) {
+        o.material.normalMap = weave;
+        o.material.normalScale = new THREE.Vector2(0.6, 0.6);
+        o.material.roughness = 0.92;
+        o.material.needsUpdate = true;
+      }
+    });
+    slots[kind] = root;
+    scene.add(root);
+    if (kind === 'body') {
+      anatomy = measureAnatomy(root);
+      console.log('[anatomy]', JSON.stringify({H: anatomy.H.toFixed(2),
+        shoulders: (anatomy.shoulder.half*2).toFixed(2), hips: (anatomy.hip.half*2).toFixed(2)}));
+      root.traverse(o => {
+        if (!o.isMesh) return;
+        if (MODE_25D) {
+          // Alignment mode: cheap Lambert. A textured material is the
+          // avatar's projected FACE — keep it, only untextured skin swaps.
+          if (!o.material.map) {
+            o.material = new THREE.MeshLambertMaterial({
+              color: o.material.color?.clone() ?? new THREE.Color(0xEEE4D8),
+            });
+          }
+          o.castShadow = true; o.receiveShadow = false;
+          return;
+        }
+        // Skin: rebuild as physical material. Clearcoat at low strength is a
+        // cheap stand-in for subsurface scattering — a thin oily layer over a
+        // rough dermis is what kills the plastic/wax read.
+        const src = o.material;
+        const skin = new THREE.MeshPhysicalMaterial({
+          map: src.map ?? null,
+          color: src.color?.clone() ?? new THREE.Color(0xEEE4D8),
+          roughness: 0.5,
+          metalness: 0.0,
+          clearcoat: 0.12,
+          clearcoatRoughness: 0.5,
+          // Faked SSS: a whisper of warm emissive lifts shadowed skin the way
+          // real light bleeds through flesh. Kept tiny — visible glow = zombie.
+          emissive: new THREE.Color(0x2A140C),
+          emissiveIntensity: 0.12,
+          sheen: 0.25,                       // peach-fuzz grazing highlight
+          sheenRoughness: 0.9,
+          sheenColor: new THREE.Color(0xFFE0CE),
+          envMapIntensity: 0.85,
+        });
+        skin.name = src.name || 'Skin';
+        o.material = skin;
+        o.castShadow = true; o.receiveShadow = true;
+        if (!setOcclusion) setOcclusion = installOcclusion(o.material, THREE);
+      });
+    }
+    // Bounds are only valid once the object is in the scene graph.
+    root.updateMatrixWorld(true);
+    refreshOcclusion();
+  }, undefined, (e) => {
+    if (item && item.fallback) {
+      console.warn('load', kind, url, '— falling back');
+      place(kind, { url: item.fallback });
+    } else console.error('load', kind, url, e);
+  });
+}
+
+// Assets manifest — the prototype swaps garment GLBs instantly (this IS the
+// product mechanic: zero-latency dressing).
+const MANIFEST = {
+  body:   [{ label: 'Body', url: './models/body.glb' }],
+  top:    [{ label: 'Tee', url: './models/tee.glb' }],
+  bottom: [
+    { label: 'Chinos', url: './models/chinos.glb' },
+    { label: 'Shorts', url: './models/shorts.glb' },
+  ],
+  shoes:  [{ label: 'Sneakers', url: './models/shoes.glb' }],
+};
+// The PERSONALIZED avatar is the anchor frame; the generic body is only a
+// fallback so a missing bake never blanks the scene.
+place('body', { url: './models/avatar.glb', fallback: MANIFEST.body[0].url });
+
+// The live catalog: 181 garments digitized from their flat-lays, served from
+// storage. Offline (or bucket down) the bundled demo pieces keep working —
+// the chip strip just stays short.
+const CATALOG_MANIFEST =
+  'https://tnirnwapfgckfypvtooj.supabase.co/storage/v1/object/public/models-3d/manifest.json';
+const SLOT_OF = { top: 'top', outerwear: 'top', bottom: 'bottom' };
+fetch(CATALOG_MANIFEST)
+  .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+  .then((items) => {
+    for (const it of items) {
+      const kind = SLOT_OF[it.category];
+      if (!kind) continue;
+      addChip(kind, { label: it.name.length > 22 ? it.name.slice(0, 21) + '…' : it.name,
+                      url: it.glb });
+    }
+  })
+  .catch((e) => console.warn('catalog manifest unavailable:', e));
+
+const hud = document.getElementById('hud');
+function removeWorn(kind) {
+  if (slots[kind]) { scene.remove(slots[kind]); slots[kind] = null; }
+  refreshOcclusion();
+}
+function addChip(kind, item) {
+  const b = document.createElement('div');
+  b.className = 'chip'; b.textContent = item.label;
+  b.dataset.kind = kind;
+  b.onclick = () => {
+    const was = b.classList.contains('on');
+    hud.querySelectorAll(`.chip[data-kind="${kind}"]`).forEach((c) => c.classList.remove('on'));
+    if (was) { removeWorn(kind); return; }   // tap again = take it off
+    b.classList.add('on');
+    place(kind, item);
+  };
+  hud.appendChild(b);
+}
+for (const kind of ['top', 'bottom', 'shoes'])
+  for (const item of MANIFEST[kind]) addChip(kind, item);
+
+// ASCII mode — the editorial "terminal atelier" render (webgl-ascii-hero
+// register). Same scene, same instant dressing; just a different surface.
+const ascii = new AsciiEffect(renderer, ' .:-=+*#%@', { resolution: 0.2, invert: true });
+ascii.setSize(innerWidth, innerHeight);
+// Terminal register: luminous characters on near-black — the figure IS the
+// text, the void stays empty (webgl-ascii-hero polarity).
+ascii.domElement.style.cssText =
+  'position:absolute;inset:0;color:#EDEDEA;background:#0A0A0A;pointer-events:none;';
+let asciiOn = false;
+const ivory = new THREE.Color(0xF6F5F2), ink = new THREE.Color(0x000000);
+const modeChip = document.createElement('div');
+modeChip.className = 'chip mode';
+modeChip.textContent = 'ASCII';
+modeChip.onclick = () => {
+  asciiOn = !asciiOn;
+  modeChip.classList.toggle('on', asciiOn);
+  scene.background = asciiOn ? ink : ivory; // dark stage → chars trace the figure
+  if (asciiOn) stage.appendChild(ascii.domElement);
+  else stage.removeChild(ascii.domElement);
+  renderer.domElement.style.visibility = asciiOn ? 'hidden' : 'visible';
+};
+hud.appendChild(modeChip);
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  ascii.setSize(innerWidth, innerHeight);
+});
+(function tick(){
+  controls.update();
+  if (asciiOn) ascii.render(scene, camera);
+  else renderer.render(scene, camera);
+  requestAnimationFrame(tick);
+})();
+</script>

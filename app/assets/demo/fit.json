@@ -1,0 +1,127 @@
+{
+  "analysis": {
+    "analyzable": true,
+    "overall": {
+      "summary": "This is a solid, classic business casual look that's put-together and appropriate. While it's a safe choice, there are a few tweaks that could elevate it from good to great, primarily focusing on fit and subtle details.",
+      "score": 6
+    },
+    "hotspots": [
+      {
+        "x_percent": 45,
+        "y_percent": 38,
+        "severity": "issue",
+        "title": "Sweater arm fit",
+        "detail": "The sleeves of the sweater are a bit baggy around the forearms, which makes the overall silhouette look less sharp and tailored.",
+        "area": "Torso",
+        "fix": "Opt for a sweater with a slightly more tailored fit through the sleeves and body to create a cleaner line.",
+        "visual_suggestions": [
+          {
+            "prompt": "man wearing a perfectly fitted light grey v-neck sweater, sleeves tailored",
+            "caption": "A sweater with a clean, tailored sleeve fit.",
+            "alt_text": "Man in well-fitted light grey v-neck sweater"
+          },
+          {
+            "prompt": "man in a light grey v-neck sweater, showing ideal sleeve length and width",
+            "caption": "Sleeves that follow the arm's shape without excess fabric.",
+            "alt_text": "Close-up of a perfectly fitted sweater sleeve"
+          }
+        ]
+      },
+      {
+        "x_percent": 49,
+        "y_percent": 29,
+        "severity": "tip",
+        "title": "Collar definition",
+        "detail": "The white shirt collar peeking out from under the V-neck looks a little soft and could benefit from more structure or a neater tuck.",
+        "area": "Neck/Collar",
+        "fix": "Choose a shirt with a crisper collar or use collar stays to maintain a sharp, defined look that frames your face well.",
+        "visual_suggestions": [
+          {
+            "prompt": "man in a grey v-neck sweater with a crisp, structured white shirt collar underneath",
+            "caption": "A sharp, well-defined collar under a V-neck.",
+            "alt_text": "Man with crisp white collar under grey sweater"
+          },
+          {
+            "prompt": "close-up of a shirt collar with collar stays under a sweater",
+            "caption": "Collar stays can help maintain a neat shape.",
+            "alt_text": "Close-up of shirt collar with collar stays"
+          }
+        ]
+      },
+      {
+        "x_percent": 70,
+        "y_percent": 90,
+        "severity": "good",
+        "title": "Cohesive leathers",
+        "detail": "The matching brown belt and shoes create a well-coordinated and polished element to the outfit, showing attention to detail.",
+        "area": "Accessories",
+        "fix": "Continue to match your leather accessories for a consistently refined and put-together appearance.",
+        "visual_suggestions": [
+          {
+            "prompt": "man wearing brown leather belt and matching brown leather dress shoes",
+            "caption": "A classic example of matching leather accessories.",
+            "alt_text": "Brown belt and shoes matching"
+          },
+          {
+            "prompt": "detail shot of a brown leather belt buckle and brown dress shoe",
+            "caption": "The subtle coordination elevates the whole look.",
+            "alt_text": "Close-up of matching brown leather belt and shoe"
+          }
+        ]
+      },
+      {
+        "x_percent": 50,
+        "y_percent": 85,
+        "severity": "tip",
+        "title": "Pant break",
+        "detail": "The pants have a slight break at the ankle, which is acceptable but could be cleaner for a more modern and streamlined silhouette.",
+        "area": "Legs",
+        "fix": "Consider having the pants hemmed to achieve a minimal or no-break length, allowing them to fall cleanly on your shoes.",
+        "visual_suggestions": [
+          {
+            "prompt": "man wearing dark tailored trousers with a no-break fit, trousers ending just above the shoe",
+            "caption": "A clean, no-break pant length for a contemporary look.",
+            "alt_text": "Man in trousers with no break"
+          },
+          {
+            "prompt": "man wearing dark tailored trousers with a minimal break, trousers gently touching the top of the shoe",
+            "caption": "A minimal break offers a slightly more traditional, yet still sharp, finish.",
+            "alt_text": "Man in trousers with minimal break"
+          }
+        ]
+      },
+      {
+        "x_percent": 50,
+        "y_percent": 50,
+        "severity": "tip",
+        "title": "Add visual interest",
+        "detail": "The muted grey and dark trousers create a very safe base, but the outfit could benefit from a touch more visual interest or a subtle pop of color.",
+        "area": "Overall",
+        "fix": "Introduce a subtle pattern in the shirt, a richer color for the sweater, or a textured accessory to add depth and personality.",
+        "visual_suggestions": [
+          {
+            "prompt": "man in a rich navy v-neck sweater over a light blue patterned shirt with dark trousers",
+            "caption": "Adding a patterned shirt underneath for subtle interest.",
+            "alt_text": "Man in navy sweater and patterned shirt"
+          },
+          {
+            "prompt": "man in a burgundy v-neck sweater with a white shirt and dark trousers",
+            "caption": "Experiment with richer sweater colors for a refined pop.",
+            "alt_text": "Man in burgundy sweater"
+          },
+          {
+            "prompt": "man in a grey v-neck sweater with dark trousers and a textured pocket square",
+            "caption": "A small accessory can introduce texture and color.",
+            "alt_text": "Man with textured pocket square"
+          }
+        ]
+      }
+    ]
+  },
+  "model": "gemini-2.5-flash",
+  "promptVersion": "stylist-v2-hotspots",
+  "entitlement": {
+    "pro": false,
+    "freeRemaining": 9
+  }
+}

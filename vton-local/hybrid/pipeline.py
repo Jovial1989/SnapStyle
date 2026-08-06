@@ -35,7 +35,8 @@ import torch
 from PIL import Image
 
 from kinematic import apply_kinematic_shield, arm_shield
-from warp import apply_shading, mesh_warp, parts_warp, shoes_warp, torso_warp
+from warp import (apply_shading, harmonise_poisson, mesh_warp, parts_warp,
+                  shoes_warp, torso_warp, tps_warp)
 
 # ─────────────────────────────── device / precision ──────────────────────────
 
@@ -90,6 +91,12 @@ WARP_STRENGTH = float(os.getenv("VTON_WARP_STRENGTH", "0.55"))
 # rather than one mesh over everything, which is the next thing to try, not a
 # tuning pass on this. VTON_MESH_WARP=1 to look at it again.
 MESH_WARP = os.getenv("VTON_MESH_WARP", "0") == "1"
+# Non-rigid cylinder fit and gradient-domain blending. Both off by default and both
+# for the same reason: each trades the property this engine is built on — the
+# garment's own pixels, its own colour — for a different kind of realism, and neither
+# has earned that trade on measurement yet. VTON_TPS=1 / VTON_POISSON=1 to weigh them.
+TPS_WARP = os.getenv("VTON_TPS", "0") == "1"
+POISSON = os.getenv("VTON_POISSON", "0") == "1"
 # Deformable parts — torso quad plus a quad per sleeve — is the right idea and is
 # NOT ready. Two measured attempts at warping sleeves (one mesh, one parts) both
 # damaged the TORSO, which is where prints and text live and where a demo is won:
@@ -1216,6 +1223,11 @@ class HybridVTONPipeline:
                         warped = parts_warp(
                             g_bgr, sil, pose, kind, mask_full,
                             g_met.get("sleeve_ratio"), _split)
+                    if TPS_WARP and kind != "shoes":
+                        # The flag exists to WEIGH tps against the quad, so it takes
+                        # precedence when set — and keeps the quad if it declines.
+                        warped = tps_warp(g_bgr, sil, pose, kind, mask_full,
+                                          wrap=float(os.getenv("VTON_TPS_WRAP", "1.0"))) or warped
                     if warped is None and MESH_WARP:
                         g_met = _garment_metrics(g_bgr, kind) or {}
                         warped = mesh_warp(
@@ -1240,6 +1252,8 @@ class HybridVTONPipeline:
             wm = (cv2.GaussianBlur(warped.mask, (9, 9), 0).astype(np.float32) / 255.0)
             init = np.clip(warped.image * wm[:, :, None] +
                            init * (1.0 - wm[:, :, None]), 0, 255).astype(np.uint8)
+            if POISSON:
+                init = harmonise_poisson(init, warped.image, warped.mask)
             # GIVE CONTROLNET THE GARMENT'S OWN EDGES BACK. The Canny map is wiped
             # inside the mask because the edges there describe the OLD clothes —
             # true when the zone held nothing but a flat fill. Now it holds the

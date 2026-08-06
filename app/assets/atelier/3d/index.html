@@ -1,0 +1,380 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Looktok — 2.5D atelier</title>
+<style>
+  /* 2.5D POSE-DRIVEN CANVAS.
+     The avatar IS the user's photo — likeness is free, uncanny valley is
+     structurally impossible. Garments are chroma-keyed flat-lays pinned to
+     pose keypoints. No WebGL, no shaders, no depth buffer: plain compositing
+     the browser already does at 60fps.
+     The previous 3D engine is intact at index3d.html (rollback = rename). */
+  html,body{margin:0;height:100%;background:#F6F5F2;font:500 14px/1.4 -apple-system,Inter,system-ui}
+  #brand{position:fixed;top:14px;left:16px;color:#111;font-weight:700;letter-spacing:.2px;z-index:5}
+  #brand span{color:#999;font-weight:500}
+  #stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #frame{position:relative;height:min(78vh,760px)}
+  #photo{height:100%;display:block;user-select:none;-webkit-user-drag:none}
+  .worn{position:absolute;pointer-events:none;transform-origin:top center}
+  .pin{position:absolute;width:10px;height:10px;border-radius:50%;
+       background:#0A84FF;border:2px solid #fff;transform:translate(-50%,-50%);
+       box-shadow:0 1px 4px rgba(0,0,0,.25);display:none}
+  body.debug .pin{display:block}
+  #hud{position:fixed;left:0;right:0;bottom:0;padding:14px 16px calc(14px + env(safe-area-inset-bottom));
+       display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;-webkit-overflow-scrolling:touch;
+       scrollbar-width:none;white-space:nowrap;z-index:5}
+  #hud::-webkit-scrollbar{display:none}
+  .chip{padding:11px 18px;border-radius:999px;background:#fff;color:#111;font-weight:600;
+        box-shadow:0 1px 6px rgba(0,0,0,.07);cursor:pointer;flex:0 0 auto;transition:all .15s}
+  .chip.on{background:#111;color:#fff}
+  #status{position:fixed;top:14px;right:16px;color:#B5B0A8;font-size:12px;z-index:5}
+  #cta{position:fixed;right:16px;bottom:calc(78px + env(safe-area-inset-bottom));z-index:6;
+       padding:14px 22px;border-radius:999px;background:#111;color:#fff;font-weight:700;
+       box-shadow:0 4px 18px rgba(0,0,0,.18);cursor:pointer;display:none}
+  #cta.busy{opacity:.55;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="brand">looktok <span>· atelier</span></div>
+<div id="status">loading pose…</div>
+<div id="stage"><div id="frame">
+  <img id="photo" src="./models/user_photo.jpg" alt="">
+</div></div>
+<div id="hud"></div>
+<div id="cta">✦ Make it real</div>
+
+<script type="module">
+/* ── 1. the avatar is a photo ──────────────────────────────────────────── */
+const photo  = document.getElementById('photo');
+const frame  = document.getElementById('frame');
+const status = document.getElementById('status');
+
+/* ── 2. pose: MediaPipe on the static image, ONCE ──────────────────────────
+   CDN build for the prototype. In the app WebView there is no CDN — there we
+   either vendor the wasm+model (~10MB) or, better, precompute these six
+   points server-side when the photo is uploaded and ship them as JSON. The
+   ANCHORS shape below is exactly that contract. */
+let ANCHORS = null;   // keypoints in photo px
+
+const FALLBACK = () => {
+  // No-pose fallback: anatomical guesses from typical full-body framing keep
+  // the atelier usable offline; pins are just less exact.
+  const w = photo.naturalWidth, h = photo.naturalHeight;
+  return {
+    shoulderL: { x: w * 0.386, y: h * 0.207 }, shoulderR: { x: w * 0.614, y: h * 0.207 },
+    hipL:      { x: w * 0.428, y: h * 0.482 }, hipR:      { x: w * 0.572, y: h * 0.482 },
+    ankleL:    { x: w * 0.45,  y: h * 0.94  }, ankleR:    { x: w * 0.55,  y: h * 0.94  },
+  };
+};
+
+async function detectPose() {
+  try {
+    const { FilesetResolver, PoseLandmarker } = await import(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs');
+    const files = await FilesetResolver.forVisionTasks(
+      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm');
+    const lm = await PoseLandmarker.createFromOptions(files, {
+      baseOptions: { modelAssetPath:
+        'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task' },
+      runningMode: 'IMAGE', numPoses: 1,
+    });
+    const res = lm.detect(photo);
+    const p = res.landmarks?.[0];
+    if (!p) throw new Error('no person detected');
+    const w = photo.naturalWidth, h = photo.naturalHeight;
+    const px = (i) => ({ x: p[i].x * w, y: p[i].y * h });
+    // 11/12 shoulders · 13/14 elbows · 15/16 wrists · 19/20 index fingers ·
+    // 23/24 hips · 27/28 ankles
+    ANCHORS = { shoulderL: px(11), shoulderR: px(12),
+                elbowL: px(13), elbowR: px(14),
+                wristL: px(15), wristR: px(16),
+                handL: px(19),  handR: px(20),
+                hipL: px(23), hipR: px(24), ankleL: px(27), ankleR: px(28) };
+    status.textContent = 'pose ✓';
+  } catch (e) {
+    console.warn('pose estimation unavailable:', e.message);
+    ANCHORS = FALLBACK();
+    status.textContent = 'pose: fallback grid';
+  }
+  scanSilhouette();
+  drawPins();
+  redress();          // re-pin anything already worn
+}
+
+/* per-row body contour width — pelvis keypoints are far narrower than hips */
+let SIL = null;
+function scanSilhouette() {
+  const W = 128, H = Math.round(W * photo.naturalHeight / photo.naturalWidth);
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  x.drawImage(photo, 0, 0, W, H);
+  const d = x.getImageData(0, 0, W, H).data;
+  const rows = [];
+  for (let yy = 0; yy < H; yy++) {
+    let lo = -1, hi = -1;
+    for (let xx = 0; xx < W; xx++) {
+      const i = (yy * W + xx) * 4;
+      const mx = Math.max(d[i], d[i+1], d[i+2]), mn = Math.min(d[i], d[i+1], d[i+2]);
+      if (!(mn > 219 && mx - mn < 26) && d[i+3] > 30) { if (lo < 0) lo = xx; hi = xx; }
+    }
+    rows.push(lo < 0 ? 0 : (hi - lo + 1) / W * photo.naturalWidth);
+  }
+  SIL = { rows, H };
+}
+const bodyWidthAt = (yPx) => {
+  if (!SIL) return 0;
+  const r = Math.min(SIL.rows.length - 1,
+    Math.max(0, Math.round(yPx / photo.naturalHeight * (SIL.H - 1))));
+  return SIL.rows[r];
+};
+
+/* photo-px → on-screen px (photo is displayed scaled) */
+const toScreen = (pt) => {
+  const k = photo.clientHeight / photo.naturalHeight;
+  return { x: pt.x * k, y: pt.y * k };
+};
+
+function drawPins() {
+  frame.querySelectorAll('.pin').forEach((n) => n.remove());
+  for (const pt of Object.values(ANCHORS)) {
+    const s = toScreen(pt);
+    const d = document.createElement('div');
+    d.className = 'pin';
+    d.style.left = s.x + 'px'; d.style.top = s.y + 'px';
+    frame.appendChild(d);
+  }
+}
+
+/* ── 3. garments: chroma-keyed flat-lays pinned to the keypoints ────────── */
+const worn = { top: null, bottom: null };     // {node, item}
+const cutoutCache = new Map();
+
+/* white studio backdrop → real alpha, once per item, on a canvas */
+function cutout(url) {
+  if (cutoutCache.has(url)) return Promise.resolve(cutoutCache.get(url));
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height);
+      const a = d.data;
+      for (let i = 0; i < a.length; i += 4) {
+        const mx = Math.max(a[i], a[i+1], a[i+2]), mn = Math.min(a[i], a[i+1], a[i+2]);
+        if (mn > 219 && mx - mn < 26) a[i+3] = 0;          // backdrop → transparent
+        else if (mn > 205 && mx - mn < 20) a[i+3] = 120;   // soft edge
+      }
+      ctx.putImageData(d, 0, 0);
+      // trim to content so the bounding box IS the garment
+      let x0 = c.width, x1 = 0, y0 = c.height, y1 = 0;
+      for (let y = 0; y < c.height; y += 2)
+        for (let x = 0; x < c.width; x += 2)
+          if (a[(y * c.width + x) * 4 + 3] > 40) {
+            if (x < x0) x0 = x; if (x > x1) x1 = x;
+            if (y < y0) y0 = y; if (y > y1) y1 = y;
+          }
+      const t = document.createElement('canvas');
+      t.width = Math.max(x1 - x0, 1); t.height = Math.max(y1 - y0, 1);
+      t.getContext('2d').drawImage(c, x0, y0, t.width, t.height, 0, 0, t.width, t.height);
+      // Waistband/shoulder ratio: content width of the top 6% of rows vs the
+      // full bbox. A wide-leg trouser's bbox is its hem flare — scaling by
+      // bbox width shrinks the waist to doll size.
+      let tLo = t.width, tHi = 0;
+      const band = Math.max(2, Math.round(t.height * 0.06));
+      for (let y = y0; y < y0 + band; y++)
+        for (let x = x0; x <= x1; x += 2)
+          if (a[(y * c.width + x) * 4 + 3] > 40) {
+            if (x - x0 < tLo) tLo = x - x0;
+            if (x - x0 > tHi) tHi = x - x0;
+          }
+      const entry = { canvas: t, topRatio: tHi > tLo ? (tHi - tLo) / t.width : 1 };
+      cutoutCache.set(url, entry);
+      resolve(entry);
+    };
+    img.onerror = reject;
+    img.src = url;
+  });
+}
+
+/* pin-and-scale: the garment bbox maps onto the keypoints.
+   (The grid-warp/TPS experiment is retired with the backend pivot: the
+   client is a browse layer, realism belongs to the VTON backend.) */
+function pin(kind, canvas, topRatio = 1) {
+  const A = ANCHORS;
+  const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+  let widthPx, topPt;
+  const torso = ((A.hipL.y + A.hipR.y) - (A.shoulderL.y + A.shoulderR.y)) / 2;
+  if (kind === 'top') {
+    const m = mid(A.shoulderL, A.shoulderR);
+    // Contour first: the flat-lay's width includes sleeves — the body's own
+    // shoulder-row width plus wearing ease is what "fits".
+    const contour = bodyWidthAt(m.y + torso * 0.12);
+    widthPx = Math.max(contour * 1.26, Math.abs(A.shoulderR.x - A.shoulderL.x) * 1.8);
+    topPt = { x: m.x, y: m.y - torso * 0.14 };
+  } else {
+    const m = mid(A.hipL, A.hipR);
+    // The MediaPipe hip landmarks are the PELVIS — a waistband anchored there
+    // hangs from the crotch (the paper-doll look). The waist sits well above.
+    const waistY = m.y - torso * 0.32;
+    const contour = bodyWidthAt(m.y);                 // widest hip row
+    // Match the WAISTBAND to the body, then let the bbox scale up from it —
+    // a flared silhouette keeps its flare instead of shrinking to doll size.
+    const waistTarget = Math.max(contour * 1.02, Math.abs(A.hipR.x - A.hipL.x) * 2.0);
+    widthPx = waistTarget / Math.max(topRatio, 0.35);
+    topPt = { x: m.x, y: waistY };
+  }
+  const maxH = kind === 'top' ? torso * 1.6
+    : ((A.ankleL.y + A.ankleR.y) / 2 - ((A.hipL.y + A.hipR.y) / 2 - torso * 0.32)) * 1.08;
+  const aspect = canvas.height / canvas.width;
+  if (widthPx * aspect > maxH) widthPx = maxH / aspect;
+  const k = photo.clientHeight / photo.naturalHeight;
+  const w = widthPx * k, h = w * aspect;
+  const sc = toScreen(topPt);
+  canvas.className = 'worn';
+  canvas.style.left = (sc.x - w / 2) + 'px';
+  canvas.style.top  = sc.y + 'px';
+  canvas.style.width = w + 'px';
+  canvas.style.height = h + 'px';
+  canvas.style.zIndex = kind === 'top' ? 3 : 2;
+}
+
+let wear = async function (kind, item) {
+  const { canvas, topRatio } = await cutout(item.img);
+  if (worn[kind]) worn[kind].node.remove();
+  pin(kind, canvas, topRatio);
+  frame.appendChild(canvas);
+  worn[kind] = { node: canvas, item, topRatio };
+};
+let undress = function (kind) {
+  if (worn[kind]) { worn[kind].node.remove(); worn[kind] = null; }
+};
+function redress() {
+  for (const kind of ['bottom', 'top'])
+    if (worn[kind]) pin(kind, worn[kind].node, worn[kind].topRatio);
+}
+addEventListener('resize', () => { if (ANCHORS) { drawPins(); redress(); } });
+
+/* ── 4. the catalog chips — same network manifest as before ────────────── */
+const MANIFEST =
+  'https://tnirnwapfgckfypvtooj.supabase.co/storage/v1/object/public/models-3d/manifest.json';
+const SLOT_OF = { top: 'top', outerwear: 'top', bottom: 'bottom' };
+const hud = document.getElementById('hud');
+
+function addChip(kind, item) {
+  const b = document.createElement('div');
+  b.className = 'chip'; b.dataset.kind = kind;
+  b.textContent = item.name.length > 22 ? item.name.slice(0, 21) + '…' : item.name;
+  b.onclick = () => {
+    const was = b.classList.contains('on');
+    hud.querySelectorAll(`.chip[data-kind="${kind}"]`).forEach((c) => c.classList.remove('on'));
+    if (was) { undress(kind); return; }
+    b.classList.add('on');
+    wear(kind, item);
+  };
+  hud.appendChild(b);
+}
+
+/* debug chip: show/hide the pose pins */
+const dbg = document.createElement('div');
+dbg.className = 'chip'; dbg.textContent = 'Pins';
+dbg.onclick = () => { document.body.classList.toggle('debug'); dbg.classList.toggle('on'); };
+hud.appendChild(dbg);
+
+fetch(MANIFEST)
+  .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+  .then((items) => {
+    for (const it of items) {
+      const kind = SLOT_OF[it.category];
+      if (kind && it.img) addChip(kind, it);
+    }
+  })
+  .catch((e) => { status.textContent = 'catalog offline'; console.warn('manifest:', e); });
+
+/* ── 5. the hybrid's second layer: hand the worn look to the VTON backend ──
+   The 2.5D canvas is the browse layer; the money shot comes from the
+   generate-vton Edge Function (Kolors) that is already live in production.
+   Inside the app this page has no JWT — Flutter owns auth — so the trigger
+   is a message over the WebView bridge; LooktokApi.generateVton() does the
+   actual call and pushes the result screen. In a plain browser we just log
+   the payload so the contract is visible.
+   Honest latency: measured 16–18s end-to-end, not 5. */
+const cta = document.getElementById('cta');
+function refreshCta() {
+  const item = worn.top?.item ?? worn.bottom?.item;
+  cta.style.display = item ? 'block' : 'none';
+}
+const _wear = wear, _undress = undress;
+wear = async (k, i) => { await _wear(k, i); refreshCta(); };
+undress = (k) => { _undress(k); refreshCta(); };
+
+cta.onclick = () => {
+  // The COMMIT: every worn item in one payload. One garment → Kolors
+  // (exact-copy champion); a full look → one Gemini render, saved to My Looks.
+  const items = ['top', 'bottom'].map((k) => worn[k]?.item).filter(Boolean);
+  if (!items.length) return;
+  const payload = items.length === 1
+    ? { type: 'generate-vton', garmentId: items[0].id,
+        category: items[0].category === 'bottom' ? 'lower_body' : 'upper_body' }
+    : { type: 'generate-vton', garmentIds: items.map((i) => i.id) };
+  cta.classList.add('busy'); cta.textContent = 'Dressing you…';
+  if (window.LooktokBridge?.postMessage) {
+    // In-app: Flutter picks this up and runs LooktokApi.generateVton().
+    window.LooktokBridge.postMessage(JSON.stringify(payload));
+  } else {
+    // Dev fallback: a local dev_session.json (never shipped in app assets)
+    // lets the browser prototype run the REAL commit against the EF.
+    devCommit(payload);
+  }
+};
+// Flutter calls this when the render lands (or fails) to restore the button.
+window.vtonDone = () => { cta.classList.remove('busy'); cta.textContent = '✦ Make it real'; };
+
+async function devCommit(payload) {
+  try {
+    const sess = await fetch('./dev_session.json').then((r) => (r.ok ? r.json() : null));
+    if (!sess) {
+      status.textContent = 'no app bridge, no dev session — trigger logged';
+      console.log('[generate-vton trigger]', payload);
+      window.vtonDone();
+      return;
+    }
+    status.textContent = 'rendering your look… ~30s';
+    const res = await fetch(
+      'https://tnirnwapfgckfypvtooj.supabase.co/functions/v1/generate-vton', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: sess.anon,
+                   Authorization: `Bearer ${sess.jwt}` },
+        body: JSON.stringify(payload),
+      });
+    const out = await res.json();
+    if (!res.ok || !out.ok) throw new Error(out.error ?? res.status);
+    status.textContent = out.savedToLooks ? 'saved to My Looks ✓' : 'rendered ✓';
+    // Result overlay: the photoreal render over the draft, tap to dismiss.
+    const veil = document.createElement('div');
+    veil.style.cssText = 'position:fixed;inset:0;background:rgba(17,17,17,.92);' +
+      'display:flex;align-items:center;justify-content:center;z-index:20;cursor:pointer';
+    const img = new Image();
+    img.src = out.url;
+    img.style.cssText = 'max-height:92%;max-width:92%;border-radius:18px;' +
+      'box-shadow:0 18px 60px rgba(0,0,0,.5)';
+    veil.appendChild(img);
+    veil.onclick = () => veil.remove();
+    document.body.appendChild(veil);
+  } catch (e) {
+    status.textContent = 'commit failed: ' + e.message;
+  } finally {
+    window.vtonDone();
+  }
+}
+
+/* boot: wait for the photo, then pose it */
+if (photo.complete && photo.naturalWidth) detectPose();
+else photo.onload = detectPose;
+</script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://looktok.pages.dev/sitemap.xml

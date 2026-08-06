@@ -1,0 +1,724 @@
+[
+ {
+  "render_id": "92dfe13b-d75e-4ffe-8d14-a33bbccb0bae",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/92dfe13b-d75e-4ffe-8d14-a33bbccb0bae/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/92dfe13b-d75e-4ffe-8d14-a33bbccb0bae/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/92dfe13b-d75e-4ffe-8d14-a33bbccb0bae-v2.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black sleeveless cotton t-shirt and dress them in relaxed fit cream linen short-sleeve shirt (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (beige chino shorts), the shoes (black flip-flops), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks. RETAKE #1 [1785045082560]: the previous output CROPPED the person. Render the FULL BODY head-to-toe \u2014 feet and shoes fully visible with clear white margin below the shoes. A frame that cuts the person at the knees or ankles is a FAILED generation.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "60e1a19f-aaca-4db6-b1cb-a457006120d1",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/60e1a19f-aaca-4db6-b1cb-a457006120d1/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/60e1a19f-aaca-4db6-b1cb-a457006120d1/ref_0.webp",
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/60e1a19f-aaca-4db6-b1cb-a457006120d1/ref_1.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/60e1a19f-aaca-4db6-b1cb-a457006120d1-v2.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black sleeveless cotton t-shirt and dress them in light grey crew neck cotton t-shirt (a T-SHIRT with SHORT set-in sleeves covering the shoulders \u2014 never sleeveless), and the bottom \u2014 take OFF the beige chino shorts and dress them in their own navy shorts (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top/bottom on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the shoes (black flip-flops), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top",
+    "bottom"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "546b5247-d010-402d-a7ac-26d2f4e8a266",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/546b5247-d010-402d-a7ac-26d2f4e8a266/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/546b5247-d010-402d-a7ac-26d2f4e8a266/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/546b5247-d010-402d-a7ac-26d2f4e8a266.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black sleeveless cotton t-shirt and dress them in relaxed fit cream linen short-sleeve shirt (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (beige chino shorts), the shoes (black flip-flops), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "867833c3-1795-4b2b-af6f-4053bf4342da",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/867833c3-1795-4b2b-af6f-4053bf4342da/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/867833c3-1795-4b2b-af6f-4053bf4342da/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/867833c3-1795-4b2b-af6f-4053bf4342da-v2.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black crew-neck sleeveless t-shirt in cotton and dress them in white linen short-sleeve button-up shirt (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (light beige relaxed-fit pull-on shorts in crinkled cotton), the shoes (black rubber flip-flops), the watch (black digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "7d7de17b-561c-4ab9-b58c-bd04e30f1612",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/7d7de17b-561c-4ab9-b58c-bd04e30f1612/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/7d7de17b-561c-4ab9-b58c-bd04e30f1612/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/7d7de17b-561c-4ab9-b58c-bd04e30f1612.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black crew-neck sleeveless t-shirt in cotton and dress them in their own light yellow t-shirt (a T-SHIRT with SHORT set-in sleeves covering the shoulders \u2014 never sleeveless). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (light beige relaxed-fit pull-on shorts in crinkled cotton), the shoes (black rubber flip-flops), the watch (black digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "9667a2bf-cc5f-4ec6-9321-501fa6dbaeda",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/9667a2bf-cc5f-4ec6-9321-501fa6dbaeda/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/9667a2bf-cc5f-4ec6-9321-501fa6dbaeda/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/9667a2bf-cc5f-4ec6-9321-501fa6dbaeda.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black crew-neck sleeveless cotton t-shirt and dress them in white linen short-sleeve button-up shirt (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (light beige relaxed-fit cotton shorts), the shoes (black rubber flip-flops), the watch (black digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "9b20dcda-9824-4bfb-86aa-50cc1b11cea4",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/9b20dcda-9824-4bfb-86aa-50cc1b11cea4/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/9b20dcda-9824-4bfb-86aa-50cc1b11cea4/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/9b20dcda-9824-4bfb-86aa-50cc1b11cea4.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the shoes \u2014 take OFF the black rubber flip-flops and dress them in Choose a more refined open-toed sandal or a clean, casual sneaker.. Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original shoes on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (black sleeveless cotton t-shirt), the bottom (light beige crinkled cotton shorts), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks. RETAKE #1 [1784887781175]: the previous output CROPPED the person. Render the FULL BODY head-to-toe \u2014 feet and shoes fully visible with clear white margin below the shoes. A frame that cuts the person at the knees or ankles is a FAILED generation.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "shoes"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "bd57ea56-dc07-48f3-ae5c-15d27259926b",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/bd57ea56-dc07-48f3-ae5c-15d27259926b/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/bd57ea56-dc07-48f3-ae5c-15d27259926b/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/bd57ea56-dc07-48f3-ae5c-15d27259926b.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the shoes \u2014 take OFF the black rubber flip-flops and dress them in Choose a more refined open-toed sandal or a clean, casual sneaker.. Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original shoes on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (black sleeveless cotton t-shirt), the bottom (light beige crinkled cotton shorts), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "shoes"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "61230b53-167d-4566-9853-7fb1f84c0071",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/61230b53-167d-4566-9853-7fb1f84c0071/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/61230b53-167d-4566-9853-7fb1f84c0071/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/61230b53-167d-4566-9853-7fb1f84c0071.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the bottom \u2014 take OFF the light beige crinkled cotton shorts and dress them in their own navy shorts (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original bottom on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (black sleeveless cotton t-shirt), the shoes (black rubber flip-flops), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks. RETAKE #1 [1784887613456]: the previous output CROPPED the person. Render the FULL BODY head-to-toe \u2014 feet and shoes fully visible with clear white margin below the shoes. A frame that cuts the person at the knees or ankles is a FAILED generation.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "bottom"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "6b886205-aef4-414b-92bf-c31bc69dea19",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/6b886205-aef4-414b-92bf-c31bc69dea19/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/6b886205-aef4-414b-92bf-c31bc69dea19/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/6b886205-aef4-414b-92bf-c31bc69dea19.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the bottom \u2014 take OFF the light beige crinkled cotton shorts and dress them in their own navy shorts (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original bottom on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (black sleeveless cotton t-shirt), the shoes (black rubber flip-flops), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "bottom"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "7f8443ac-2292-4d59-996b-f9ecb5ecb7ab",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/7f8443ac-2292-4d59-996b-f9ecb5ecb7ab/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/7f8443ac-2292-4d59-996b-f9ecb5ecb7ab/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/7f8443ac-2292-4d59-996b-f9ecb5ecb7ab-v2.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black sleeveless cotton t-shirt and dress them in their own light yellow t-shirt (a T-SHIRT with SHORT set-in sleeves covering the shoulders \u2014 never sleeveless). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (light beige crinkled cotton shorts), the shoes (black rubber flip-flops), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "2280675e-000c-47c1-8bd9-e71f9094a2d7",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/2280675e-000c-47c1-8bd9-e71f9094a2d7/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/2280675e-000c-47c1-8bd9-e71f9094a2d7/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/2280675e-000c-47c1-8bd9-e71f9094a2d7.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the glasses \u2014 ADD classic black wayfarer sunglasses, worn on the face over the eyes, clearly visible (they currently wear no glasses). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original glasses on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (black sleeveless cotton t-shirt), the bottom (light beige crinkled cotton shorts), the shoes (black rubber flip-flops), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "glasses"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "d956f040-b77c-4171-8771-448dab6f4a4c",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/d956f040-b77c-4171-8771-448dab6f4a4c/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/d956f040-b77c-4171-8771-448dab6f4a4c/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/d956f040-b77c-4171-8771-448dab6f4a4c-v2.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the shoes \u2014 take OFF the black rubber flip-flops and dress them in brown leather slide sandals. Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original shoes on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (black sleeveless cotton t-shirt), the bottom (light beige crinkled cotton shorts), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "shoes"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "9de0f349-a5e9-4634-b9d6-f9ff7679e0e0",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/9de0f349-a5e9-4634-b9d6-f9ff7679e0e0/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/9de0f349-a5e9-4634-b9d6-f9ff7679e0e0/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/9de0f349-a5e9-4634-b9d6-f9ff7679e0e0.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black sleeveless cotton t-shirt and dress them in white linen blend short-sleeve button-up shirt (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (light beige crinkled cotton shorts), the shoes (black rubber flip-flops), the watch (black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "0c24f892-f2dd-47b8-b264-70d7318df199",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/0c24f892-f2dd-47b8-b264-70d7318df199/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/0c24f892-f2dd-47b8-b264-70d7318df199/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/0c24f892-f2dd-47b8-b264-70d7318df199-v2.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the Black crew-neck sleeveless t-shirt, cotton and dress them in Structured pique polo shirt in soft cream (a POLO \u2014 collar, buttoned placket, SHORT set-in sleeves covering the shoulders). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (Light beige crinkled pull-on shorts, cotton blend), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch with black strap), the jewelry (Silver-tone ring on the right hand). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "30a87bc0-72ca-44b5-a9e4-071c60c9e287",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/30a87bc0-72ca-44b5-a9e4-071c60c9e287/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/30a87bc0-72ca-44b5-a9e4-071c60c9e287/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/30a87bc0-72ca-44b5-a9e4-071c60c9e287.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the glasses \u2014 ADD Classic Wayfarer-style sunglasses with black frames, worn on the face over the eyes, clearly visible (they currently wear no glasses). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original glasses on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black crew-neck sleeveless t-shirt, cotton), the bottom (Light beige crinkled pull-on shorts, cotton blend), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch with black strap), the jewelry (Silver-tone ring on the right hand). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "glasses"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "3234aa7d-fbbc-4f48-be72-4af443f63241",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/3234aa7d-fbbc-4f48-be72-4af443f63241/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/3234aa7d-fbbc-4f48-be72-4af443f63241/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/3234aa7d-fbbc-4f48-be72-4af443f63241.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the shoes \u2014 take OFF the Dark grey rubber flip-flops and dress them in Leather slide sandals in rich brown. Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original shoes on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black crew-neck sleeveless t-shirt, cotton), the bottom (Light beige crinkled pull-on shorts, cotton blend), the watch (Black digital sports watch with black strap), the jewelry (Silver-tone ring on the right hand). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "shoes"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "e5278ed4-f604-44c1-91f2-c661358e6cc2",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/e5278ed4-f604-44c1-91f2-c661358e6cc2/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/e5278ed4-f604-44c1-91f2-c661358e6cc2/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/e5278ed4-f604-44c1-91f2-c661358e6cc2.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the Black crew-neck sleeveless t-shirt, cotton and dress them in their own light yellow t-shirt (a T-SHIRT with SHORT set-in sleeves covering the shoulders \u2014 never sleeveless). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (Light beige crinkled pull-on shorts, cotton blend), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch with black strap), the jewelry (Silver-tone ring on the right hand). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "28302d34-fe2e-4a71-a2d4-804646f90aae",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/28302d34-fe2e-4a71-a2d4-804646f90aae/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/28302d34-fe2e-4a71-a2d4-804646f90aae/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/28302d34-fe2e-4a71-a2d4-804646f90aae.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the Black crew-neck sleeveless t-shirt, cotton and dress them in Relaxed fit linen short-sleeve shirt in muted olive green (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (Light beige crinkled pull-on shorts, cotton blend), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch with black strap), the jewelry (Silver-tone ring on the right hand). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "697f111d-9318-4703-b599-0ab73aa7ebd9",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/697f111d-9318-4703-b599-0ab73aa7ebd9/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/697f111d-9318-4703-b599-0ab73aa7ebd9/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/697f111d-9318-4703-b599-0ab73aa7ebd9.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the bottom \u2014 take OFF the Light beige relaxed-fit cotton shorts and dress them in Iron or steam your shorts before wearing them to maintain a crisp appearance. (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original bottom on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black crew-neck sleeveless cotton t-shirt), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "bottom"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "b004db87-00a8-45bb-b4b0-cab78c6539bf",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/b004db87-00a8-45bb-b4b0-cab78c6539bf/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/b004db87-00a8-45bb-b4b0-cab78c6539bf/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/b004db87-00a8-45bb-b4b0-cab78c6539bf.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the glasses \u2014 ADD Black square frame sunglasses, worn on the face over the eyes, clearly visible (they currently wear no glasses). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original glasses on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black crew-neck sleeveless cotton t-shirt), the bottom (Light beige relaxed-fit cotton shorts), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks. RETAKE #1 [1784884150480]: the previous output CROPPED the person. Render the FULL BODY head-to-toe \u2014 feet and shoes fully visible with clear white margin below the shoes. A frame that cuts the person at the knees or ankles is a FAILED generation.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "glasses"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "045f9969-a667-4022-a0a4-9e67a143ab0b",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/045f9969-a667-4022-a0a4-9e67a143ab0b/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/045f9969-a667-4022-a0a4-9e67a143ab0b/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/045f9969-a667-4022-a0a4-9e67a143ab0b.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the glasses \u2014 ADD Black square frame sunglasses, worn on the face over the eyes, clearly visible (they currently wear no glasses). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original glasses on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black crew-neck sleeveless cotton t-shirt), the bottom (Light beige relaxed-fit cotton shorts), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "glasses"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "df8beab6-8e81-4d31-bc20-1d77df42c798",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/df8beab6-8e81-4d31-bc20-1d77df42c798/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/df8beab6-8e81-4d31-bc20-1d77df42c798/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/df8beab6-8e81-4d31-bc20-1d77df42c798.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the glasses \u2014 ADD Black square-frame sunglasses, worn on the face over the eyes, clearly visible (they currently wear no glasses). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original glasses on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black sleeveless cotton t-shirt), the bottom (Beige elastic-waist cotton shorts), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks. RETAKE #1 [1784882059778]: the previous output CROPPED the person. Render the FULL BODY head-to-toe \u2014 feet and shoes fully visible with clear white margin below the shoes. A frame that cuts the person at the knees or ankles is a FAILED generation.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "glasses"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "d1a040ab-344b-4da0-befb-d076d2c3f6f5",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/d1a040ab-344b-4da0-befb-d076d2c3f6f5/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/d1a040ab-344b-4da0-befb-d076d2c3f6f5/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/d1a040ab-344b-4da0-befb-d076d2c3f6f5.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the glasses \u2014 ADD Black square-frame sunglasses, worn on the face over the eyes, clearly visible (they currently wear no glasses). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original glasses on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black sleeveless cotton t-shirt), the bottom (Beige elastic-waist cotton shorts), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "glasses"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "48ff9e2a-a1d1-4862-81c8-b462a4a8e8e4",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/48ff9e2a-a1d1-4862-81c8-b462a4a8e8e4/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/48ff9e2a-a1d1-4862-81c8-b462a4a8e8e4/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/48ff9e2a-a1d1-4862-81c8-b462a4a8e8e4.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the Black sleeveless cotton t-shirt and dress them in their own light yellow t-shirt (a T-SHIRT with SHORT set-in sleeves covering the shoulders \u2014 never sleeveless). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (Beige elastic-waist cotton shorts), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks. RETAKE #1 [1784882015636]: the previous output CROPPED the person. Render the FULL BODY head-to-toe \u2014 feet and shoes fully visible with clear white margin below the shoes. A frame that cuts the person at the knees or ankles is a FAILED generation.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "6ed3e76a-c267-41a7-ad54-5c829bfa8787",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/6ed3e76a-c267-41a7-ad54-5c829bfa8787/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/6ed3e76a-c267-41a7-ad54-5c829bfa8787/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/6ed3e76a-c267-41a7-ad54-5c829bfa8787.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the Black sleeveless cotton t-shirt and dress them in their own light yellow t-shirt (a T-SHIRT with SHORT set-in sleeves covering the shoulders \u2014 never sleeveless). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (Beige elastic-waist cotton shorts), the shoes (Dark grey rubber flip-flops), the watch (Black digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "febb20fc-e23f-42c9-8a36-4c052e4f6d88",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/febb20fc-e23f-42c9-8a36-4c052e4f6d88/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/febb20fc-e23f-42c9-8a36-4c052e4f6d88/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/febb20fc-e23f-42c9-8a36-4c052e4f6d88.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black sleeveless cotton t-shirt and dress them in oversized charcoal grey cotton t-shirt (a T-SHIRT with SHORT set-in sleeves covering the shoulders \u2014 never sleeveless). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (light beige crinkled cotton shorts), the shoes (dark grey rubber flip-flops), the watch (dark digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "9339de24-d3f6-43f4-bc9e-f501fa18fe2a",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/9339de24-d3f6-43f4-bc9e-f501fa18fe2a/person.png",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/9339de24-d3f6-43f4-bc9e-f501fa18fe2a/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/9339de24-d3f6-43f4-bc9e-f501fa18fe2a.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black sleeveless cotton t-shirt and dress them in relaxed fit short-sleeve linen shirt in off-white (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (light beige crinkled cotton shorts), the shoes (dark grey rubber flip-flops), the watch (dark digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "f7d8c750-4a39-43c0-a9ff-78c701443caa",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/f7d8c750-4a39-43c0-a9ff-78c701443caa/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/f7d8c750-4a39-43c0-a9ff-78c701443caa/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/f7d8c750-4a39-43c0-a9ff-78c701443caa.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the glasses \u2014 ADD classic black wayfarer sunglasses, worn on the face over the eyes, clearly visible (they currently wear no glasses). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original glasses on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (black sleeveless cotton t-shirt), the bottom (light beige crinkled cotton shorts), the shoes (dark grey rubber flip-flops), the watch (dark digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "glasses"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "0c6ec6be-aa32-4567-8cc7-6aa930f91407",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/0c6ec6be-aa32-4567-8cc7-6aa930f91407/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/0c6ec6be-aa32-4567-8cc7-6aa930f91407/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/0c6ec6be-aa32-4567-8cc7-6aa930f91407.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black sleeveless cotton t-shirt and dress them in their own light yellow t-shirt (a T-SHIRT with SHORT set-in sleeves covering the shoulders \u2014 never sleeveless). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (light beige crinkled cotton shorts), the shoes (dark grey rubber flip-flops), the watch (dark digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "6c628414-8fae-4c29-b0b4-067dfdc6d0b0",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/6c628414-8fae-4c29-b0b4-067dfdc6d0b0/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/6c628414-8fae-4c29-b0b4-067dfdc6d0b0/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/6c628414-8fae-4c29-b0b4-067dfdc6d0b0.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the black sleeveless cotton t-shirt and dress them in relaxed fit short-sleeve linen shirt in off-white (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (light beige crinkled cotton shorts), the shoes (dark grey rubber flip-flops), the watch (dark digital sports watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "bedd2b17-3c96-4647-9161-7993b0e2fd73",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/bedd2b17-3c96-4647-9161-7993b0e2fd73/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/bedd2b17-3c96-4647-9161-7993b0e2fd73/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/bedd2b17-3c96-4647-9161-7993b0e2fd73.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the glasses \u2014 ADD Black square-frame sunglasses, worn on the face over the eyes, clearly visible (they currently wear no glasses). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original glasses on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black crew-neck sleeveless t-shirt in cotton), the bottom (Light beige elastic-waist pull-on shorts in cotton blend), the shoes (Black rubber flip-flops), the watch (Black digital sports watch with a silicone strap), the jewelry (Silver-tone band ring on left ring finger). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "glasses"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "acdd4a83-8420-4014-a253-4bd39810cbab",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/acdd4a83-8420-4014-a253-4bd39810cbab/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/acdd4a83-8420-4014-a253-4bd39810cbab/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/acdd4a83-8420-4014-a253-4bd39810cbab.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the Black crew-neck sleeveless t-shirt in cotton and dress them in Choose a top with a more defined sleeve, like a regular t-shirt or a polo, to balance your proportions. (a POLO \u2014 collar, buttoned placket, SHORT set-in sleeves covering the shoulders). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (Light beige elastic-waist pull-on shorts in cotton blend), the shoes (Black rubber flip-flops), the watch (Black digital sports watch with a silicone strap), the jewelry (Silver-tone band ring on left ring finger). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks. RETAKE #1 [1784879622448]: the previous output CROPPED the person. Render the FULL BODY head-to-toe \u2014 feet and shoes fully visible with clear white margin below the shoes. A frame that cuts the person at the knees or ankles is a FAILED generation.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "bfb051a5-0a57-4312-9945-e85f67e95fd5",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/bfb051a5-0a57-4312-9945-e85f67e95fd5/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/bfb051a5-0a57-4312-9945-e85f67e95fd5/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/bfb051a5-0a57-4312-9945-e85f67e95fd5.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the Black crew-neck sleeveless t-shirt in cotton and dress them in Choose a top with a more defined sleeve, like a regular t-shirt or a polo, to balance your proportions. (a POLO \u2014 collar, buttoned placket, SHORT set-in sleeves covering the shoulders). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (Light beige elastic-waist pull-on shorts in cotton blend), the shoes (Black rubber flip-flops), the watch (Black digital sports watch with a silicone strap), the jewelry (Silver-tone band ring on left ring finger). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "4bf5f503-6960-4457-a028-5397a7c0ce79",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/4bf5f503-6960-4457-a028-5397a7c0ce79/person.png",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/4bf5f503-6960-4457-a028-5397a7c0ce79/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/4bf5f503-6960-4457-a028-5397a7c0ce79-v2.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the bottom \u2014 take OFF the Light beige chino shorts, cotton and dress them in their own navy shorts (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original bottom on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black sleeveless t-shirt, cotton), the shoes (Black flip-flops), the watch (Black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "bottom"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "97265522-f0bb-4fe0-88dc-7fd933837bcd",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/97265522-f0bb-4fe0-88dc-7fd933837bcd/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/97265522-f0bb-4fe0-88dc-7fd933837bcd/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/97265522-f0bb-4fe0-88dc-7fd933837bcd.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the shoes \u2014 take OFF the Black flip-flops and dress them in Consider a simple leather sandal or a clean, minimalist sneaker for a slightly more refined casual aesthetic.. Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original shoes on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black sleeveless t-shirt, cotton), the bottom (Light beige chino shorts, cotton), the watch (Black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "shoes"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "80d59e6b-037f-4ec6-a26b-62284d1476e9",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/80d59e6b-037f-4ec6-a26b-62284d1476e9/person.png",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/80d59e6b-037f-4ec6-a26b-62284d1476e9/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/80d59e6b-037f-4ec6-a26b-62284d1476e9.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the Black sleeveless t-shirt, cotton and dress them in Relaxed fit white linen short-sleeve shirt (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (Light beige chino shorts, cotton), the shoes (Black flip-flops), the watch (Black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "7cff2f65-5b50-487e-b853-0950a5c7de4d",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/7cff2f65-5b50-487e-b853-0950a5c7de4d/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/7cff2f65-5b50-487e-b853-0950a5c7de4d/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/7cff2f65-5b50-487e-b853-0950a5c7de4d-v2.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the glasses \u2014 ADD Classic black wayfarer sunglasses, worn on the face over the eyes, clearly visible (they currently wear no glasses). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original glasses on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black sleeveless t-shirt, cotton), the bottom (Light beige chino shorts, cotton), the shoes (Black flip-flops), the watch (Black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "glasses"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "f67632af-54b6-4ca4-a5fe-6f16638429ed",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/f67632af-54b6-4ca4-a5fe-6f16638429ed/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/f67632af-54b6-4ca4-a5fe-6f16638429ed/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/f67632af-54b6-4ca4-a5fe-6f16638429ed-v2.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the bottom \u2014 take OFF the Light beige chino shorts, cotton and dress them in their own navy shorts (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original bottom on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the top (Black sleeveless t-shirt, cotton), the shoes (Black flip-flops), the watch (Black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "bottom"
+   ]
+  },
+  "source": "fix"
+ },
+ {
+  "render_id": "b221fb83-6b86-4bd7-ba29-48936a464353",
+  "user_id": "aaf2937b-82bd-4ffa-b983-2e5c86819e03",
+  "person_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/b221fb83-6b86-4bd7-ba29-48936a464353/person.webp",
+  "ref_paths": [
+   "aaf2937b-82bd-4ffa-b983-2e5c86819e03/b221fb83-6b86-4bd7-ba29-48936a464353/ref_0.webp"
+  ],
+  "result_bucket": "generations",
+  "result_path": "aaf2937b-82bd-4ffa-b983-2e5c86819e03/_fix/b221fb83-6b86-4bd7-ba29-48936a464353.png",
+  "instruction": "MANDATORY EDIT \u2014 this is the entire point of the task: on this person, change the top \u2014 take OFF the Black sleeveless t-shirt, cotton and dress them in Relaxed fit white linen short-sleeve shirt (this is SHORTS \u2014 the hem MUST end above the knee; rendering full-length trousers instead is a failed generation). Every attribute of each swapped piece \u2014 color, pattern, fabric, cut, silhouette, sleeve length, neckline \u2014 comes from the NEW description alone; inherit NOTHING from the piece taken off, and no part of it may remain visible. The new garment MUST be clearly and visibly worn in the output; returning the outfit unchanged or leaving the original top on is a FAILED generation. The source photo is used ONLY for the person's identity, body and pose \u2014 its swapped garments are discarded material. Render the new garment with EVERY stated attribute literally (sleeve length, fabric, color, fit, length). STRICTLY MENSWEAR: never heels, heeled sandals, pumps, dresses, skirts, blouses or any womenswear. Keep unchanged (same color, pattern, print direction, fit, length): the bottom (Light beige chino shorts, cotton), the shoes (Black flip-flops), the watch (Black digital watch). Face, hair, skin and pose stay identical to the source; the background is NOT protected \u2014 always replace it with the studio backdrop described below. Place the person centered and full-length, head-to-toe, filling the frame vertically so they take up almost the entire image height with only a thin, even margin on all sides. Use a plain seamless pure-white (#FFFFFF) studio background that fills the whole frame \u2014 no grey edges, no dark band, no vignette, no blur. No text, UI or watermarks.",
+  "meta": {
+   "verified": true,
+   "targetZones": [
+    "top"
+   ]
+  },
+  "source": "fix"
+ }
+]

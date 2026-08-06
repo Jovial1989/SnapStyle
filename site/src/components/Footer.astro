@@ -1,0 +1,54 @@
+---
+const year = 2026; // stamped at build; update via build-time if needed
+const nav = [
+  { href: "/", label: "Product", key: "nav.product" },
+  { href: "/how-it-works", label: "How it works", key: "nav.hiw" },
+  { href: "/about", label: "About", key: "nav.about" },
+  { href: "/partners", label: "Contact", key: "nav.partners" },
+];
+---
+
+<footer>
+  <div class="wrap grid">
+    <div class="brand">
+      <span class="logo">look<span class="dot">tok</span></span>
+      <p class="muted tag" data-i18n="footer.tag">An honest, specific read on how your outfit actually looks — from one photo.</p>
+    </div>
+
+    <nav aria-label="Footer">
+      <span class="label" data-i18n="footer.site">Site</span>
+      {nav.map((l) => <a href={l.href} data-i18n={l.key}>{l.label}</a>)}
+    </nav>
+
+    <div>
+      <span class="label" data-i18n="footer.contact">Contact</span>
+      <a href="mailto:petrov.cpay@gmail.com">petrov.cpay@gmail.com</a>
+      <a href="https://www.linkedin.com/in/petrovkyrylo/" target="_blank" rel="noopener">LinkedIn</a>
+    </div>
+
+    <div>
+      <span class="label" data-i18n="footer.legal">Legal</span>
+      <!-- [NEED: legal pages] — placeholder anchors until Privacy/Terms exist -->
+      <a href="/how-it-works#privacy" data-i18n="footer.privacy">Privacy</a>
+      <a href="/how-it-works#privacy" data-i18n="footer.terms">Terms</a>
+    </div>
+  </div>
+
+  <div class="wrap base">
+    <span class="muted" data-i18n="footer.copy">© {year} Looktok. A straight answer — not a store.</span>
+  </div>
+</footer>
+
+<style>
+  footer { border-top: 1px solid var(--line); padding-block: var(--s-6) var(--s-4); margin-top: var(--s-6); }
+  .grid { display: grid; grid-template-columns: 1.6fr 1fr 1fr 1fr; gap: var(--s-4); }
+  .logo { font-weight: 800; font-size: 1.3rem; letter-spacing: -0.045em; }
+  .dot { color: var(--sig); }
+  .tag { margin-top: var(--s-1); max-width: 34ch; font-size: 0.9375rem; }
+  nav, footer .grid > div { display: flex; flex-direction: column; gap: 10px; }
+  .label { margin-bottom: 2px; }
+  footer a:not(.logo) { color: var(--ink-soft); font-size: 0.9375rem; }
+  footer a:hover { color: var(--ink); }
+  .base { margin-top: var(--s-5); padding-top: var(--s-3); border-top: 1px solid var(--line); font-size: var(--t-small); }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr 1fr; } .brand { grid-column: 1 / -1; } }
+</style>
