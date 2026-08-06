@@ -795,11 +795,14 @@ def _garment_mask(p: Pose, kind: str,
     # shape is not. Generous on purpose — baggy jeans must still fit inside it.
     if kind in ("lower", "shoes") and lh and rh:
         zone = np.zeros((h, w), np.uint8)
-        # WIDE ON THE HIP — the quad has to hold the garment, and at 0.85 the jeans
-        # themselves were clipped: the base's grey trousers showed along both
-        # edges. Width is the wrong knob for the arm problem; the cut below is the
-        # right one.
-        hw = max(abs(lh[0] - rh[0]) * 0.95, span * 0.10)
+        # WIDE ON THE HIP, AND THE WIDTH IS MEASURED, NOT GUESSED. 0.85 clipped the
+        # jeans and 0.95 clipped them too — the base's grey trousers showed along
+        # both edges. Measuring the base settled it: at the hip line the trousers
+        # are 259px of fabric (silhouette minus skin colour) against 111px between
+        # the hip joints, i.e. a half-span of 1.17 — while 0.95 gave a 133px mask,
+        # barely half the garment. 1.4 leaves room for baggier cuts. Width was never
+        # the knob for the arm problem; the two colour tests below are.
+        hw = max(abs(lh[0] - rh[0]) * 1.4, span * 0.10)
         top = min(lh[1], rh[1]) - span * 0.09
         cxh = (lh[0] + rh[0]) / 2.0
         cv2.fillConvexPoly(zone, np.int32([
@@ -835,6 +838,26 @@ def _garment_mask(p: Pose, kind: str,
                 arm = cv2.bitwise_and(corridor, cv2.dilate(
                     (near.astype(np.uint8) * 255), np.ones((grow, grow), np.uint8)))
                 shield = cv2.bitwise_or(shield, arm)
+            # AND THE GAP BETWEEN ARM AND TORSO IS BACKGROUND, NOT FABRIC. That gap
+            # is what grew the denim slabs: MediaPipe's matte closes it, so it sits
+            # INSIDE the silhouette while being studio white, and the warp had no
+            # reason not to fill it. Skin cannot catch it — the gap is not skin — but
+            # the backdrop colour can, and nothing a garment needs shares it here
+            # (the slot is trousers and shoes). Sampled from the frame's own corners
+            # rather than assumed white, and confined to a wide arm corridor so a
+            # pale garment elsewhere is untouched.
+            back = np.float32([0, 0, 0])
+            for cy, cx in ((0, 0), (0, w - 6), (h - 6, 0), (h - 6, w - 6)):
+                back += np.array(cv2.mean(person[cy:cy + 6, cx:cx + 6])[:3], np.float32)
+            back /= 4.0
+            wide = np.zeros((h, w), np.uint8)
+            for ids in ((2, 3, 4), (5, 6, 7)):
+                chain = [pts[i] for i in ids if pts[i]]
+                for a, b in zip(chain, chain[1:]):
+                    cv2.line(wide, a, b, 255, int(max(36, span * 0.18)))
+            gap = cv2.bitwise_and(wide, (np.abs(person.astype(np.float32) - back)
+                                         .max(axis=2) < 30).astype(np.uint8) * 255)
+            shield = cv2.bitwise_or(shield, gap)
         mask = cv2.bitwise_and(mask, zone)
 
     mask[shield > 0] = 0
