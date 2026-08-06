@@ -34,6 +34,7 @@ import numpy as np
 import torch
 from PIL import Image
 
+from kinematic import apply_kinematic_shield, arm_shield
 from warp import apply_shading, mesh_warp, parts_warp, shoes_warp, torso_warp
 
 # ─────────────────────────────── device / precision ──────────────────────────
@@ -661,10 +662,12 @@ def _garment_mask(p: Pose, kind: str,
             # it, so the band still reached the arms' outer edge.
             occ_src = cv2.bitwise_and(occ_src, cv2.bitwise_not(not_garment))
         elif kind in ("lower", "shoes"):
-            for ids in ((2, 3, 4), (5, 6, 7)):
-                ch = [pts[i] for i in ids if pts[i]]
-                for a, b in zip(ch, ch[1:]):
-                    cv2.line(occ_src, a, b, 0, max(12, round(span * 0.085)))
+            # NO BASE FRAME TO SAMPLE, so geometry is all there is: tapered capsules
+            # over both arms (kinematic.arm_shield) instead of a line of fixed
+            # thickness. Same intent, better shape — radii come from the forearm's own
+            # length, so they scale with the subject rather than with the frame, and
+            # the shoulder end is wider than the wrist end the way an arm is.
+            occ_src = apply_kinematic_shield(occ_src, pts)
         # MEASURE IT ACROSS THE WHOLE BAND, INCLUDING THE HIPS. Skipping the upper
         # third was a way to keep the merged arms out of the answer, and it worked —
         # but it also meant the widest part of a pair of trousers was never measured,
@@ -826,15 +829,10 @@ def _garment_mask(p: Pose, kind: str,
         # colour test does it exactly.
         pass
     elif kind in ("lower", "shoes"):
-        for ids in ((2, 3, 4), (5, 6, 7)):
-            chain = [pts[i] for i in ids if pts[i]]
-            for a, b in zip(chain, chain[1:]):
-                cv2.line(shield, a, b, 255, max(12, round(span * 0.085)))
-            if pts[ids[2]]:
-                # A fist is wider than the wrist joint the keypoint marks, and
-                # nothing below the waist is ever in front of it — so this radius
-                # can be generous without costing anything a garment needs.
-                cv2.circle(shield, pts[ids[2]], max(14, round(span * 0.085)), 255, -1)
+        # Same fallback, same reason: the capsules carry the hand disc too, placed
+        # PAST the wrist along the forearm's direction rather than centred on the
+        # joint, which is where a fist actually is.
+        shield = cv2.bitwise_or(shield, arm_shield((h, w), pts))
     else:
         skin_ref = None
         if person is not None:
