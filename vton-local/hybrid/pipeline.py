@@ -732,16 +732,21 @@ def _garment_mask(p: Pose, kind: str,
     # fist — the known lesser evil; the real cure for that pose is the minimal
     # base. The upper slot keeps the skin-tested hand disc: a sleeve may
     # legitimately cover any part of the arm, so only the hand is carved there.
-    shield = None
+    # ONE ACCUMULATOR FOR EVERYTHING THAT MUST STAY OUT. Whatever is subtracted
+    # here is subtracted AGAIN after the feather — the Gaussian bleeds masked
+    # values back into any hole punched before it, and that is not a detail: with
+    # the arm shield it painted a denim ring around each fist, and with the hand
+    # disc it painted the tee's own fill colour there (measured by attributing the
+    # change per step: the UPPER pass altered 1100-1700 px around each hand in
+    # exactly its fill colour). Same class, two slots, one place to fix it.
+    shield = np.zeros((h, w), np.uint8)
     if kind in ("lower", "shoes"):
-        shield = np.zeros((h, w), np.uint8)
         for ids in ((2, 3, 4), (5, 6, 7)):
             chain = [pts[i] for i in ids if pts[i]]
             for a, b in zip(chain, chain[1:]):
                 cv2.line(shield, a, b, 255, max(12, round(span * 0.085)))
             if pts[ids[2]]:
                 cv2.circle(shield, pts[ids[2]], max(12, round(span * 0.07)), 255, -1)
-        mask[shield > 0] = 0
     else:
         skin_ref = None
         if person is not None:
@@ -764,10 +769,11 @@ def _garment_mask(p: Pose, kind: str,
                 grow = max(3, round(span * 0.006)) | 1
                 disc = cv2.bitwise_and(disc, cv2.dilate(
                     (near.astype(np.uint8) * 255), np.ones((grow, grow), np.uint8)))
-            mask[disc > 0] = 0
+            shield = cv2.bitwise_or(shield, disc)
 
+    mask[shield > 0] = 0
     mask = cv2.GaussianBlur(mask, (k | 1, k | 1), 0)
-    if shield is not None:
+    if True:
         # SUBTRACT THE ARM SHIELD AGAIN, AFTER THE FEATHER. It was cut out of the
         # binary mask, but the Gaussian feather (k≈29) bleeds masked values ~15px
         # back INTO the shield — so the sampler painted a faint denim ring around
