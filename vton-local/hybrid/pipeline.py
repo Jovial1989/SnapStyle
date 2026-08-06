@@ -603,7 +603,17 @@ def _garment_mask(p: Pose, kind: str,
                 ch = [pts[i] for i in ids if pts[i]]
                 for a, b in zip(ch, ch[1:]):
                     cv2.line(occ_src, a, b, 0, max(12, round(span * 0.085)))
-        band = occ_src[max(0, int(y0)):int(y1) + 1]
+        # MEASURE THE WIDENING WHERE LEGS ARE, NOT WHERE HANDS ARE. The widening
+        # exists so the far ankle is not clipped, and the ankle is at the BOTTOM of
+        # the band — but taken across the whole band it also picked up the hip rows,
+        # where MediaPipe's matte merges the hanging arms into the torso blob. The
+        # band then reached the arms' outer edge, the warp filled that with denim,
+        # and the render grew two flat blue slabs sticking out at hip level with a
+        # straight vertical cut (the hands survived on top, being shielded, which is
+        # why this read as "hooks around the fists"). Rows below the upper third of
+        # the band answer the ankle question and contain no hands.
+        row_lo = int(y0 + (y1 - y0) * 0.35) if kind in ("lower", "shoes") else int(y0)
+        band = occ_src[max(0, row_lo):int(y1) + 1]
         occupied = np.flatnonzero(band.any(axis=0)) if band.size else np.array([])
         if occupied.size:
             x0 = min(x0, max(0, int(occupied[0] - pad)))
