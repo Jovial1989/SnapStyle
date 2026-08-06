@@ -205,15 +205,20 @@ def render(job: dict) -> str:
         # read as a soft dissolve, and when the hem was made crisp it became a hard
         # grey bar — same cause, two symptoms, and I spent a pass blaming the mask.
         #
-        # The delta form has no such term: where a layer did not paint, img - base is
-        # zero and it contributes nothing; where it did, the change lands at full
-        # strength. Layers still compose in Z order, since two deltas over the same
-        # pixel add in the order applied.
+        # The fix is NOT to add deltas instead — measured, and it is worse in a way
+        # worth recording: at the waist the tee's hem and the trousers' waistband both
+        # paint, so two deltas over one pixel sum to (yellow - grey) + (denim - grey)
+        # and the belt line came back gold and metallic. Blending is right; the alpha
+        # was wrong. So the alpha is corrected to what it claimed to be — where the
+        # layer ACTUALLY changed something — and the blend is left alone. In an
+        # overlap the later layer still wins outright, which is what Z order means.
         base_f = np.array(current.convert("RGB"))[:, :, ::-1].astype(np.float32)
         out = base_f.copy()
         for img, cover in layers:
-            a = (cover.astype(np.float32) / 255.0)[:, :, None]
-            out += (img.astype(np.float32) - base_f) * a
+            f = img.astype(np.float32)
+            touched = np.abs(f - base_f).max(axis=2) > 6.0
+            a = ((cover.astype(np.float32) / 255.0) * touched)[:, :, None]
+            out = f * a + out * (1.0 - a)
         current = Image.fromarray(
             np.clip(out, 0, 255).astype(np.uint8)[:, :, ::-1])
 
