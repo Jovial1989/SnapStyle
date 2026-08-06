@@ -215,9 +215,15 @@ export function slotOf(category: string | undefined | null): Slot | null {
   }
 }
 
-/** Dressing order matters: an outer layer must be painted after the torso piece
- *  it covers, and shoes last so the trouser hem is already final. */
-const ORDER: Record<Slot, number> = { full: 0, upper: 1, lower: 2, shoes: 3 };
+/** Dressing order matters, and UPPER GOES AFTER LOWER — measured both ways on
+ *  the same look at a fixed seed. With the trousers painted last, the waistband
+ *  repainted the tee's hem and left a hard blue band across the waist (the
+ *  defect chased across three phone sessions). With the top painted last its hem
+ *  drapes OVER the waistband, which is how an untucked shirt actually hangs, and
+ *  the band is gone. The earlier pre-warp test that favoured upper-first is
+ *  obsolete: back then the sampler invented both garments, now the warp pins
+ *  them. Shoes stay last so the trouser hem is final before footwear. */
+const ORDER: Record<Slot, number> = { full: 0, lower: 1, upper: 2, shoes: 3 };
 
 export function sortSteps(steps: DressStep[]): DressStep[] {
   return [...steps].sort((a, b) => ORDER[a.kind] - ORDER[b.kind]);
