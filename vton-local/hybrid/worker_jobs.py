@@ -193,10 +193,27 @@ def render(job: dict) -> str:
         print(f"  step {i + 1}/{len(steps)} {kind}", flush=True)
 
     if layers:
-        out = np.array(current.convert("RGB"))[:, :, ::-1].astype(np.float32)
+        # EACH LAYER CONTRIBUTES ITS DELTA FROM THE BASE, NOT ITS WHOLE FRAME.
+        #
+        # Every layer is rendered against the same clean x0, so OUTSIDE its own mask a
+        # layer's frame is byte-for-byte the base — including the base's grey basics.
+        # Blending the frames (img*a + out*(1-a)) therefore drags those grey pixels
+        # back over what earlier layers painted wherever a < 1, and a < 1 is exactly
+        # the feathered rim of every mask. That is the grey haze under the tee's hem
+        # and at the waist: not the base showing through a gap, but the top layer
+        # actively painting the base over the trousers across 29 px of feather. It
+        # read as a soft dissolve, and when the hem was made crisp it became a hard
+        # grey bar — same cause, two symptoms, and I spent a pass blaming the mask.
+        #
+        # The delta form has no such term: where a layer did not paint, img - base is
+        # zero and it contributes nothing; where it did, the change lands at full
+        # strength. Layers still compose in Z order, since two deltas over the same
+        # pixel add in the order applied.
+        base_f = np.array(current.convert("RGB"))[:, :, ::-1].astype(np.float32)
+        out = base_f.copy()
         for img, cover in layers:
             a = (cover.astype(np.float32) / 255.0)[:, :, None]
-            out = img.astype(np.float32) * a + out * (1.0 - a)
+            out += (img.astype(np.float32) - base_f) * a
         current = Image.fromarray(
             np.clip(out, 0, 255).astype(np.uint8)[:, :, ::-1])
 
