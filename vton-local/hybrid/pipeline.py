@@ -689,6 +689,32 @@ def _garment_mask(p: Pose, kind: str,
     box = np.zeros((h, w), np.uint8)
     box[max(0, int(y0)):int(y1) + 1, x0:x1 + 1] = 255
 
+    # REACH THE OLD GARMENT'S OWN COLLAR, wherever it happens to be. The band's top is
+    # a constant — the shoulder line less 4.5% of the figure — and a constant cannot
+    # know where the thing being replaced ends. Measured on the demo base: the basics'
+    # neutral pixels start at row 232 and ride higher over the shoulder slope, while
+    # the band starts at 238, so a sliver of the old top survived every render. In the
+    # output it is 187 px at rows 225-250, x 452-482, unchanged from the base
+    # ([162,164,162] in, [161,167,166] out) — the grey rim beside the neck.
+    #
+    # Raising the constant instead was tried and is recorded above: at 7% the band
+    # reaches the throat and the sampler reads that as garment, painting a mock-neck up
+    # to the chin. So this extends UPWARD ONLY, and only over pixels that actually look
+    # like the neutral basics, which the throat does not. The chin can never be reached
+    # because the cap sits a third of the way down from the nose.
+    if kind in ("upper", "full") and person is not None:
+        ycc_b = cv2.cvtColor(person, cv2.COLOR_BGR2YCrCb)
+        neutral = ((np.abs(ycc_b[:, :, 1].astype(np.int16) - 128) < 7)
+                   & (np.abs(ycc_b[:, :, 2].astype(np.int16) - 128) < 7)
+                   & (ycc_b[:, :, 0] > 110) & (ycc_b[:, :, 0] < 225))
+        worn = cv2.bitwise_and((neutral.astype(np.uint8) * 255), p.silhouette)
+        nose = pts[0][1] if pts[0] else None
+        cap = int(nose + (shoulder - nose) * 0.35) if nose else int(shoulder - span * 0.05)
+        lo = max(0, cap, int(y0) - int(span * 0.10))
+        strip = np.zeros((h, w), np.uint8)
+        strip[lo:int(y0), x0:x1 + 1] = 255
+        box = cv2.bitwise_or(box, cv2.bitwise_and(worn, strip))
+
     # ARM CORRIDOR. A torso band ending at hip+10% CUTS ACROSS THE ARMS, so a
     # sleeve hanging past that line sits OUTSIDE the repaint zone. Swapping a
     # sleeved top for a sleeveless one then left the old sleeves on the body and
