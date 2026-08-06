@@ -1338,6 +1338,27 @@ class HybridVTONPipeline:
                   fill.tolist() if hasattr(fill, "tolist") else fill,
                   edges_wiped, os.getenv("VTON_SHADING", "1.0")), flush=True)
 
+        # TENSOR DUMP, at the last moment before the sampler sees anything. Every
+        # question about "what did we actually feed it" has been answered here by
+        # argument until now, and argument has been wrong twice. VTON_DUMP=<dir>
+        # writes the four arrays that decide the render, named by slot so a
+        # three-layer look does not overwrite itself.
+        dump = os.getenv("VTON_DUMP")
+        if dump:
+            os.makedirs(dump, exist_ok=True)
+            cv2.imwrite(f"{dump}/{kind}_garment_cond.jpg",
+                        np.array(garment.convert("RGB"))[:, :, ::-1])
+            cv2.imwrite(f"{dump}/{kind}_init_image.jpg", init)
+            cv2.imwrite(f"{dump}/{kind}_canny_map.jpg", control_canny)
+            cv2.imwrite(f"{dump}/{kind}_mask.jpg", mask_full)
+            if warped is not None:
+                cv2.imwrite(f"{dump}/{kind}_warped.jpg", warped.image)
+            print(f"[dump] {kind} -> {dump} ; init std={float(init[mask_full > 20].std()):.1f} "
+                  f"canny_on={int((control_canny[:, :, 0] > 0).sum())} "
+                  f"strength={WARP_STRENGTH if warped is not None else float(os.getenv('VTON_STRENGTH', '0.99'))} "
+                  f"ip_scale={ip_scale if ip_scale is not None else 'default'} "
+                  f"steps={steps or STEPS} cfg={os.getenv('VTON_CFG', '6.5')}", flush=True)
+
         init_s = _to_pil(init[:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS)
         mask_s = Image.fromarray(mask_full).resize((WORK_W, WORK_H), Image.LANCZOS)
         pose_s = _to_pil(control_pose).resize((WORK_W, WORK_H), Image.LANCZOS)
