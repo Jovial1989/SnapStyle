@@ -1259,8 +1259,23 @@ class HybridVTONPipeline:
             # true when the zone held nothing but a flat fill. Now it holds the
             # actual garment, and its seams, hem and print boundaries are exactly
             # the structure we want denoising to keep rather than smooth away.
-            w_edges = cv2.Canny(cv2.bilateralFilter(
-                cv2.cvtColor(init, cv2.COLOR_BGR2GRAY), 7, 60, 60), 80, 170)
+            # EDGES IN COLOUR, NOT IN GREY. Dumped and counted: on a white-on-yellow
+            # print the Canny map came back essentially empty inside the garment — the
+            # figure's outline and the face, and nothing else — because that print is
+            # nearly ISOLUMINANT. Grey levels around 200 against 185 carry no gradient
+            # worth a threshold, while in chroma the same boundary is unmistakable. So
+            # the ControlNet was given no structure at all exactly where the structure
+            # is, which is a fair share of why a printed tee arrives flat: there was
+            # nothing telling the sampler where the print ends and the fold begins.
+            #
+            # Lab, and all three channels unioned: L keeps what grey already found,
+            # a and b catch every boundary that is a change of colour rather than of
+            # brightness. Bilateral first, on the colour image, so micro-noise is
+            # suppressed without softening the boundaries this exists to find.
+            lab = cv2.cvtColor(cv2.bilateralFilter(init, 7, 60, 60), cv2.COLOR_BGR2LAB)
+            w_edges = np.zeros(lab.shape[:2], np.uint8)
+            for ch, (lo, hi) in zip(cv2.split(lab), ((80, 170), (24, 60), (24, 60))):
+                w_edges = cv2.bitwise_or(w_edges, cv2.Canny(ch, lo, hi))
             w_edges[warped.mask == 0] = 0
             control_canny = cv2.cvtColor(cv2.bitwise_or(edges, w_edges),
                                          cv2.COLOR_GRAY2RGB)
