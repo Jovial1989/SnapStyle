@@ -411,6 +411,25 @@ def _quad_warp(garment: np.ndarray, sil: np.ndarray, src: np.ndarray,
     poly = np.zeros(sil.shape, np.uint8)
     cv2.fillConvexPoly(poly, src.astype(np.int32), 255)
     part = cv2.bitwise_and((sil > 0).astype(np.uint8) * 255, poly)
+
+    # A HOLE IN THE FLAT-LAY IS NOT A HOLE IN THE OUTFIT. The gap between a pair of
+    # trousers' legs is background in the photograph, so it was background in the
+    # silhouette, so it punched a hole in what got laid down — and on a body whose
+    # legs are together that hole lands ON the leg, showing the base through it as a
+    # thin pale line down each outer seam. Same class for the gap inside a folded
+    # sleeve. The garment's OUTER contour is what carries its shape; interior gaps
+    # are an artefact of how it was photographed, and the slot mask still confines
+    # everything to the body, so filling them cannot paint past the figure.
+    cnts, _ = cv2.findContours(part, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if cnts:
+        cv2.drawContours(part, cnts, -1, 255, cv2.FILLED)
+    # And drop the outline itself. warpPerspective interpolates the IMAGE bilinearly
+    # while the mask goes through nearest-neighbour, so the outermost pixels arrive
+    # blended with the studio white they were photographed against — a bright rim
+    # tracing every warped edge. Two source pixels is enough to lose it and far less
+    # than any garment feature.
+    er = max(2, int(round(min(part.shape) * 0.004))) | 1
+    part = cv2.erode(part, np.ones((er, er), np.uint8), iterations=1)
     img = cv2.warpPerspective(garment, m, (w, h), flags=cv2.INTER_LINEAR,
                               borderMode=cv2.BORDER_REPLICATE)
     msk = cv2.warpPerspective(part, m, (w, h), flags=cv2.INTER_NEAREST)
