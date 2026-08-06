@@ -908,6 +908,14 @@ class HybridVTONPipeline:
         # slow enough that the knob never got measured properly. The adapter's
         # scale is cheap to set on a live pipeline, so a job can carry its own.
         ip_scale: float | None = None,
+        # ONE GEOMETRY FOR THE WHOLE OUTFIT. Without this, every step re-reads
+        # pose and matte from the PREVIOUS step's output, so the upper and lower
+        # masks are computed on different pixel states and their boundaries need
+        # not agree — ∂M_upper(x0) ≠ ∂M_lower(x1), which is where the waist seam
+        # artefacts live. A job passes the pose it read once from the clean base
+        # and every slot's mask shares the same silhouette by construction. The
+        # person does not move between steps, so nothing is lost.
+        pose: Pose | None = None,
     ) -> Image.Image:
         avatar = _fix_exif(avatar).convert("RGB")
         garment = _fix_exif(garment).convert("RGB")
@@ -917,7 +925,8 @@ class HybridVTONPipeline:
 
         # A — geometry at the ORIGINAL resolution, so the mask lines up with
         # the pixels we composite back onto later.
-        pose = self.reader.read(full)
+        if pose is None:
+            pose = self.reader.read(full)
         # The flat-lay goes in as well: the mask is trimmed to THIS garment's cut
         # (hem, sleeve, width) rather than the whole slot band.
         mask_full = _garment_mask(pose, kind, np.array(garment)[:, :, ::-1], full)
