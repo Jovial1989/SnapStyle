@@ -715,10 +715,27 @@ def apply_shading(warped: np.ndarray, mask: np.ndarray, base: np.ndarray,
     k = (max(3, int(base.shape[0] * 0.10)) | 1)
     field = cv2.GaussianBlur(g, (k, k), 0)
     m = mask > 20
+    # NORMALISE PER ROW, NOT PER FIGURE. A single mean over the whole zone leaves
+    # every VERTICAL step in the field intact — and on a real base those steps are
+    # not the body, they are the OLD CLOTHES: a grey top against darker grey
+    # trousers puts a luminance edge across the waist, inside the mask of a tee that
+    # covers both. Measured the hard way: raising the strength to 2.0 drove that step
+    # into the clamp and printed it as a seam across the shirt, pale above and olive
+    # below with a ruler edge — reported from the phone, reverted the same hour.
+    #
+    # Dividing each row by its OWN mean removes exactly that and keeps exactly what
+    # shading is for. What is left is the left-to-right falloff, which is the body
+    # reading as a cylinder; what goes is every along-the-body change, which on this
+    # base is the wardrobe underneath. Rows the mask does not reach fall back to the
+    # zone mean so the arithmetic stays defined at the edges.
     mean = float(field[m].mean()) or 1.0
+    rows = np.where(m.any(axis=1),
+                    np.divide((field * m).sum(axis=1),
+                              np.maximum(m.sum(axis=1), 1)), mean)
+    rows[rows <= 1e-6] = mean
     # ±12%, not ±22%. Shading is meant to hint volume, and a deeper range lets any
     # residual structure in the field stamp itself onto flat fabric.
-    ratio = np.clip(field / mean, 0.88, 1.12)
+    ratio = np.clip(field / rows[:, None], 0.88, 1.12)
     ratio = 1.0 + (ratio - 1.0) * float(np.clip(strength, 0.0, 2.0))
     out = warped.astype(np.float32) * ratio[:, :, None]
     return np.where(m[:, :, None], np.clip(out, 0, 255), warped).astype(np.uint8)
