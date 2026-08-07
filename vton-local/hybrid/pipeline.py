@@ -1265,7 +1265,7 @@ class HybridVTONPipeline:
             # colour the warp exists to preserve stays exactly as it was.
             warped.image[:] = apply_shading(
                 warped.image, warped.mask, full,
-                float(os.getenv("VTON_SHADING", "1.0")))
+                float(os.getenv("VTON_SHADING", "2.0")))
             wm = (cv2.GaussianBlur(warped.mask, (9, 9), 0).astype(np.float32) / 255.0)
             init = np.clip(warped.image * wm[:, :, None] +
                            init * (1.0 - wm[:, :, None]), 0, 255).astype(np.uint8)
@@ -1368,7 +1368,7 @@ class HybridVTONPipeline:
                    "quad" if warped is not None else "none"),
                   ("%.0f%%" % (warped.coverage * 100)) if warped is not None else "-",
                   fill.tolist() if hasattr(fill, "tolist") else fill,
-                  edges_wiped, os.getenv("VTON_SHADING", "1.0")), flush=True)
+                  edges_wiped, os.getenv("VTON_SHADING", "2.0")), flush=True)
 
         # TENSOR DUMP, at the last moment before the sampler sees anything. Every
         # question about "what did we actually feed it" has been answered here by
