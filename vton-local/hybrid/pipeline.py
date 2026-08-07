@@ -344,6 +344,15 @@ def _nearest_fill(img: np.ndarray, have: np.ndarray) -> np.ndarray:
     plaid continues as plaid, and a plain garment gives back exactly what the mean
     would have given. Exact rather than iterated: the distance transform's label map
     already names the nearest source pixel for every position, so one pass does it.
+
+    BUT NEAREST REPEATS, AND A PATTERN NEEDS TO CONTINUE. Straight up from the warp's
+    top row, "nearest" is that row for every pixel above it — and if that row happens
+    to fall on a white stripe, the whole collar arrives as one flat white patch. Seen
+    immediately on the striped tee, in the region the previous fix had just rescued.
+    So above the fabric and below it, each column REFLECTS across its own boundary
+    instead: the rhythm carries on with the right period, which is what continuing a
+    pattern means. Sideways stays nearest, where repeating a column is correct — a
+    stripe runs that way. Anything the reflection cannot reach falls back to nearest.
     """
     src = (have > 0)
     if not src.any():
@@ -355,7 +364,26 @@ def _nearest_fill(img: np.ndarray, have: np.ndarray) -> np.ndarray:
     lut = np.zeros(int(labels.max()) + 1, np.int64)
     lut[labels[ys, xs]] = ys.astype(np.int64) * img.shape[1] + xs
     flat = lut[labels]
-    return img.reshape(-1, img.shape[2])[flat.ravel()].reshape(img.shape)
+    out = img.reshape(-1, img.shape[2])[flat.ravel()].reshape(img.shape)
+
+    h, w = src.shape
+    col_has = src.any(axis=0)
+    if not col_has.any():
+        return out
+    rows = np.arange(h)[:, None]
+    y_top = np.argmax(src, axis=0)[None, :]
+    y_bot = (h - 1 - np.argmax(src[::-1], axis=0))[None, :]
+    for zone, pivot in ((rows < y_top, y_top), (rows > y_bot, y_bot)):
+        zone = zone & col_has[None, :]
+        if not zone.any():
+            continue
+        mirror = np.clip(2 * pivot - rows, 0, h - 1)
+        take = np.take_along_axis(img, np.broadcast_to(
+            mirror[:, :, None], img.shape), axis=0)
+        valid = zone & np.take_along_axis(src, np.broadcast_to(mirror, src.shape),
+                                          axis=0)
+        out[valid] = take[valid]
+    return out
 
 
 def _garment_color(garment: np.ndarray) -> np.ndarray | None:
