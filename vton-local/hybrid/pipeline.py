@@ -1375,11 +1375,11 @@ class HybridVTONPipeline:
         # argument until now, and argument has been wrong twice. VTON_DUMP=<dir>
         # writes the four arrays that decide the render, named by slot so a
         # three-layer look does not overwrite itself.
+        dump = os.getenv("VTON_DUMP")
         pose_scale = POSE_SCALE if pose_scale is None else float(pose_scale)
         canny_scale = CANNY_SCALE if canny_scale is None else float(canny_scale)
         core_protect = CORE_PROTECT if core_protect is None else float(core_protect)
 
-        dump = os.getenv("VTON_DUMP")
         if dump:
             os.makedirs(dump, exist_ok=True)
             cv2.imwrite(f"{dump}/{kind}_garment_cond.jpg",
@@ -1509,7 +1509,17 @@ class HybridVTONPipeline:
             mx = float(d.max())
             if mx > 1e-6:
                 prot = np.clip((d / mx - 0.2) * 2.0, 0.0, 1.0) * core_protect
+                # Feathered, so the handover from source pixels to sampled ones is a
+                # gradient rather than a ring — a hard core edge is its own artefact.
+                prot = cv2.GaussianBlur(prot, (31, 31), 0)
                 prot = (prot * (alpha[:, :, 0] > 0.05))[:, :, None]
+                if dump:
+                    cv2.imwrite(f"{dump}/{kind}_core_mask.jpg",
+                                (prot[:, :, 0] * 255).astype(np.uint8))
+                    print(f"[core] {kind} protect={core_protect} "
+                          f"full={int((prot[:, :, 0] > 0.95).sum())}px "
+                          f"any={int((prot[:, :, 0] > 0.01).sum())}px "
+                          f"max={float(prot.max()):.2f}", flush=True)
                 blended = (warped.image[:, :, ::-1].astype(np.float32) * prot
                            + blended * (1.0 - prot))
 
