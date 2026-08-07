@@ -1362,6 +1362,40 @@ class HybridVTONPipeline:
                 near = _nearest_fill(warped.image, warped.mask)
                 fill_img[holes] = near[holes]
                 init[holes] = near[holes]
+
+            # BELOW THE HEM IS A LEG, NOT MORE FABRIC. For 'full' and 'lower' the band
+            # deliberately runs to the ankle whatever the garment measures, because the
+            # base wears full-length trousers and a dress or a pair of shorts needs the
+            # shins repainted rather than left grey. Continuing the fabric down there —
+            # which is what the fix above does everywhere else, correctly — dressed the
+            # legs in the garment: the polka-dot dress came back as a dress AND matching
+            # trousers AND matching shoes, measured on the wardrobe's own dress.
+            #
+            # So the extension stops at the hem and skin takes over. Sampled from the
+            # forearms, the only skin guaranteed bare on this base, and the sampler then
+            # has a leg-coloured region to turn into a leg instead of a garment-coloured
+            # one to keep as garment.
+            if kind in ("full", "lower"):
+                wm_any = (warped.mask > 0)
+                if wm_any.any():
+                    cols = wm_any.any(axis=0)
+                    hem = np.where(cols, wm_any.shape[0] - 1
+                                   - np.argmax(wm_any[::-1], axis=0),
+                                   int(np.flatnonzero(wm_any.any(axis=1))[-1]))
+                    rows_i = np.arange(wm_any.shape[0])[:, None]
+                    below = (rows_i > hem[None, :]) & (mask_full > 20)
+                    probe = np.zeros(mask_full.shape, np.uint8)
+                    for a_i, b_i in ((4, 3), (7, 6)):
+                        a_p, b_p = pose.pts[a_i], pose.pts[b_i]
+                        if a_p and b_p:
+                            cv2.line(probe, a_p, b_p, 255,
+                                     max(6, round(full.shape[0] * 0.012)))
+                    probe = cv2.bitwise_and(probe, pose.silhouette)
+                    probe[mask_full > 20] = 0
+                    if int(probe.sum()) and below.any():
+                        skin_c = [int(c) for c in cv2.mean(full, mask=probe)[:3]]
+                        fill_img[below] = skin_c
+                        init[below] = skin_c
             w_edges[warped.mask == 0] = 0
             control_canny = cv2.cvtColor(cv2.bitwise_or(edges, w_edges),
                                          cv2.COLOR_GRAY2RGB)
