@@ -49,6 +49,31 @@ class Warped:
     coverage: float
 
 
+def _coverage(mask: np.ndarray, slot_mask: np.ndarray) -> float:
+    """How much of the band the warp filled — over the ROWS IT CLAIMS, not all of them.
+
+    The band for a dress or a pair of shorts deliberately runs to the ankle, because the
+    base wears full-length trousers and the shins have to be repainted rather than left
+    grey. Measured against that whole band, a mini dress can never score well: it covered
+    its own rows completely and still came out at 0.31, under the 0.35 gate, so a correct
+    warp was thrown away and the sampler invented a dress from the prompt — which it did
+    across the entire band, giving a dress plus matching trousers plus matching shoes.
+    That is the wardrobe's own polka-dot dress, measured.
+
+    Restricting the denominator to the warp's own row span asks the question the gate
+    actually wants answered: within the part of the body this garment claims, did its
+    pixels arrive? A garment that covers half the band and fills that half is a success;
+    one that covers half the band and fills a tenth of it is not, and still fails.
+    """
+    got = (mask > 0)
+    if not got.any():
+        return 0.0
+    rows = np.flatnonzero(got.any(axis=1))
+    band = (slot_mask[rows[0]:rows[-1] + 1] > 20)
+    denom = max(1, int(band.sum()))
+    return round(float(got.sum()) / denom, 3)
+
+
 def _panel(sil: np.ndarray, kind: str) -> tuple[int, int, int, int] | None:
     """The rectangle of the flat-lay that is the garment's BODY, not its sleeves.
 
@@ -167,8 +192,8 @@ def torso_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     mask = cv2.bitwise_and(mask, pose.silhouette)
     if not mask.any():
         return None
-    cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
-    return Warped(image=img, mask=mask, coverage=round(cov, 3))
+    cov = _coverage(mask, slot_mask)
+    return Warped(image=img, mask=mask, coverage=cov)
 
 def piecewise_affine(src: np.ndarray, src_pts: np.ndarray, dst_pts: np.ndarray,
                      shape: tuple[int, int]) -> tuple[np.ndarray, np.ndarray]:
@@ -393,8 +418,8 @@ def mesh_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     mask = cv2.bitwise_and(filled, (slot_mask > 20).astype(np.uint8) * 255)
     if not mask.any():
         return None
-    cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
-    return Warped(image=img, mask=mask, coverage=round(cov, 3))
+    cov = _coverage(mask, slot_mask)
+    return Warped(image=img, mask=mask, coverage=cov)
 
 
 def _quad_warp(garment: np.ndarray, sil: np.ndarray, src: np.ndarray,
@@ -574,8 +599,8 @@ def parts_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     mask = cv2.bitwise_and(filled, (slot_mask > 20).astype(np.uint8) * 255)
     if not mask.any():
         return None
-    cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
-    return Warped(image=out, mask=mask, coverage=round(cov, 3))
+    cov = _coverage(mask, slot_mask)
+    return Warped(image=out, mask=mask, coverage=cov)
 
 
 def shoes_warp(garment: np.ndarray, sil: np.ndarray, pose,
@@ -683,8 +708,8 @@ def shoes_warp(garment: np.ndarray, sil: np.ndarray, pose,
     mask = cv2.bitwise_and(filled, (slot_mask > 20).astype(np.uint8) * 255)
     if not mask.any():
         return None
-    cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
-    return Warped(image=out, mask=mask, coverage=round(cov, 3))
+    cov = _coverage(mask, slot_mask)
+    return Warped(image=out, mask=mask, coverage=cov)
 
 
 def apply_shading(warped: np.ndarray, mask: np.ndarray, base: np.ndarray,
@@ -834,8 +859,8 @@ def tps_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     mask = cv2.bitwise_and(msk, (slot_mask > 20).astype(np.uint8) * 255)
     if not mask.any():
         return None
-    cov = float((mask > 0).sum()) / max(1, int((slot_mask > 20).sum()))
-    return Warped(image=out, mask=mask, coverage=round(cov, 3))
+    cov = _coverage(mask, slot_mask)
+    return Warped(image=out, mask=mask, coverage=cov)
 
 
 def harmonise_poisson(init: np.ndarray, warped: np.ndarray, mask: np.ndarray,
