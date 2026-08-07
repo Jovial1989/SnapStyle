@@ -329,6 +329,35 @@ def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
     return (lab == best).astype(np.uint8)
 
 
+def _nearest_fill(img: np.ndarray, have: np.ndarray) -> np.ndarray:
+    """Every pixel takes the colour of the NEAREST pixel we actually have.
+
+    A MEAN COLOUR IS A LIE ABOUT A PATTERN. The flat fill exists so that a region the
+    sampler declines to paint reads as a plain piece of the new garment rather than as
+    the old one — and for a plain garment that is exactly right. For a black-and-white
+    striped tee the mean is MID GREY, which is precisely the colour of the basics
+    underneath, so the one region the fill was invented to rescue came back looking
+    like the thing it was hiding: a grey slab across the shoulders above the stripes.
+    Measured on the wardrobe's striped tee, whose flat-lay carries 13.4% edge density.
+
+    Nearest-neighbour extension has no such failure. Stripes continue as stripes, a
+    plaid continues as plaid, and a plain garment gives back exactly what the mean
+    would have given. Exact rather than iterated: the distance transform's label map
+    already names the nearest source pixel for every position, so one pass does it.
+    """
+    src = (have > 0)
+    if not src.any():
+        return img
+    inp = np.where(src, 0, 255).astype(np.uint8)
+    _, labels = cv2.distanceTransformWithLabels(inp, cv2.DIST_L2, 3,
+                                                labelType=cv2.DIST_LABEL_PIXEL)
+    ys, xs = np.nonzero(src)
+    lut = np.zeros(int(labels.max()) + 1, np.int64)
+    lut[labels[ys, xs]] = ys.astype(np.int64) * img.shape[1] + xs
+    flat = lut[labels]
+    return img.reshape(-1, img.shape[2])[flat.ravel()].reshape(img.shape)
+
+
 def _garment_color(garment: np.ndarray) -> np.ndarray | None:
     """The garment's own average colour. See the fill note in `generate`."""
     sil = _flatlay_silhouette(garment)
@@ -1293,6 +1322,18 @@ class HybridVTONPipeline:
             w_edges = np.zeros(lab.shape[:2], np.uint8)
             for ch, (lo, hi) in zip(cv2.split(lab), ((80, 170), (24, 60), (24, 60))):
                 w_edges = cv2.bitwise_or(w_edges, cv2.Canny(ch, lo, hi))
+
+            # AND WHERE THE WARP DID NOT REACH, CONTINUE THE FABRIC instead of the mean.
+            # See _nearest_fill: the mean of a black-and-white stripe is mid grey, which
+            # is the colour of the basics underneath, so the flat fill handed back the
+            # very thing it exists to hide. This replaces it inside the mask only where
+            # the warp has nothing to say, and it feeds BOTH the init the sampler starts
+            # from and the fallback the composite lands on, so the two cannot disagree.
+            holes = (mask_full > 20) & (warped.mask == 0)
+            if holes.any():
+                near = _nearest_fill(warped.image, warped.mask)
+                fill_img[holes] = near[holes]
+                init[holes] = near[holes]
             w_edges[warped.mask == 0] = 0
             control_canny = cv2.cvtColor(cv2.bitwise_or(edges, w_edges),
                                          cv2.COLOR_GRAY2RGB)
