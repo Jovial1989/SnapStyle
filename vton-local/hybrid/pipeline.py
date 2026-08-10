@@ -1825,10 +1825,20 @@ class HybridVTONPipeline:
                 continue
             total = sum(math.hypot(b[0] - a[0], b[1] - a[1])
                         for a, b in zip(chain, chain[1:]))
-            _, rest = _split(chain, total * 0.30)
+            # FROM NEAR THE HIP, AND AS WIDE AS THE LEG ACTUALLY IS. Starting 30% down
+            # and drawing a line 8.5% of the figure thick gave zones of 18k and 15k px
+            # — a quarter of the leg — and the pass duly failed: too little of the
+            # trouser was inside the zone for anything but trouser to come back.
+            # Measured against the flood that DID work inside a render, which covered
+            # 63k px. The silhouette knows each row's real width; a constant cannot.
+            _, rest = _split(chain, total * 0.12)
             m = np.zeros((h, w), np.uint8)
             for a, b in zip(rest, rest[1:]):
-                cv2.line(m, a, b, 255, max(10, round(span * 0.085)))
+                row = int(np.clip((a[1] + b[1]) / 2.0, 0, h - 1))
+                occ = np.flatnonzero(pose.silhouette[row] > 20)
+                thick = (max(20, int((occ[-1] - occ[0]) * 0.55)) if occ.size
+                         else max(10, round(span * 0.085)))
+                cv2.line(m, a, b, 255, thick)
             m = cv2.bitwise_and(m, pose.silhouette)
             ankle = pts[ids[2]]
             if ankle:      # the shoe stays; a foot is not a leg
@@ -1975,7 +1985,24 @@ class HybridVTONPipeline:
                 by0, by1 = max(0, by0 - need // 2), min(h - 1, by1 + need - need // 2)
 
             init = full.copy()
-            init[mask > 20] = col
+            # SHADED FLOOD, not a flat one. A single colour was what this pass fed the
+            # sampler, and the sampler kept it: measured in a render, a flat skin fill
+            # came back as flat salmon trousers (skin-like 3% → 98% while texture fell
+            # 8.57 → 2.59 — correctly coloured, still a slab). Multiplying by the base's
+            # own row-normalised luminance costs nothing and gives the region the body's
+            # light, so there is something for denoising to build anatomy on.
+            zone_b = (mask > 20)
+            grey_b = cv2.cvtColor(full, cv2.COLOR_BGR2GRAY).astype(np.float32)
+            kb = (max(3, int(full.shape[0] * 0.10)) | 1)
+            blur_b = cv2.GaussianBlur(grey_b, (kb, kb), 0)
+            mean_b = float(blur_b[zone_b].mean()) or 1.0
+            rows_b = np.where(zone_b.any(axis=1),
+                              np.divide((blur_b * zone_b).sum(axis=1),
+                                        np.maximum(zone_b.sum(axis=1), 1)), mean_b)
+            rows_b[rows_b <= 1e-6] = mean_b
+            field_b = np.clip(blur_b / rows_b[:, None], 0.88, 1.12)
+            init[zone_b] = np.clip(np.array(col, np.float32)[None, :]
+                                   * field_b[zone_b][:, None], 0, 255)
             sub = (slice(by0, by1 + 1), slice(bx0, bx1 + 1))
             cm = mask[sub]
             grey = cv2.cvtColor(full, cv2.COLOR_BGR2GRAY)
