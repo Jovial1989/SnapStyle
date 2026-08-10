@@ -1807,7 +1807,19 @@ class HybridVTONPipeline:
         # where the layer may write at all; the halo lives in how the FEATHER is built
         # inside _garment_mask, and that is where an asymmetric ramp belongs — applied
         # there it cannot also shrink the region the layer owns.
-        m = mask_full.astype(np.float32) / 255.0
+        # THE HALO IS ALPHA OUTSIDE THE BODY, so that is the only place to cut. Eroding
+        # the mask itself was tried and reverted: the same array is the fallback's and
+        # the core's authority, so shrinking it returned the BASE in an 11px band round
+        # the whole contour — a flat rectangle of a tee with jeans down both flanks.
+        #
+        # Clipping the ALPHA to the figure plus a few pixels leaves every decision inside
+        # the body untouched and removes the only pixels that could glow: ones painted
+        # where there is no body. The allowance stays because fabric does drape past
+        # flesh — a coat's shoulder, a sleeve's fall — just not by 25px of soft light.
+        halo_k = max(3, int(round(full.shape[0] * 0.008))) | 1
+        near_body = cv2.dilate(pose.silhouette,
+                               np.ones((halo_k, halo_k), np.uint8)) > 0
+        m = (mask_full.astype(np.float32) / 255.0) * near_body
         alpha = (m * (drew.astype(np.float32) / 255.0))[:, :, None]
 
         # WHAT TO FALL BACK TO depends on where we are in the mask. At the
