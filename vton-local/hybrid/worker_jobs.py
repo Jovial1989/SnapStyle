@@ -241,8 +241,8 @@ def render(job: dict) -> str:
     # VTON_OSD_BURN=1 the frame states what produced it, so the question stops being a
     # matter of opinion. Turn it off before anything goes near a demo.
     if os.getenv("VTON_OSD_BURN") == "1":
-        from pipeline import (CANNY_SCALE, DUAL_CYL, SHOE_SEMANTIC, TPS_WARP,
-                              WARP_STRENGTH, apply_diagnostic_osd)
+        from pipeline import (CANNY_SCALE, DUAL_CYL, SHOE_SEMANTIC, STEPS as ENGINE_STEPS,
+                              TPS_WARP, WARP_STRENGTH, apply_diagnostic_osd)
         frame = np.array(current.convert("RGB"))[:, :, ::-1].copy()
         frame = apply_diagnostic_osd(frame, {
             "TPS": "ON" if TPS_WARP else "OFF",
@@ -250,7 +250,12 @@ def render(job: dict) -> str:
             "SHOE": "SEM" if SHOE_SEMANTIC else "WARP",
             "SHADING": os.getenv("VTON_SHADING", "2.0"),
             "STR": f"{WARP_STRENGTH}", "CANNY": f"{CANNY_SCALE}",
-            "STEPS": str(len(steps)),
+            # LAYERS, not sampler steps. Calling this "STEPS" read as a 3-step diffusion
+            # pass and sent us hunting a debug flag that never existed: it is the number
+            # of GARMENT layers in the job — top, bottom, shoes. The sampler's own count
+            # is beside it now, from the engine's constant, so the two can never be
+            # confused again. A label that can be misread will be.
+            "LAYERS": str(len(steps)), "NSTEP": os.getenv("VTON_STEPS", str(ENGINE_STEPS)),
         })
         current = Image.fromarray(frame[:, :, ::-1])
 
