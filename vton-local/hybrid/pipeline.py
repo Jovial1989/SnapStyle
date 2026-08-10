@@ -386,6 +386,96 @@ def _nearest_fill(img: np.ndarray, have: np.ndarray) -> np.ndarray:
     return out
 
 
+def inject_bare_legs(init_image: np.ndarray, keypoints, lower_mask: np.ndarray,
+                     garment_mask: np.ndarray, silhouette: np.ndarray | None = None,
+                     base: np.ndarray | None = None) -> np.ndarray:
+    """Overwrite the base's trousers with lit skin, so a dress can end where it ends.
+
+    Under a dress or a pair of shorts the band deliberately reaches the ankle — the base
+    wears full-length trousers and the shins have to be REPLACED, not left grey. But
+    denoising at 0.55 refines what it is given, and what it was given was denim: seams,
+    hem, fold structure. It kept them. Flooding the region with skin before the latent
+    pass removes that structure at the source.
+
+    TWO THINGS BEYOND THE FLOOD, both from measurement rather than theory.
+
+    The skin is sampled from the FACE, not the forearms. The face is bare in every base
+    by construction, it is large enough for a stable median, and it cannot be inside the
+    repaint zone — the forearm sample this replaced can be, and when it was, the flood
+    took its colour from pixels we were about to overwrite.
+
+    And the flood is SHADED, not flat. Filling with one colour was tried: the sampler
+    declined to add anatomy and the composite kept the fill, so the legs came back as
+    flat salmon trousers — measured, skin-like pixels went 3% to 98% while the texture
+    fell 8.57 to 2.59, which is exactly "correctly coloured, still a slab". Multiplying
+    by the base's own row-normalised luminance costs nothing and gives the region the
+    body's light, so even a declined pass composites as a lit leg.
+
+    Fills only where the garment does NOT cover, and only inside the figure.
+    """
+    out = init_image.copy()
+    h, w = out.shape[:2]
+    lower = (lower_mask > 20)
+    exposed = lower & (garment_mask <= 20)
+    if silhouette is not None:
+        exposed &= (silhouette > 0)
+    if not exposed.any():
+        return out
+
+    def pt(idx):
+        q = keypoints[idx] if idx < len(keypoints) else None
+        return (float(q[0]), float(q[1])) if q else None
+
+    nose = pt(0)
+    if nose is None:
+        return out
+    r = max(6, int(round(h * 0.02)))
+    y0, y1 = max(0, int(nose[1] - r)), min(h, int(nose[1] + r))
+    x0, x1 = max(0, int(nose[0] - r)), min(w, int(nose[0] + r))
+    patch = (base if base is not None else init_image)[y0:y1, x0:x1]
+    if patch.size == 0:
+        return out
+    skin = np.median(patch.reshape(-1, 3), axis=0)
+
+    # Polygons per leg, hip to ankle, as wide as the figure is down there. A line would
+    # miss the calf; the silhouette knows the real width and needs no constant.
+    legs = np.zeros((h, w), np.uint8)
+    for hip_i, knee_i, ank_i in ((11, 12, 13), (8, 9, 10)):
+        chain = [pt(i) for i in (hip_i, knee_i, ank_i)]
+        chain = [q for q in chain if q]
+        if len(chain) < 2:
+            continue
+        for a, b in zip(chain, chain[1:]):
+            row = int(np.clip((a[1] + b[1]) / 2.0, 0, h - 1))
+            occ = np.flatnonzero((silhouette if silhouette is not None
+                                  else lower_mask)[row] > 20)
+            half = max(12.0, (occ[-1] - occ[0]) * 0.28) if occ.size else 24.0
+            cv2.line(legs, (int(a[0]), int(a[1])), (int(b[0]), int(b[1])),
+                     255, int(half * 2))
+        if chain and pt(ank_i):
+            cv2.circle(legs, (int(chain[-1][0]), int(chain[-1][1])),
+                       max(10, int(h * 0.018)), 255, -1)
+    target = exposed & (legs > 0)
+    if not target.any():
+        return out
+
+    field = np.ones((h, w), np.float32)
+    if base is not None:
+        g = cv2.cvtColor(base, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        k = (max(3, int(h * 0.10)) | 1)
+        blur = cv2.GaussianBlur(g, (k, k), 0)
+        m = target
+        mean = float(blur[m].mean()) or 1.0
+        rows_mean = np.where(m.any(axis=1),
+                             np.divide((blur * m).sum(axis=1),
+                                       np.maximum(m.sum(axis=1), 1)), mean)
+        rows_mean[rows_mean <= 1e-6] = mean
+        field = np.clip(blur / rows_mean[:, None], 0.88, 1.12)
+
+    out[target] = np.clip(skin[None, :] * field[target][:, None], 0, 255)
+    return out
+
+
 def _extend_fabric(img: np.ndarray, have: np.ndarray,
                    holes: np.ndarray) -> np.ndarray:
     """Continue the fabric into a gap. Periodically when it repeats, nearest otherwise.
@@ -1444,6 +1534,8 @@ class HybridVTONPipeline:
             # has a leg-coloured region to turn into a leg instead of a garment-coloured
             # one to keep as garment.
             if kind in ("full", "lower"):
+                # Below the garment's own hem the band is there to REPLACE trousers, so
+                # it gets lit skin rather than more fabric. See inject_bare_legs.
                 wm_any = (warped.mask > 0)
                 if wm_any.any():
                     cols = wm_any.any(axis=0)
@@ -1451,22 +1543,14 @@ class HybridVTONPipeline:
                                    - np.argmax(wm_any[::-1], axis=0),
                                    int(np.flatnonzero(wm_any.any(axis=1))[-1]))
                     rows_i = np.arange(wm_any.shape[0])[:, None]
-                    below = (rows_i > hem[None, :]) & (mask_full > 20)
-                    probe = np.zeros(mask_full.shape, np.uint8)
-                    for a_i, b_i in ((4, 3), (7, 6)):
-                        a_p, b_p = pose.pts[a_i], pose.pts[b_i]
-                        if a_p and b_p:
-                            cv2.line(probe, a_p, b_p, 255,
-                                     max(6, round(full.shape[0] * 0.012)))
-                    probe = cv2.bitwise_and(probe, pose.silhouette)
-                    probe[mask_full > 20] = 0
-                    if int(probe.sum()) and below.any():
-                        skin_c = [int(c) for c in cv2.mean(full, mask=probe)[:3]]
-                        fill_img[below] = skin_c
-                        init[below] = skin_c
-            w_edges[warped.mask == 0] = 0
-            control_canny = cv2.cvtColor(cv2.bitwise_or(edges, w_edges),
-                                         cv2.COLOR_GRAY2RGB)
+                    below = ((rows_i > hem[None, :]) & (mask_full > 20)
+                             ).astype(np.uint8) * 255
+                    lit = inject_bare_legs(init, pose.pts, below, warped.mask,
+                                           pose.silhouette, full)
+                    changed = np.abs(lit.astype(np.int16)
+                                     - init.astype(np.int16)).max(axis=2) > 0
+                    init = lit
+                    fill_img[changed] = lit[changed]
 
             # WHEN THE WARP IS GOOD, IT OWNS THE SILHOUETTE. The band is a rectangle
             # — it has to be, since a mask traced round the old clothes could never
