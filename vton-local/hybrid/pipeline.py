@@ -110,7 +110,7 @@ TPS_WARP = os.getenv("VTON_TPS", "1") == "1"
 # Two cylinders for the legs, one solver each. Off until measured on a phone: the
 # single-cylinder version of the same idea looked fine in a metric and was visibly
 # wrong at full zoom, which is the whole reason this one starts behind a flag.
-DUAL_CYL = os.getenv("VTON_DUAL_CYL", "0") == "1"
+DUAL_CYL = os.getenv("VTON_DUAL_CYL", "1") == "1"
 POISSON = os.getenv("VTON_POISSON", "0") == "1"
 # Deformable parts — torso quad plus a quad per sleeve — is the right idea and is
 # NOT ready. Two measured attempts at warping sleeves (one mesh, one parts) both
