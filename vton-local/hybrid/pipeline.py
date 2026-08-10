@@ -1858,23 +1858,6 @@ class HybridVTONPipeline:
         # background reads as the figure bleeding. This is the halo that was chased
         # all day at the mask level: the mask was right, the fallback was not.
         core = np.clip((m - 0.85) / 0.15, 0.0, 1.0)
-        # NEVER BLEND WITH THE THING BEING REPLACED. The fallback is the photograph at the
-        # feathered edge and the garment's fill deep inside, and that is right except for
-        # one case: where the photograph IS the old garment. There the ramp mixed the new
-        # yellow with the basics' grey and produced an olive band down the flank and round
-        # the sleeve — the "dirty grey blending" seen at full zoom, and it sits INSIDE the
-        # body, which is why clipping the alpha outside it did not touch it.
-        #
-        # The old garment is identifiable on this base by its neutral chroma, the same test
-        # the collar extension uses. Wherever the base is that, the fallback becomes the
-        # fill regardless of depth in the mask, so an unpainted pixel reads as plain new
-        # garment instead of as a blend of both. Skin and background keep the photograph.
-        ycc_f = cv2.cvtColor(full, cv2.COLOR_BGR2YCrCb)
-        old_wear = ((np.abs(ycc_f[:, :, 1].astype(np.int16) - 128) < 8)
-                    & (np.abs(ycc_f[:, :, 2].astype(np.int16) - 128) < 8)
-                    & (ycc_f[:, :, 0] > 105) & (ycc_f[:, :, 0] < 230)
-                    & (pose.silhouette > 0))
-        core = np.maximum(core, old_wear.astype(np.float32))
         core = (core * (pose.silhouette > 0))[:, :, None]
         fallback = base * (1.0 - core) + fill_img.astype(np.float32) * core
         blended = gen_full * alpha + fallback * (1.0 - alpha)
