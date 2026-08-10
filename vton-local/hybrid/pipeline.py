@@ -1533,17 +1533,29 @@ class HybridVTONPipeline:
             # forearms, the only skin guaranteed bare on this base, and the sampler then
             # has a leg-coloured region to turn into a leg instead of a garment-coloured
             # one to keep as garment.
-            if kind in ("full", "lower"):
-                # Below the garment's own hem the band is there to REPLACE trousers, so
-                # it gets lit skin rather than more fabric. See inject_bare_legs.
+            # SKIN BELOW THE HEM IS FOR A DRESS, AND THE HEM IS ONE ROW.
+            #
+            # Two corrections, both from a regression that reached the phone. Taking the
+            # hem PER COLUMN meant any column where the warp happened to stop early —
+            # the gap between two trouser legs is full of them — flooded everything
+            # under it with skin, and a pair of jeans came back as one leg of denim and
+            # one bare leg. A hem is a line across a garment, not a per-column
+            # accident, so it is now the 85th percentile of where the warp actually
+            # ends: high enough to ignore a ragged edge, low enough to be the hem.
+            #
+            # And only for 'full'. Trousers reach the ankle by definition, so there is
+            # nothing below their hem to repaint; the flood there could only ever be a
+            # bug. Shorts and skirts want it and will get it through their own measured
+            # length, not by inference from a patchy warp.
+            if kind == "full":
                 wm_any = (warped.mask > 0)
                 if wm_any.any():
                     cols = wm_any.any(axis=0)
-                    hem = np.where(cols, wm_any.shape[0] - 1
-                                   - np.argmax(wm_any[::-1], axis=0),
-                                   int(np.flatnonzero(wm_any.any(axis=1))[-1]))
+                    ends = (wm_any.shape[0] - 1
+                            - np.argmax(wm_any[::-1], axis=0))[cols]
+                    hem_row = int(np.percentile(ends, 85)) if ends.size else 0
                     rows_i = np.arange(wm_any.shape[0])[:, None]
-                    below = ((rows_i > hem[None, :]) & (mask_full > 20)
+                    below = ((rows_i > hem_row) & (mask_full > 20)
                              ).astype(np.uint8) * 255
                     lit = inject_bare_legs(init, pose.pts, below, warped.mask,
                                            pose.silhouette, full)
