@@ -2042,16 +2042,32 @@ class HybridVTONPipeline:
             # only adds a colour the fill already carries. Turned down for the
             # pass and restored after, so a queued render is unaffected.
             pipe.set_ip_adapter_scale(0.2)
-            best, best_energy = None, None
+            # PICK THE MOST SKIN-LIKE, NOT THE SMOOTHEST. Choosing the minimum
+            # Laplacian was written to reject a ribbed arm, and on legs it did the
+            # opposite of its intent: a pair of trousers is SMOOTHER than a knee, so
+            # among three candidates the criterion reliably preferred the one that had
+            # not been repainted at all. Measured: the pass returned trouser three
+            # seeds running while its prompt, its zone and its flood were all correct.
+            #
+            # Skin has a warm chroma that fabric here does not, so the fraction of
+            # skin-chromatic pixels inside the zone answers "is this a limb" directly.
+            # Smoothness stays as the tie-break, since among two limbs the smoother one
+            # is the one without the ribbing artefact.
+            best, best_score = None, None
             for attempt in range(3):
                 res = self._bare_arm_pass(
                     pipe, init, mask, control_pose, edges, sub, cm, col,
                     None if seed is None else seed + attempt * 101, prompt, negative)
                 g = cv2.cvtColor(res, cv2.COLOR_BGR2GRAY)
                 energy = float(np.abs(cv2.Laplacian(g, cv2.CV_32F))[cm > 20].mean())
-                if best_energy is None or energy < best_energy:
-                    best, best_energy = res, energy
-                if skin_ref and energy <= skin_ref * 1.6:
+                ycc_r = cv2.cvtColor(res, cv2.COLOR_BGR2YCrCb)
+                warm = ((np.abs(ycc_r[:, :, 1].astype(np.int16) - 150) < 18)
+                        & (np.abs(ycc_r[:, :, 2].astype(np.int16) - 112) < 18))
+                frac = float(warm[cm > 20].mean())
+                score = (round(frac, 2), -energy)
+                if best_score is None or score > best_score:
+                    best, best_score = res, score
+                if frac > 0.6 and skin_ref and energy <= skin_ref * 1.6:
                     break
             pipe.set_ip_adapter_scale(float(os.getenv("VTON_IP_SCALE", "0.75")))
 
