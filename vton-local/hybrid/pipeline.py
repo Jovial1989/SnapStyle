@@ -1455,9 +1455,17 @@ class HybridVTONPipeline:
                         warped = parts_warp(
                             g_bgr, sil, pose, kind, mask_full,
                             g_met.get("sleeve_ratio"), _split)
-                    if TPS_WARP and kind != "shoes":
-                        # The flag exists to WEIGH tps against the quad, so it takes
-                        # precedence when set — and keeps the quad if it declines.
+                    if TPS_WARP and kind in ("upper", "full"):
+                        # UPPER BODY ONLY. A torso is one cylinder and the model fits it;
+                        # a pair of legs is TWO, and fitting one cylinder across the whole
+                        # hip span compresses the fabric toward the flanks and smears the
+                        # inseam into a bright band down the leg. Measured on the jeans:
+                        # peak brightness excess 173 with tps against 152 without, and on
+                        # screen the difference is not subtle — darker denim, a hard white
+                        # streak down one leg, a smeared edge on the other.
+                        #
+                        # The flag still takes precedence where it applies, and keeps the
+                        # quad if tps declines.
                         warped = tps_warp(g_bgr, sil, pose, kind, mask_full,
                                           wrap=float(os.getenv("VTON_TPS_WRAP", "1.0"))) or warped
                     if warped is None and MESH_WARP:
