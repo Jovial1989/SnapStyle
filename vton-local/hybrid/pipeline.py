@@ -1795,16 +1795,19 @@ class HybridVTONPipeline:
         # Blurred so the kept and repainted regions meet in a gradient rather than
         # a cut-out edge.
         drew = cv2.GaussianBlur((np.clip(drew, 0.0, 1.0) * 255).astype(np.uint8), (21, 21), 0)
-        # INWARD FEATHERING. The mask's own feather was applied by blurring it in place,
-        # which moves half the ramp OUTWARD — past the garment, onto the background —
-        # and that outward half is the glow: a soft rim of garment colour standing in the
-        # air beside a sleeve. Eroding by the blur's radius before the ramp is read puts
-        # the whole transition INSIDE the boundary, so the softness is on the cloth and
-        # the background is left alone. `reachable` already clipped the worst of it; this
-        # removes the mechanism rather than its symptom.
-        k_in = max(3, int(round(full.shape[0] * 0.010))) | 1
-        m = (cv2.erode(mask_full, np.ones((k_in, k_in), np.uint8))
-             .astype(np.float32) / 255.0)
+        # NO INWARD EROSION HERE. Eroding the mask before reading the composite ramp was
+        # tried to kill the halo and it did — background contamination fell 6477 px to
+        # 1833 — at a price that made the trade absurd: the erosion took 11 px off the
+        # WHOLE contour, and this same array is what the fallback and the core are read
+        # from, so that 11 px band came back as BASE. The tee arrived as a flat rectangle
+        # with hard vertical sides and the jeans showing down both flanks. Reported from
+        # the phone within minutes.
+        #
+        # The lesson is which array to touch. This one is the composite's authority on
+        # where the layer may write at all; the halo lives in how the FEATHER is built
+        # inside _garment_mask, and that is where an asymmetric ramp belongs — applied
+        # there it cannot also shrink the region the layer owns.
+        m = mask_full.astype(np.float32) / 255.0
         alpha = (m * (drew.astype(np.float32) / 255.0))[:, :, None]
 
         # WHAT TO FALL BACK TO depends on where we are in the mask. At the
