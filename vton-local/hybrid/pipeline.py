@@ -947,9 +947,18 @@ def _garment_mask(p: Pose, kind: str,
         worn = cv2.bitwise_and((neutral.astype(np.uint8) * 255), p.silhouette)
         nose = pts[0][1] if pts[0] else None
         cap = int(nose + (shoulder - nose) * 0.35) if nose else int(shoulder - span * 0.05)
+        # THE WHOLE BAND, NOT ONLY ABOVE IT. Extending upward fixed the collar (187 px
+        # of untouched base down to 5) and left the same defect on the SIDES: the base
+        # wears a tank, its armhole edge runs down the flank, and the mask stopped a
+        # hair short of it. Measured on this base: 755 px of the old garment inside the
+        # band and outside the mask, in a rim from y 221 to 600 — thin, and thin is
+        # exactly what a grey-olive line along a sleeve edge looks like on a phone.
+        #
+        # Bounded below by the band's own hem, so the base's trousers stay out of an
+        # upper slot's business, and above by the chin cap as before.
         lo = max(0, cap, int(y0) - int(span * 0.10))
         strip = np.zeros((h, w), np.uint8)
-        strip[lo:int(y0), x0:x1 + 1] = 255
+        strip[lo:min(h, int(y1) + 1), x0:x1 + 1] = 255
         box = cv2.bitwise_or(box, cv2.bitwise_and(worn, strip))
 
     # ARM CORRIDOR. A torso band ending at hip+10% CUTS ACROSS THE ARMS, so a
