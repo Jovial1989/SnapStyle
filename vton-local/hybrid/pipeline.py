@@ -111,6 +111,12 @@ TPS_WARP = os.getenv("VTON_TPS", "1") == "1"
 # single-cylinder version of the same idea looked fine in a metric and was visibly
 # wrong at full zoom, which is the whole reason this one starts behind a flag.
 DUAL_CYL = os.getenv("VTON_DUAL_CYL", "1") == "1"
+# SHOES BY SEMANTICS ONLY: no spatial warp, the adapter carries the identity, the pose
+# carries the orientation. A shoe is the one garment whose flat-lay and worn appearance
+# differ by a rotation in depth rather than by drape, and no 2D map can supply that.
+# Off until weighed against the `cover` warp, which measured 0.76 coverage and returns
+# the shoe's real colour and material.
+SHOE_SEMANTIC = os.getenv("VTON_SHOE_SEMANTIC", "0") == "1"
 POISSON = os.getenv("VTON_POISSON", "0") == "1"
 # Deformable parts — torso quad plus a quad per sleeve — is the right idea and is
 # NOT ready. Two measured attempts at warping sleeves (one mesh, one parts) both
@@ -1490,7 +1496,20 @@ class HybridVTONPipeline:
                         warped = parts_warp(
                             g_bgr, sil, pose, kind, mask_full,
                             g_met.get("sleeve_ratio"), _split)
-                    if DUAL_CYL and kind == "lower":
+                    if SHOE_SEMANTIC and kind == "shoes":
+                        # DELIBERATELY NO WARP. Leaving `warped` as None is the whole
+                        # branch: the fill path then floods the foot zone with the
+                        # garment's own median colour (a lighting and tone hint for the
+                        # VAE, nothing more), and the strength selector below already
+                        # reads 0.99 when there is no warp — full denoising, which is
+                        # what "hallucinate the perspective from scratch" requires.
+                        # Canny goes to zero because the flat-lay's outline is the wrong
+                        # geometry, and the adapter goes up because it becomes the only
+                        # carrier of what the shoe looks like.
+                        warped = None
+                        canny_scale = 0.0
+                        ip_scale = float(os.getenv("VTON_SHOE_IP", "0.8"))
+                    elif DUAL_CYL and kind == "lower":
                         # A LEG IS ITS OWN CYLINDER. Behind its own flag until it has
                         # been weighed against the quad on the phone, the way the torso's
                         # cylinder was — the single-cylinder version of this shipped and
