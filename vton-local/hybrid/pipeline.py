@@ -106,7 +106,7 @@ CANNY_SCALE = float(os.getenv("VTON_CANNY_SCALE", "0.45"))
 # source print, and which of those a given garment needs is a measurement, not a
 # guess — the pod was down when this landed, so nothing has weighed it yet.
 CORE_PROTECT = float(os.getenv("VTON_CORE_PROTECT", "0"))
-TPS_WARP = os.getenv("VTON_TPS", "0") == "1"
+TPS_WARP = os.getenv("VTON_TPS", "1") == "1"
 POISSON = os.getenv("VTON_POISSON", "0") == "1"
 # Deformable parts — torso quad plus a quad per sleeve — is the right idea and is
 # NOT ready. Two measured attempts at warping sleeves (one mesh, one parts) both
