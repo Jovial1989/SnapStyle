@@ -480,6 +480,37 @@ def inject_bare_legs(init_image: np.ndarray, keypoints, lower_mask: np.ndarray,
     return out
 
 
+def apply_diagnostic_osd(image: np.ndarray, state: dict) -> np.ndarray:
+    """Stamp the pipeline's live state onto a frame. Diagnostics only, never a render.
+
+    Which flags were actually live has been guessed twice today and wrong once — a
+    module can be on in the file, off in the process that rendered, and identical in the
+    output either way. A frame that carries its own state cannot lie about it.
+
+    Gated by the caller: this is called from the dump path, so a queued render never
+    receives it. A watermark on a user's try-on would be a worse bug than the one it
+    diagnoses.
+    """
+    out = image.copy()
+    lines = [f"{k}: {v}" for k, v in state.items()]
+    scale, thick = 0.5, 1
+    sizes = [cv2.getTextSize(t, cv2.FONT_HERSHEY_SIMPLEX, scale, thick)[0]
+             for t in lines]
+    w_box = max(s[0] for s in sizes) + 16
+    h_box = sum(s[1] + 10 for s in sizes) + 8
+    panel = out[6:6 + h_box, 6:6 + w_box]
+    if panel.size:
+        # Semi-transparent, so what is underneath stays readable.
+        out[6:6 + h_box, 6:6 + w_box] = cv2.addWeighted(
+            panel, 0.35, np.zeros_like(panel), 0.65, 0)
+    y = 6 + 18
+    for t in lines:
+        cv2.putText(out, t, (14, y), cv2.FONT_HERSHEY_SIMPLEX, scale,
+                    (255, 255, 255), thick, cv2.LINE_AA)
+        y += 22
+    return out
+
+
 def _extend_fabric(img: np.ndarray, have: np.ndarray,
                    holes: np.ndarray) -> np.ndarray:
     """Continue the fabric into a gap. Periodically when it repeats, nearest otherwise.
@@ -1672,8 +1703,18 @@ class HybridVTONPipeline:
             cv2.imwrite(f"{dump}/{kind}_init_image.jpg", init)
             cv2.imwrite(f"{dump}/{kind}_canny_map.jpg", control_canny)
             cv2.imwrite(f"{dump}/{kind}_mask.jpg", mask_full)
+            state = {"TPS": "ON" if TPS_WARP else "OFF",
+                     "DUAL_CYL": "ON" if DUAL_CYL else "OFF",
+                     "SHADING": os.getenv("VTON_SHADING", "2.0"),
+                     "STR": f"{WARP_STRENGTH if warped is not None else 0.99}",
+                     "CANNY": f"{canny_scale}", "IP": f"{ip_scale or 'env'}",
+                     "CORE": f"{core_protect}", "SLOT": kind,
+                     "WARP": ("none" if warped is None
+                              else f"{warped.coverage:.2f}")}
             if warped is not None:
                 cv2.imwrite(f"{dump}/{kind}_warped.jpg", warped.image)
+            cv2.imwrite(f"{dump}/{kind}_state.jpg",
+                        apply_diagnostic_osd(init, state))
             print(f"[dump] {kind} -> {dump} ; init std={float(init[mask_full > 20].std()):.1f} "
                   f"canny_on={int((control_canny[:, :, 0] > 0).sum())} "
                   f"strength={WARP_STRENGTH if warped is not None else float(os.getenv('VTON_STRENGTH', '0.99'))} "
@@ -1754,7 +1795,16 @@ class HybridVTONPipeline:
         # Blurred so the kept and repainted regions meet in a gradient rather than
         # a cut-out edge.
         drew = cv2.GaussianBlur((np.clip(drew, 0.0, 1.0) * 255).astype(np.uint8), (21, 21), 0)
-        m = mask_full.astype(np.float32) / 255.0
+        # INWARD FEATHERING. The mask's own feather was applied by blurring it in place,
+        # which moves half the ramp OUTWARD — past the garment, onto the background —
+        # and that outward half is the glow: a soft rim of garment colour standing in the
+        # air beside a sleeve. Eroding by the blur's radius before the ramp is read puts
+        # the whole transition INSIDE the boundary, so the softness is on the cloth and
+        # the background is left alone. `reachable` already clipped the worst of it; this
+        # removes the mechanism rather than its symptom.
+        k_in = max(3, int(round(full.shape[0] * 0.010))) | 1
+        m = (cv2.erode(mask_full, np.ones((k_in, k_in), np.uint8))
+             .astype(np.float32) / 255.0)
         alpha = (m * (drew.astype(np.float32) / 255.0))[:, :, None]
 
         # WHAT TO FALL BACK TO depends on where we are in the mask. At the
