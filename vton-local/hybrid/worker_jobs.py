@@ -234,6 +234,26 @@ def render(job: dict) -> str:
         current = Image.fromarray(
             np.clip(out, 0, 255).astype(np.uint8)[:, :, ::-1])
 
+    # OSD BURNED INTO THE UPLOADED FRAME, on demand. Normally the telemetry goes only
+    # to the dump, because a watermark on somebody's try-on is worse than the bug it
+    # diagnoses. But "the fix did not apply" and "the fix applied and did not help" look
+    # identical from a phone, and that ambiguity has cost more than one cycle today. With
+    # VTON_OSD_BURN=1 the frame states what produced it, so the question stops being a
+    # matter of opinion. Turn it off before anything goes near a demo.
+    if os.getenv("VTON_OSD_BURN") == "1":
+        from pipeline import (CANNY_SCALE, DUAL_CYL, SHOE_SEMANTIC, TPS_WARP,
+                              WARP_STRENGTH, apply_diagnostic_osd)
+        frame = np.array(current.convert("RGB"))[:, :, ::-1].copy()
+        frame = apply_diagnostic_osd(frame, {
+            "TPS": "ON" if TPS_WARP else "OFF",
+            "CYL2": "ON" if DUAL_CYL else "OFF",
+            "SHOE": "SEM" if SHOE_SEMANTIC else "WARP",
+            "SHADING": os.getenv("VTON_SHADING", "2.0"),
+            "STR": f"{WARP_STRENGTH}", "CANNY": f"{CANNY_SCALE}",
+            "STEPS": str(len(steps)),
+        })
+        current = Image.fromarray(frame[:, :, ::-1])
+
     buf = io.BytesIO()
     current.convert("RGB").save(buf, "JPEG", quality=92)
     path = f"{job['user_id']}/vton/{job['id']}.jpg"
