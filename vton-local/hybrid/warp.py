@@ -806,10 +806,40 @@ def tps_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     if gw < 8 or gh < 8:
         return None
 
-    ys_m, xs_m = np.nonzero(slot_mask > 20)
-    if not ys_m.size:
+    # THE CYLINDER IS ANCHORED TO THE SKELETON, NOT TO THE MASK. Taking the axis and
+    # the radius from the mask's own extent was the bug: the mask holds the SLEEVES,
+    # they lie asymmetrically, so the centre drifted off the spine and the warp sheared
+    # one way. Measured on the striped tee, stripes landed -65.9 px at the left flank
+    # against -23.7 px at the right — a bow that belongs to no body.
+    #
+    # Bones are symmetric by construction. The axis is the mean x of both shoulders and
+    # both hips; the radius is half the WIDER of the two spans, scaled by 1.15 because
+    # joints sit inside the flesh and the fabric sits outside it.
+    pts_p = pose.pts
+    ls, rs, lh, rh = pts_p[5], pts_p[2], pts_p[11], pts_p[8]
+    anchors = [q for q in (ls, rs, lh, rh) if q]
+    if len(anchors) < 3 or not (ls and rs):
         return None
-    ty0, ty1 = int(ys_m.min()), int(ys_m.max())
+    cxb = float(sum(q[0] for q in anchors)) / len(anchors)
+    w_sh = abs(ls[0] - rs[0])
+    w_hip = abs(lh[0] - rh[0]) if (lh and rh) else 0.0
+    R = max(w_sh, w_hip) * 1.15 / 2.0
+    if R < 6:
+        return None
+
+    ys_all = [q[1] for q in pts_p if q]
+    span = max(1.0, max(ys_all) - min(ys_all))
+    if kind in ("upper", "full"):
+        ty0 = min(ls[1], rs[1]) - span * 0.02
+        ty1 = (max(lh[1], rh[1]) + span * 0.03) if (lh and rh) else ty0 + span * 0.35
+    else:
+        if not (lh and rh):
+            return None
+        ty0 = min(lh[1], rh[1]) - span * 0.02
+        ankles = [pts_p[i][1] for i in (10, 13) if pts_p[i]]
+        aspect = gh / max(1.0, gw)
+        ty1 = min(ty0 + aspect * (2.0 * R),
+                  (max(ankles) + span * 0.02) if ankles else ty0 + span * 0.45)
     if ty1 - ty0 < 8:
         return None
 
@@ -818,20 +848,20 @@ def tps_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     for r in range(rows):
         fy = r / (rows - 1.0)
         ty = ty0 + fy * (ty1 - ty0)
-        row = slot_mask[min(h - 1, int(round(ty)))] > 20
-        occ = np.flatnonzero(row)
-        if occ.size < 4:
-            continue
-        bx0, bx1 = float(occ[0]), float(occ[-1])
-        cxb = 0.5 * (bx0 + bx1)
-        R = max(1.0, 0.5 * (bx1 - bx0))
         for c in range(cols):
             fx = c / (cols - 1.0)
             src_pts.append([gx0 + fx * gw, gy0 + fy * gh])
-            # Arc length across the visible half, then projected. wrap=1 puts the
-            # garment's own edge at the cylinder's profile, where sin flattens.
-            u = (fx - 0.5) * 2.0 * R * wrap
-            theta = np.clip(u / R, -np.pi / 2, np.pi / 2)
+            # ARC LENGTH, not a plain offset. The flat-lay is the UNROLLED surface, so
+            # the coordinate that spans the garment is arc length along the cylinder,
+            # and the visible half spans a quarter turn each way: u in [-R*pi/2,
+            # +R*pi/2] maps through sin to exactly [-R, +R], so the garment's own edge
+            # lands on the profile. Feeding a plain pixel offset u = x - xc instead
+            # tops out at sin(1) = 0.841 and dresses only 84% of the torso, leaving a
+            # strip of the old garment down each flank — the same class of gap this
+            # engine spent a day removing. `wrap` scales how much of that quarter turn
+            # the garment is assumed to cover.
+            u = (fx - 0.5) * 2.0 * R * (np.pi / 2.0) * wrap
+            theta = float(np.clip(u / R, -np.pi / 2, np.pi / 2))
             dst_pts.append([cxb + R * np.sin(theta), ty])
     if len(src_pts) < 12:
         return None
