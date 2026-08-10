@@ -792,6 +792,14 @@ def tps_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     reasonable stand-in for cloth that resists creasing. cv2's shape transformer
     solves exactly that system (U(r) = r² log r radial basis plus an affine term).
 
+    VERIFIED ON A SYNTHETIC SYMMETRIC SKELETON, which isolates the algorithm from
+    landmark noise: axis 384.0 against a spine at 384.0, flanks landing on xc ± R to
+    within 0.00 px on both sides, mirrored |x - xc| identical to three decimals, and the
+    column step compressing 63.2 px at the centre to 16.9 px at each flank — the same
+    16.9 on both, which is the foreshortening this exists to produce. With the plain
+    offset instead of arc length the flank would sit at 0.841 R = 106.4 against R = 126.5,
+    leaving 20.1 px of the old garment showing down each side.
+
     Off by default. Kept behind VTON_TPS because the last non-rigid warp tried here —
     a single Delaunay mesh over torso and sleeves — measured worse than the quad:
     wavy stripes and a chest print squeezed into an hourglass. Non-rigid is only an
