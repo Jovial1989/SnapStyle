@@ -932,3 +932,128 @@ def harmonise_poisson(init: np.ndarray, warped: np.ndarray, mask: np.ndarray,
         return cv2.seamlessClone(warped, init, m, centre, mode)
     except cv2.error:
         return init
+
+
+def dual_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose,
+                       slot_mask: np.ndarray, rows: int = 9, cols: int = 5,
+                       wrap: float = 1.0, radius_k: float = 0.55) -> Warped | None:
+    """Trousers onto TWO cylinders, one per leg, each with its own solver.
+
+    The single-cylinder fit that works on a torso is wrong here and it showed: spanning
+    one cylinder across the whole hip width compresses the fabric toward the flanks and
+    smears the inseam into a bright rail down the leg — peak brightness excess 173
+    against 152 for the plain quad, and unmistakable at full zoom on a phone.
+
+    Two departures from the obvious dual-cylinder formulation, both from this base's
+    geometry rather than from theory.
+
+    THE AXIS IS NOT VERTICAL. Taking each leg's axis as its hip's x holds only for a
+    figure standing to attention; on any real pose the chain hip → knee → ankle leans,
+    and a vertical axis would place the fabric beside the leg instead of on it. The axis
+    is therefore interpolated along that chain per row, which costs nothing and is the
+    difference between fabric on a leg and fabric next to one.
+
+    AND EACH LEG GETS ITS OWN SOLVER. A thin-plate spline is globally smooth by
+    construction — that is what makes it a good model of cloth — so feeding one solver
+    the correspondences of two separated cylinders would smooth away the very
+    bifurcation the split exists to express. Two warps, unioned, keep the crotch a
+    boundary instead of a blend.
+
+    The projection itself is the torso's: the flat-lay is the unrolled surface, so the
+    coordinate across each leg is arc length, and the visible half is a quarter turn
+    each way — u in [-R*pi/2, R*pi/2] maps through sin to exactly [-R, R], putting each
+    leg's outseam on its own profile.
+    """
+    panel = _panel(sil, "lower")
+    if panel is None:
+        return None
+    gx0, gy0, gx1, gy1 = panel
+    gw, gh = float(gx1 - gx0), float(gy1 - gy0)
+    if gw < 16 or gh < 16:
+        return None
+
+    pts = pose.pts
+    lh, rh = pts[11], pts[8]
+    if not (lh and rh):
+        return None
+    ys_all = [q[1] for q in pts if q]
+    span = max(1.0, max(ys_all) - min(ys_all))
+    R = abs(lh[0] - rh[0]) * radius_k
+    if R < 6:
+        return None
+
+    h, w = pose.h, pose.w
+    ty0 = min(lh[1], rh[1]) - span * 0.02
+    ankles = [pts[i][1] for i in (10, 13) if pts[i]]
+    aspect = gh / max(1.0, gw)
+    ty1 = min(ty0 + aspect * (2.0 * abs(lh[0] - rh[0]) * 0.78),
+              (max(ankles) + span * 0.02) if ankles else ty0 + span * 0.45)
+    if ty1 - ty0 < 16:
+        return None
+
+    pad = np.zeros((h, w, 3), np.uint8)
+    ph, pw = min(h, garment.shape[0]), min(w, garment.shape[1])
+    pad[:ph, :pw] = garment[:ph, :pw]
+    pad_sil = np.zeros((h, w), np.uint8)
+    pad_sil[:ph, :pw] = sil[:ph, :pw]
+
+    out = np.zeros((h, w, 3), np.uint8)
+    filled = np.zeros((h, w), np.uint8)
+    src_mid = (gx0 + gx1) / 2.0
+
+    # image-left leg first, so the flat-lay's left half meets the figure's left leg
+    chains = []
+    for ids in ((11, 12, 13), (8, 9, 10)):
+        chain = [pts[i] for i in ids if pts[i]]
+        if len(chain) >= 2:
+            chains.append(chain)
+    if len(chains) < 2:
+        return None
+    chains.sort(key=lambda c: c[0][0])
+
+    for leg, chain in enumerate(chains):
+        sx0 = gx0 if leg == 0 else src_mid
+        sx1 = src_mid if leg == 0 else gx1
+        if sx1 - sx0 < 8:
+            continue
+        cys = np.array([q[1] for q in chain], np.float32)
+        cxs = np.array([q[0] for q in chain], np.float32)
+        order = np.argsort(cys)
+        cys, cxs = cys[order], cxs[order]
+
+        src_pts, dst_pts = [], []
+        for r in range(rows):
+            fy = r / (rows - 1.0)
+            ty = ty0 + fy * (ty1 - ty0)
+            axis = float(np.interp(ty, cys, cxs))
+            for c in range(cols):
+                fx = c / (cols - 1.0)
+                src_pts.append([sx0 + fx * (sx1 - sx0), gy0 + fy * gh])
+                u = (fx - 0.5) * 2.0 * R * (np.pi / 2.0) * wrap
+                theta = float(np.clip(u / R, -np.pi / 2, np.pi / 2))
+                dst_pts.append([axis + R * np.sin(theta), ty])
+        if len(src_pts) < 12:
+            continue
+
+        src = np.asarray(src_pts, np.float32).reshape(1, -1, 2)
+        dst = np.asarray(dst_pts, np.float32).reshape(1, -1, 2)
+        matches = [cv2.DMatch(i, i, 0) for i in range(src.shape[1])]
+        tps = cv2.createThinPlateSplineShapeTransformer()
+        tps.estimateTransformation(dst, src, matches)
+
+        half = np.zeros((h, w), np.uint8)
+        half[:, int(max(0, sx0)):int(min(w, sx1)) + 1] = 255
+        one = cv2.bitwise_and(pad_sil, half)
+        img = tps.warpImage(pad, flags=cv2.INTER_LINEAR,
+                            borderMode=cv2.BORDER_CONSTANT)
+        msk = tps.warpImage(one, flags=cv2.INTER_NEAREST,
+                            borderMode=cv2.BORDER_CONSTANT)
+        msk = cv2.erode((msk > 0).astype(np.uint8) * 255, np.ones((3, 3), np.uint8))
+        take = (msk > 0) & (filled == 0)
+        out[take] = img[take]
+        filled[take] = 255
+
+    mask = cv2.bitwise_and(filled, (slot_mask > 20).astype(np.uint8) * 255)
+    if not mask.any():
+        return None
+    return Warped(image=out, mask=mask, coverage=_coverage(mask, slot_mask))

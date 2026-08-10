@@ -35,8 +35,8 @@ import torch
 from PIL import Image
 
 from kinematic import apply_kinematic_shield, arm_shield
-from warp import (apply_shading, harmonise_poisson, mesh_warp, parts_warp,
-                  shoes_warp, torso_warp, tps_warp)
+from warp import (apply_shading, dual_cylinder_warp, harmonise_poisson, mesh_warp,
+                  parts_warp, shoes_warp, torso_warp, tps_warp)
 
 # ─────────────────────────────── device / precision ──────────────────────────
 
@@ -107,6 +107,10 @@ CANNY_SCALE = float(os.getenv("VTON_CANNY_SCALE", "0.45"))
 # guess — the pod was down when this landed, so nothing has weighed it yet.
 CORE_PROTECT = float(os.getenv("VTON_CORE_PROTECT", "0"))
 TPS_WARP = os.getenv("VTON_TPS", "1") == "1"
+# Two cylinders for the legs, one solver each. Off until measured on a phone: the
+# single-cylinder version of the same idea looked fine in a metric and was visibly
+# wrong at full zoom, which is the whole reason this one starts behind a flag.
+DUAL_CYL = os.getenv("VTON_DUAL_CYL", "0") == "1"
 POISSON = os.getenv("VTON_POISSON", "0") == "1"
 # Deformable parts — torso quad plus a quad per sleeve — is the right idea and is
 # NOT ready. Two measured attempts at warping sleeves (one mesh, one parts) both
@@ -1455,6 +1459,12 @@ class HybridVTONPipeline:
                         warped = parts_warp(
                             g_bgr, sil, pose, kind, mask_full,
                             g_met.get("sleeve_ratio"), _split)
+                    if DUAL_CYL and kind == "lower":
+                        # A LEG IS ITS OWN CYLINDER. Behind its own flag until it has
+                        # been weighed against the quad on the phone, the way the torso's
+                        # cylinder was — the single-cylinder version of this shipped and
+                        # had to be pulled the same hour.
+                        warped = dual_cylinder_warp(g_bgr, sil, pose, mask_full) or warped
                     if TPS_WARP and kind in ("upper", "full"):
                         # UPPER BODY ONLY. A torso is one cylinder and the model fits it;
                         # a pair of legs is TWO, and fitting one cylinder across the whole
