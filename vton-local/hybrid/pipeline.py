@@ -2067,12 +2067,16 @@ class HybridVTONPipeline:
                        sub: tuple, cm: np.ndarray, col: list[int],
                        seed: int | None, prompt: str, negative: str) -> np.ndarray:
         """One attempt at one arm, returned as a BGR crop. See `bare_arms`."""
+        # USE THE PROMPT THE CALLER PASSED. It was accepted and then ignored: both
+        # arguments sat in the signature while the body asked for "a bare human arm"
+        # and negated sleeves, whichever limb was being repainted. So bare_legs sent a
+        # leg prompt with trousers, jeans and shorts in its negative, and the sampler
+        # was asked for an arm and told to avoid a cuff — while looking at trousers.
+        # It duly returned trousers, three seeds in a row, and the pass was written off
+        # as a dead end for a reason that was never tested.
         res = pipe(
-            prompt="a bare human arm, sleeveless, smooth natural skin, "
-                   "soft studio light, photographic",
-            negative_prompt="sleeve, short sleeve, cuff, hem, seam, fabric, "
-                            "cloth, textile, shirt, t-shirt, clothing, glove, "
-                            "tattoo, text, watermark, deformed",
+            prompt=prompt,
+            negative_prompt=negative,
             image=_to_pil(init[sub][:, :, ::-1]).resize((WORK_W, WORK_H), Image.LANCZOS),
             mask_image=Image.fromarray(cm).resize((WORK_W, WORK_H), Image.LANCZOS),
             control_image=[
