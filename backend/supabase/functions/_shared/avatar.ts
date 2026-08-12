@@ -125,3 +125,67 @@ async function portraitFrame(png: Uint8Array): Promise<Uint8Array> {
     : canvas;
   return await out.encode();
 }
+
+// MINIMAL BASE: the same mannequin wearing as little as any garment we render —
+// a fitted sleeveless tank and SHORT shorts, bare arms and bare shins. This is
+// the upstream answer to the whole family of "old clothes under the new ones"
+// defects: the shorts veto (grey trousers showed under every pair), dress legs
+// (the sampler kept trouser structure at 0.55 and post-hoc skin flooding came
+// back as flat salmon), the bare_arms/bare_legs repaint passes (measured dead:
+// prompt bug fixed, zones widened, selection fixed — trousers still came back
+// trousers). Editing the base AFTER a render failed twice; generating the base
+// BEFORE any render is the same trick as the avatar itself, one layer less.
+const BARE_PROMPT = [
+  "MANDATORY EDIT: re-dress the person in this photo as a minimal fitting mannequin:",
+  "a plain fitted heather-grey SLEEVELESS tank top (shoulders and arms fully bare),",
+  "and plain mid-grey fitted SHORT shorts ending clearly ABOVE the knee — the knees, shins and calves are BARE SKIN,",
+  "and plain white low-top sneakers worn on bare feet (no socks visible). No prints, no logos, no accessories added or removed.",
+  "IDENTITY LOCK (absolute): the SAME person — same face, same hair, same skin tone, same body proportions, same pose. Rendering a different or generic model is a FAILED generation.",
+  "FRAMING: photorealistic, full body head-to-toe, feet and shoes fully visible with clear margin below, centered.",
+  "BACKGROUND: the ENTIRE frame is ONE flat, uniform, seamless PURE-WHITE (#FFFFFF) — no leftover scene, no halos, no grey patches.",
+  "No text, no watermarks.",
+].join(" ");
+
+/** Build (or rebuild) the minimal base for [photoPath] → `${photoPath}.bare.png`.
+ * SOURCED FROM THE AVATAR when it exists, not the raw photo: identity and the
+ * canonical pose are already locked there, so this edit only has to change the
+ * clothes — one variable instead of three. Same QA gates, same two-attempt
+ * budget, same portrait reframe. Never throws. */
+export async function buildMinimalBase(db: SupabaseClient, photoPath: string): Promise<void> {
+  try {
+    let person: Awaited<ReturnType<typeof fetchInline>> | undefined;
+    for (const p of [`${photoPath}.avatar.png`, `${photoPath}.clean.png`, photoPath]) {
+      try {
+        const { data: t } = await db.storage.from(BUCKET)
+          .createSignedUrl(p, 300, { transform: { width: 768, quality: 80 } });
+        if (t?.signedUrl) { person = await fetchInline(t.signedUrl); break; }
+      } catch (_) {/* try next */}
+    }
+    if (!person) throw new Error("no source image");
+
+    let bare = await generateLookImage(person, BARE_PROMPT);
+    const ok = async (img: typeof bare) => {
+      try {
+        if (!(await samePerson(img, person!))) return false;
+      } catch (_) {/* gate down → fall through */}
+      try {
+        return (await validateLookImages([img]))[0] !== false;
+      } catch (_) { return true; }
+    };
+    if (!(await ok(bare))) {
+      bare = await generateLookImage(person, BARE_PROMPT +
+        " NOTE: a previous attempt FAILED — it changed the person or produced an invalid image. Keep the EXACT person from the photo, decisively.");
+      if (!(await ok(bare))) throw new Error("bare base failed QA twice");
+    }
+
+    const framed = await portraitFrame(b64ToBytes(bare.data));
+    const { error } = await db.storage.from(BUCKET).upload(
+      `${photoPath}.bare.png`, framed,
+      { contentType: "image/png", upsert: true },
+    );
+    if (error) throw new Error(error.message);
+    console.log("[bare] built", photoPath);
+  } catch (e) {
+    console.error("[bare]", photoPath, (e as Error).message);
+  }
+}

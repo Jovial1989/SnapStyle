@@ -4,7 +4,7 @@
 // uploads the image to its own body-photos folder first, then calls this. §14.11
 import { admin, getUser } from "../_shared/supabase.ts";
 import { cleanBodyPhoto } from "../_shared/clean_photo.ts";
-import { buildCanonicalAvatar } from "../_shared/avatar.ts";
+import { buildCanonicalAvatar, buildMinimalBase } from "../_shared/avatar.ts";
 import { json, preflight } from "../_shared/http.ts";
 
 Deno.serve(async (req) => {
@@ -42,7 +42,11 @@ Deno.serve(async (req) => {
   // deno-lint-ignore no-explicit-any
   (globalThis as any).EdgeRuntime?.waitUntil?.(
     cleanBodyPhoto(db, String(photoPath))
-      .then(() => buildCanonicalAvatar(db, String(photoPath))),
+      .then(() => buildCanonicalAvatar(db, String(photoPath)))
+      // The minimal base rides the same chain, sourced from the avatar it
+      // follows: tank + short shorts, the canvas that lets shorts, skirts and
+      // dresses exist. fix-render already prefers .bare.png when present.
+      .then(() => buildMinimalBase(db, String(photoPath))),
   );
   return json({ ok: true, photoPath });
 });
