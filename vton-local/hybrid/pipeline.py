@@ -1483,8 +1483,16 @@ class HybridVTONPipeline:
         print("[xl] roi=%dx%d->%dx%d %.1fs" % (cw, ch, tw, th, time.time() - t0),
               flush=True)
         res = np.array(out.resize((cw, ch), Image.LANCZOS))[:, :, ::-1]
+        # PASTE BY THE MASK, NOT BY THE RECTANGLE. Replacing the whole ROI box put
+        # the VAE's roundtrip drift on every unmasked pixel inside it, and the
+        # box's outline showed as a faint cardboard seam — crossing the tee's hem
+        # exactly where the jeans' ROI top edge runs. A feathered mask blend keeps
+        # the drift where the sampler actually painted.
+        a = (cv2.GaussianBlur(cmask, (9, 9), 0).astype(np.float32) / 255.0)[..., None]
         full = init.copy()
-        full[y0:y1, x0:x1] = res
+        patch = init[y0:y1, x0:x1].astype(np.float32)
+        full[y0:y1, x0:x1] = np.clip(
+            res.astype(np.float32) * a + patch * (1.0 - a), 0, 255).astype(np.uint8)
         return full
 
     def ensure_loaded(self):
