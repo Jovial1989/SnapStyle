@@ -30,6 +30,7 @@ import concurrent.futures as cf
 import io
 import json
 import os
+import base64
 import threading
 import time
 import urllib.error
@@ -154,6 +155,28 @@ def render(job: dict) -> str:
         print(f"  face rms={res.align_rms} up={res.upsampled}x "
               f"trust={res.trustworthy} in {time.time() - t:.2f}s", flush=True)
 
+    # LATENT STREAMING. If the job carries a stream_key, every few denoise steps a
+    # TAESD preview goes out on a Realtime broadcast channel the client is already
+    # subscribed to. Fire-and-forget on a thread: a preview that arrives late or not
+    # at all costs nothing, a preview that BLOCKS the GPU loop costs everyone.
+    stream_key = None
+    if steps and isinstance(steps[0], dict):
+        raw_key = steps[0].get("stream_key")
+        if isinstance(raw_key, str) and raw_key.replace("-", "").isalnum() \
+                and 8 <= len(raw_key) <= 64:
+            stream_key = raw_key
+
+    def _broadcast(layer_i, total, step_i, jpg: bytes):
+        body = json.dumps({"messages": [{
+            "topic": f"vton:{stream_key}", "event": "preview",
+            "payload": {"layer": layer_i, "layers": total, "step": step_i,
+                        "jpg": base64.b64encode(jpg).decode()},
+        }]}).encode()
+        try:
+            _req("POST", "/realtime/v1/api/broadcast", body)
+        except Exception:
+            pass
+
     # UNIFIED BATCH FROM x0, NOT A CHAIN. Every layer is rendered against the
     # SAME clean base with its own mask, and the layers are composited once at the
     # end in the order the Edge Function sorted them. Until now this loop did
@@ -196,6 +219,11 @@ def render(job: dict) -> str:
             core_protect=st.get("core_protect"),
             pose=base_pose,
             return_mask=True,
+            on_preview=(None if stream_key is None else
+                        (lambda step_i, jpg, _i=i, _n=len(steps):
+                         threading.Thread(target=_broadcast,
+                                          args=(_i, _n, step_i, jpg),
+                                          daemon=True).start())),
         )
         print(f"  cond {kind}: ip={st.get('ip_scale') or 'env'} "
               f"canny={st.get('canny_scale') or 'env'} "

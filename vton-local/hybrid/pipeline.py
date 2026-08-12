@@ -135,6 +135,22 @@ RELIEF = float(os.getenv("VTON_RELIEF", "0"))
 # L − blur(L) is zero-mean, so the garment's colour and level are untouched and
 # only the body's fold-scale detail arrives.
 LUMA = float(os.getenv("VTON_LUMA", "0"))
+
+_taesd = None
+
+
+def _tiny_vae():
+    """TAESD, loaded on first preview. The full VAE decodes in ~200ms and would sit
+    INSIDE the denoising loop; the tiny one does it in single-digit milliseconds at
+    preview quality, which is the whole reason latent streaming is affordable."""
+    global _taesd
+    if _taesd is None:
+        from diffusers import AutoencoderTiny
+        _taesd = AutoencoderTiny.from_pretrained(
+            "madebyollin/taesd", torch_dtype=torch.float16 if DEVICE == "cuda"
+            else torch.float32).to(DEVICE)
+        _taesd.eval()
+    return _taesd
 POISSON = os.getenv("VTON_POISSON", "0") == "1"
 # Deformable parts — torso quad plus a quad per sleeve — is the right idea and is
 # NOT ready. Two measured attempts at warping sleeves (one mesh, one parts) both
@@ -1438,6 +1454,10 @@ class HybridVTONPipeline:
         pose_scale: float | None = None,
         canny_scale: float | None = None,
         core_protect: float | None = None,
+        # Latent streaming: called every few denoise steps with (step, jpeg_bytes) —
+        # a TAESD-decoded low-res preview of the CROP being generated. The caller
+        # owns transport; this stays transport-blind.
+        on_preview=None,
         # ONE GEOMETRY FOR THE WHOLE OUTFIT. Without this, every step re-reads
         # pose and matte from the PREVIOUS step's output, so the upper and lower
         # masks are computed on different pixel states and their boundaries need
@@ -1852,6 +1872,37 @@ class HybridVTONPipeline:
         if seed is not None:
             gen = torch.Generator(device="cpu").manual_seed(seed)
 
+        cb = None
+        if on_preview is not None:
+            try:
+                tiny = _tiny_vae()
+
+                def _emit(step_i, latents):
+                    try:
+                        with torch.no_grad():
+                            dec = tiny.decode(latents[:1].to(tiny.dtype)).sample[0]
+                        # TAESD decodes straight to [0,1]; older checkpoints to
+                        # [-1,1]. Normalise by observed range so both are safe.
+                        if float(dec.min()) < -0.05:
+                            dec = dec / 2 + 0.5
+                        arr = (dec.clamp(0, 1).permute(1, 2, 0).float()
+                               .cpu().numpy() * 255).astype(np.uint8)
+                        small = cv2.resize(arr[:, :, ::-1], (128, 192),
+                                           interpolation=cv2.INTER_AREA)
+                        okj, buf_j = cv2.imencode(
+                            ".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 40])
+                        if okj:
+                            on_preview(step_i, buf_j.tobytes())
+                    except Exception:
+                        pass          # a lost preview must never cost the render
+
+                def cb(_pipe, step_i, _t, kw):
+                    if step_i > 0 and step_i % 5 == 0:
+                        _emit(step_i, kw["latents"])
+                    return kw
+            except Exception:
+                cb = None
+
         with self._lock:      # MPS serialises kernels anyway; make it explicit
             out = pipe(
                 prompt=_PROMPT.format(g=prompt_hint),
@@ -1865,6 +1916,7 @@ class HybridVTONPipeline:
                 strength=(WARP_STRENGTH if warped is not None
                           else float(os.getenv("VTON_STRENGTH", "0.99"))),
                 controlnet_conditioning_scale=[pose_scale, canny_scale],
+                callback_on_step_end=cb,
                 generator=gen,
             ).images[0]
         _drain()

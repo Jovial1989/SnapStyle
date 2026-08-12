@@ -246,7 +246,11 @@ Deno.serve(async (req) => {
           base: personUrl.replace(/\?.*$/, "").slice(-42),
           z: steps.map((s, i) => `${i}:${s.kind}:${(s.hint ?? "").slice(0, 28)}`),
         }));
-        const img = await hybridDress(db, String(row.user_id), personUrl, steps);
+        // The stream key IS the fix_renders row id: the client got it from
+        // fix-dispatch before this function ever ran, so it can subscribe to
+        // `vton:<id>` while the queue is still being claimed — no new API surface.
+        const img = await hybridDress(db, String(row.user_id), personUrl, steps,
+                                      String(row.id));
         hybridUsed = true;
         return img;
       } catch (e) {

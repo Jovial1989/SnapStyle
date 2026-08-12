@@ -66,12 +66,22 @@ export async function hybridDress(
   userId: string,
   personUrl: string,
   steps: DressStep[],
+  // Latent streaming: an opaque client-chosen key. The worker broadcasts TAESD
+  // previews to Realtime channel `vton:<key>` while it denoises, and the client
+  // that invented the key is already subscribed. Rides inside steps[0] so the
+  // queue schema stays untouched — the worker reads it and the engine never
+  // sees it.
+  streamKey?: string,
 ): Promise<Inline> {
   if (!steps.length) throw new Error("hybridDress: no steps");
 
+  const sorted = sortSteps(steps);
+  if (streamKey && /^[A-Za-z0-9-]{8,64}$/.test(streamKey)) {
+    (sorted[0] as Record<string, unknown>).stream_key = streamKey;
+  }
   const { data: job, error } = await db
     .from("vton_jobs")
-    .insert({ user_id: userId, person_url: personUrl, steps: sortSteps(steps) })
+    .insert({ user_id: userId, person_url: personUrl, steps: sorted })
     .select("id")
     .single();
   // NEVER swallow this: a silent insert failure looks exactly like a slow worker,
