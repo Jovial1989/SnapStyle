@@ -136,10 +136,10 @@ async function portraitFrame(png: Uint8Array): Promise<Uint8Array> {
 // trousers). Editing the base AFTER a render failed twice; generating the base
 // BEFORE any render is the same trick as the avatar itself, one layer less.
 const BARE_PROMPT = [
-  "MANDATORY EDIT: re-dress the person in this photo as a minimal fitting mannequin:",
-  "a plain fitted heather-grey SLEEVELESS tank top (shoulders and arms fully bare),",
-  "and plain mid-grey fitted SHORT shorts ending clearly ABOVE the knee — the knees, shins and calves are BARE SKIN,",
-  "and plain white low-top sneakers worn on bare feet (no socks visible). No prints, no logos, no accessories added or removed.",
+  "MANDATORY EDIT: re-dress the person in this photo in neutral summer GYM WEAR, like a runner on a hot day:",
+  "a plain fitted heather-grey SLEEVELESS tank top,",
+  "plain mid-grey knee-length ATHLETIC SHORTS (loose gym shorts, hem at the knee),",
+  "and plain white low-top sneakers. No prints, no logos, no accessories added or removed.",
   "IDENTITY LOCK (absolute): the SAME person — same face, same hair, same skin tone, same body proportions, same pose. Rendering a different or generic model is a FAILED generation.",
   "FRAMING: photorealistic, full body head-to-toe, feet and shoes fully visible with clear margin below, centered.",
   "BACKGROUND: the ENTIRE frame is ONE flat, uniform, seamless PURE-WHITE (#FFFFFF) — no leftover scene, no halos, no grey patches.",
@@ -151,8 +151,14 @@ const BARE_PROMPT = [
  * canonical pose are already locked there, so this edit only has to change the
  * clothes — one variable instead of three. Same QA gates, same two-attempt
  * budget, same portrait reframe. Never throws. */
-export async function buildMinimalBase(db: SupabaseClient, photoPath: string): Promise<void> {
+export async function buildMinimalBase(
+  db: SupabaseClient, photoPath: string,
+): Promise<{ built: boolean; attempts: number; reason?: string }> {
   try {
+    // A stale .bare.png from a build that predates the shin gate is worse than
+    // none: fix-render prefers the file's mere existence. Clear it first, so
+    // after this call the object exists if and only if a build PASSED.
+    await db.storage.from(BUCKET).remove([`${photoPath}.bare.png`]).catch(() => {});
     let person: Awaited<ReturnType<typeof fetchInline>> | undefined;
     for (const p of [`${photoPath}.avatar.png`, `${photoPath}.clean.png`, photoPath]) {
       try {
@@ -180,16 +186,18 @@ export async function buildMinimalBase(db: SupabaseClient, photoPath: string): P
     };
     const prompts = [
       BARE_PROMPT,
-      BARE_PROMPT + " NOTE: a previous attempt FAILED because the trousers were kept. REMOVE the long trousers ENTIRELY and draw bare lower legs with grey SHORTS ending mid-thigh. This is the whole point of the edit.",
-      BARE_PROMPT + " CRITICAL: output MUST show bare knees and bare shins (visible skin from mid-thigh to the sneakers). Any long trousers = FAILED generation.",
+      BARE_PROMPT + " NOTE: a previous attempt FAILED because long trousers were kept. The person is dressed for a summer run: SHORTS, not trousers. Replace the trousers with knee-length grey gym shorts.",
+      BARE_PROMPT + " CRITICAL: the lower legs (from the knee down to the sneakers) must be uncovered, as is normal in gym shorts. Long trousers = FAILED generation.",
     ];
     let bare: { data: string; mimeType: string } | undefined;
+    let attempts = 0;
     for (const pr of prompts) {
+      attempts++;
       const cand = await generateLookImage(person, pr);
       if (await ok(cand)) { bare = cand; break; }
-      console.log("[bare] attempt rejected (identity or shins)");
+      console.log("[bare] attempt", attempts, "rejected (identity or shins)");
     }
-    if (!bare) throw new Error("bare base failed QA on all attempts");
+    if (!bare) return { built: false, attempts, reason: "all attempts failed the gates" };
 
     const framed = await portraitFrame(b64ToBytes(bare.data));
     const { error } = await db.storage.from(BUCKET).upload(
@@ -198,8 +206,10 @@ export async function buildMinimalBase(db: SupabaseClient, photoPath: string): P
     );
     if (error) throw new Error(error.message);
     console.log("[bare] built", photoPath);
+    return { built: true, attempts };
   } catch (e) {
     console.error("[bare]", photoPath, (e as Error).message);
+    return { built: false, attempts: 0, reason: (e as Error).message };
   }
 }
 

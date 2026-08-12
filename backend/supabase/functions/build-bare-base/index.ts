@@ -21,6 +21,6 @@ Deno.serve(async (req) => {
   }
   // Synchronous on purpose: the caller is an operator who wants to QA the
   // result immediately, not a user waiting on onboarding.
-  await buildMinimalBase(admin(), photoPath);
-  return json({ ok: true, bare: `${photoPath}.bare.png` });
+  const result = await buildMinimalBase(admin(), photoPath);
+  return json({ ...result, bare: `${photoPath}.bare.png` });
 });

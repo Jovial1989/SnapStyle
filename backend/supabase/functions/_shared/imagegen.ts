@@ -101,6 +101,14 @@ export async function generateLookImage(
     return await openaiLookImage(person, prompt, extra, opts);
   } catch (e) {
     console.error("[imagegen] openai failed, falling back to gemini:", (e as Error).message);
-    return await gemImage(person, prompt, extra, { fallbackPrompt: opts.fallbackPrompt });
+    try {
+      return await gemImage(person, prompt, extra, { fallbackPrompt: opts.fallbackPrompt });
+    } catch (e2) {
+      // BOTH providers down: the caller must see BOTH failures. Surfacing only
+      // the fallback's error sent a debugging session at the dead Gemini key
+      // while the primary's failure — the actual question — stayed in logs
+      // nobody was reading.
+      throw new Error(`openai: ${(e as Error).message} || gemini: ${(e2 as Error).message.slice(0, 160)}`);
+    }
   }
 }
