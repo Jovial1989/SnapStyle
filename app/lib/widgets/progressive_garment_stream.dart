@@ -20,6 +20,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// missing, channel dropped) the widget just keeps showing [placeholder] —
 /// the render itself still lands through the normal polling path, so this
 /// layer is pure garnish and must never gate anything.
+/// Debug chip: shows LIVE + received-frame count over the stream. Proof of the
+/// subscription's health visible ON the phone — "no chip" = the widget never
+/// mounted, "LIVE 0" = joined but nothing arrived, "LIVE n" = frames flowing.
+/// Turn off together with the pod's OSD before any demo.
+const bool kStreamDebug = true;
+
 class ProgressiveGarmentStream extends StatefulWidget {
   const ProgressiveGarmentStream({
     super.key,
@@ -44,6 +50,8 @@ class ProgressiveGarmentStream extends StatefulWidget {
 class _ProgressiveGarmentStreamState extends State<ProgressiveGarmentStream> {
   RealtimeChannel? _channel;
   Uint8List? _frame;
+  int _received = 0;
+  String _sub = '…';
   int _step = 0;
   int _layer = 0;
   int _layers = 1;
@@ -67,6 +75,7 @@ class _ProgressiveGarmentStreamState extends State<ProgressiveGarmentStream> {
             }
             if (!mounted) return;
             setState(() {
+              _received++;
               _frame = bytes;
               _step = (payload['step'] as num?)?.toInt() ?? _step;
               _layer = (payload['layer'] as num?)?.toInt() ?? _layer;
@@ -74,7 +83,9 @@ class _ProgressiveGarmentStreamState extends State<ProgressiveGarmentStream> {
             });
           },
         )
-      ..subscribe();
+      ..subscribe((status, [_]) {
+        if (mounted && kStreamDebug) setState(() => _sub = status.name);
+      });
   }
 
   @override
@@ -93,13 +104,30 @@ class _ProgressiveGarmentStreamState extends State<ProgressiveGarmentStream> {
     return ui.lerpDouble(20.0, 2.0, t)!;
   }
 
+  Widget _chip() => Positioned(
+        top: 8, right: 8,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+          decoration: BoxDecoration(
+              color: const Color(0xB3000000),
+              borderRadius: BorderRadius.circular(6)),
+          child: Text('LIVE $_received · $_sub',
+              style: const TextStyle(
+                  color: Color(0xFF7CFF7C), fontSize: 10,
+                  fontWeight: FontWeight.w700)),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final frame = _frame;
     if (frame == null) {
-      return widget.placeholder ?? const SizedBox.expand();
+      return Stack(fit: StackFit.expand, children: [
+        widget.placeholder ?? const SizedBox.expand(),
+        if (kStreamDebug) _chip(),
+      ]);
     }
-    return ClipRect(
+    return _withChip(ClipRect(
       child: ImageFiltered(
         imageFilter: ui.ImageFilter.blur(
             sigmaX: _blur, sigmaY: _blur, tileMode: TileMode.decal),
@@ -115,6 +143,11 @@ class _ProgressiveGarmentStreamState extends State<ProgressiveGarmentStream> {
           ),
         ),
       ),
-    );
+    ));
   }
+
+  Widget _withChip(Widget body) => Stack(fit: StackFit.expand, children: [
+        body,
+        if (kStreamDebug) _chip(),
+      ]);
 }

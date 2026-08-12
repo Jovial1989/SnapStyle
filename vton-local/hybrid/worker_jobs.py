@@ -166,6 +166,8 @@ def render(job: dict) -> str:
                 and 8 <= len(raw_key) <= 64:
             stream_key = raw_key
 
+    sent = {"n": 0, "err": 0}
+
     def _broadcast(layer_i, total, step_i, jpg: bytes):
         body = json.dumps({"messages": [{
             "topic": f"vton:{stream_key}", "event": "preview",
@@ -174,8 +176,11 @@ def render(job: dict) -> str:
         }]}).encode()
         try:
             _req("POST", "/realtime/v1/api/broadcast", body)
-        except Exception:
-            pass
+            sent["n"] += 1
+        except Exception as e:
+            sent["err"] += 1
+            if sent["err"] == 1:
+                print(f"  preview broadcast failed: {e}", flush=True)
 
     # UNIFIED BATCH FROM x0, NOT A CHAIN. Every layer is rendered against the
     # SAME clean base with its own mask, and the layers are composited once at the
@@ -230,7 +235,8 @@ def render(job: dict) -> str:
               f"core={st.get('core_protect') or 'env'} seed={st.get('seed', 7)}",
               flush=True)
         layers.append((np.array(img.convert("RGB"))[:, :, ::-1].copy(), cover))
-        print(f"  step {i + 1}/{len(steps)} {kind}", flush=True)
+        print(f"  step {i + 1}/{len(steps)} {kind}"
+              + (f" previews={sent['n']}" if stream_key else ""), flush=True)
 
     if layers:
         # EACH LAYER CONTRIBUTES ITS DELTA FROM THE BASE, NOT ITS WHOLE FRAME.
