@@ -1606,7 +1606,8 @@ class HybridVTONPipeline:
                         # had to be pulled the same hour.
                         warped = dual_cylinder_warp(
                             g_bgr, sil, pose, mask_full,
-                            len_ratio=(met or {}).get("len_ratio")) or warped
+                            len_ratio=(_garment_metrics(g_bgr, kind)
+                                       or {}).get("len_ratio")) or warped
                     if TPS_WARP and kind in ("upper", "full"):
                         # UPPER BODY ONLY. A torso is one cylinder and the model fits it;
                         # a pair of legs is TWO, and fitting one cylinder across the whole
@@ -1717,7 +1718,6 @@ class HybridVTONPipeline:
                 near = _extend_fabric(warped.image, warped.mask, holes)
                 fill_img[holes] = near[holes]
                 init[holes] = near[holes]
-            print("[probe] after holes, kind=%s" % kind, flush=True)
 
             # BELOW THE HEM IS A LEG, NOT MORE FABRIC. For 'full' and 'lower' the band
             # deliberately runs to the ankle whatever the garment measures, because the
