@@ -112,6 +112,14 @@ TPS_WARP = os.getenv("VTON_TPS", "1") == "1"
 # single-cylinder version of the same idea looked fine in a metric and was visibly
 # wrong at full zoom, which is the whole reason this one starts behind a flag.
 DUAL_CYL = os.getenv("VTON_DUAL_CYL", "1") == "1"
+# SDXL-inpaint over the SAME init and mask, sampling a full-resolution ROI crop
+# instead of the 512x768 downscale. The 2022 model at half resolution is the
+# never-revisited choice and the measured limiter of the flat look; this branch
+# exists to weigh its successor on identical inputs. Spike form: no ControlNet,
+# no adapter — the warp already carries structure and colour, and the question
+# is purely whether a stronger prior drapes fabric better.
+XL = os.getenv("VTON_XL", "0") == "1"
+XL_STRENGTH = float(os.getenv("VTON_XL_STRENGTH", "0.55"))
 # SHOES BY SEMANTICS ONLY: no spatial warp, the adapter carries the identity, the pose
 # carries the orientation. A shoe is the one garment whose flat-lay and worn appearance
 # differ by a rotation in depth rather than by drape, and no 2D map can supply that.
@@ -1414,6 +1422,64 @@ class HybridVTONPipeline:
             pipe.to(DEVICE)
         return pipe
 
+    _xl = None
+
+    def _ensure_xl(self):
+        """SDXL-inpaint, loaded beside the SD1.5 stack — fp16 both fit a 4090."""
+        if self._xl is None:
+            from diffusers import StableDiffusionXLInpaintPipeline
+            self._xl = StableDiffusionXLInpaintPipeline.from_pretrained(
+                "diffusers/stable-diffusion-xl-1.0-inpainting-0.1",
+                torch_dtype=torch.float16 if DEVICE == "cuda" else torch.float32,
+                variant="fp16" if DEVICE == "cuda" else None,
+            ).to(DEVICE)
+            self._xl.set_progress_bar_config(disable=True)
+        return self._xl
+
+    def _sdxl_roi(self, init: np.ndarray, mask_full: np.ndarray,
+                  prompt_hint: str, seed: int | None) -> np.ndarray:
+        """Sample the mask's ROI at native resolution with SDXL-inpaint.
+
+        The SD1.5 path downscales the WHOLE frame to 512x768, so a garment
+        occupying half the frame gets ~250px of width to carry its weave. The
+        ROI crop hands SDXL the garment at 1024 on its long side — four times
+        the pixels on the fabric for roughly the same latency, because the
+        pixels spent on empty studio white are not sampled at all.
+        """
+        ys, xs = np.nonzero(mask_full > 20)
+        h, w = init.shape[:2]
+        if not ys.size:
+            return init
+        pad_y = int((ys.max() - ys.min()) * 0.12) + 16
+        pad_x = int((xs.max() - xs.min()) * 0.12) + 16
+        y0, y1 = max(0, ys.min() - pad_y), min(h, ys.max() + pad_y)
+        x0, x1 = max(0, xs.min() - pad_x), min(w, xs.max() + pad_x)
+        crop = init[y0:y1, x0:x1]
+        cmask = mask_full[y0:y1, x0:x1]
+        ch, cw = crop.shape[:2]
+        scale = 1024.0 / max(ch, cw)
+        tw, th = (max(64, int(cw * scale)) // 8) * 8, (max(64, int(ch * scale)) // 8) * 8
+        im = Image.fromarray(crop[:, :, ::-1]).resize((tw, th), Image.LANCZOS)
+        mk = Image.fromarray(cmask).resize((tw, th), Image.LANCZOS)
+        pipe = self._ensure_xl()
+        gen = None if seed is None else torch.Generator(device="cpu").manual_seed(seed)
+        t0 = time.time()
+        out = pipe(
+            prompt=_PROMPT.format(g=prompt_hint),
+            negative_prompt=_NEGATIVE,
+            image=im, mask_image=mk,
+            strength=XL_STRENGTH,
+            num_inference_steps=int(os.getenv("VTON_XL_STEPS", "24")),
+            guidance_scale=float(os.getenv("VTON_CFG", "6.5")),
+            generator=gen,
+        ).images[0]
+        print("[xl] roi=%dx%d->%dx%d %.1fs" % (cw, ch, tw, th, time.time() - t0),
+              flush=True)
+        res = np.array(out.resize((cw, ch), Image.LANCZOS))[:, :, ::-1]
+        full = init.copy()
+        full[y0:y1, x0:x1] = res
+        return full
+
     def ensure_loaded(self):
         if self._pipe is None:
             with self._lock:
@@ -1959,7 +2025,14 @@ class HybridVTONPipeline:
             except Exception:
                 cb = None
 
-        with self._lock:      # MPS serialises kernels anyway; make it explicit
+        if XL:
+            # Same init, same mask, a different engine: everything downstream —
+            # the reverse composite, the drew test, the identity guarantee —
+            # treats this exactly like the SD1.5 output.
+            xl_full = self._sdxl_roi(init, mask_full, prompt_hint, seed)
+            out = _to_pil(xl_full[:, :, ::-1])
+        else:
+          with self._lock:      # MPS serialises kernels anyway; make it explicit
             out = pipe(
                 prompt=_PROMPT.format(g=prompt_hint),
                 negative_prompt=_NEGATIVE,
