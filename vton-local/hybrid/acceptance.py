@@ -39,6 +39,11 @@ CASES = [
      "full slot + legs below the hem"),
     ("men_shoes_01.png",  "shoes", "black leather oxford",
      "cover warp + foot boundary"),
+    # Wardrobe-card garments: grey gradient background + baked-in label. The
+    # phone renders THESE, the catalogue renders above — and the cardboard-box
+    # hem lived only here, which is why the sheet missed it until this case.
+    ("wi_2.jpg",          "upper", "light yellow t-shirt",
+     "wardrobe card background survival"),
 ]
 
 

@@ -352,7 +352,7 @@ def _split(chain: list[tuple[int, int]],
     return before, [chain[-1]]
 
 
-def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
+def _flatlay_silhouette_flood(garment: np.ndarray) -> np.ndarray | None:
     """The garment alone, cut out of its studio background. None if unclear.
 
     SEPARATE BY FLOOD-FILLING THE BACKGROUND, not by thresholding the garment.
@@ -386,6 +386,23 @@ def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
         return None
     return (lab == best).astype(np.uint8)
 
+
+
+def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
+    """Flood fill first; when its answer is insane, rescue by segmentation.
+
+    Sanity is checked HERE, not left to callers: every consumer of a silhouette
+    (metrics, panel, warp, colour) assumed it was a garment, and a whole-frame
+    "silhouette" walked through all of them producing four different symptoms
+    with one cause."""
+    sil = _flatlay_silhouette_flood(garment)
+    if _silhouette_sane(sil, garment.shape[:2]):
+        return sil
+    rescued = _rescue_silhouette(garment)
+    if rescued is not None:
+        print("[silhouette] flood failed, rescued by segmentation", flush=True)
+        return rescued
+    return sil
 
 def _nearest_fill(img: np.ndarray, have: np.ndarray) -> np.ndarray:
     """Every pixel takes the colour of the NEAREST pixel we actually have.
@@ -678,6 +695,69 @@ def _extend_fabric(img: np.ndarray, have: np.ndarray,
         left = holes & ~filled
         out[left] = rest[left]
     return out
+
+
+
+def _silhouette_sane(sil: np.ndarray | None, shape: tuple[int, int]) -> bool:
+    """A silhouette that IS the frame is not a silhouette."""
+    if sil is None:
+        return False
+    h, w = shape
+    on = sil > 0
+    frac = float(on.mean())
+    if frac < 0.005 or frac > 0.55:
+        return False
+    ys, xs = np.nonzero(on)
+    touches = (int(ys.min() <= 1) + int(xs.min() <= 1)
+               + int(ys.max() >= h - 2) + int(xs.max() >= w - 2))
+    return touches < 3
+
+
+def _rescue_silhouette(garment: np.ndarray) -> np.ndarray | None:
+    """Segment a flat-lay whose background defeats the flood fill.
+
+    Wardrobe cards carry a GREY GRADIENT background with a baked-in colour
+    label, and flood fill with a fixed range cannot cross a gradient: the
+    "silhouette" came back as the whole frame. Downstream that was not a
+    subtle failure — metrics fell to None (the object-touches-frame guard),
+    the panel became the card, and the warp mapped the ENTIRE CARD onto the
+    torso: the rigid beveled box across the hem on the phone was the card's
+    own gradient, worn as a garment.
+
+    Rescue in two steps. Chroma first: any garment with colour separates from
+    a neutral card in one test, the same Cr/Cb distance the arm carve uses.
+    GrabCut second, for grey garments on grey cards, seeded with a centred
+    rectangle — slower (~1s) but this path runs once per flat-lay, not per
+    render.
+    """
+    h, w = garment.shape[:2]
+    ycc = cv2.cvtColor(garment, cv2.COLOR_BGR2YCrCb).astype(np.int16)
+    chroma = ((np.abs(ycc[:, :, 1] - 128) > 8)
+              | (np.abs(ycc[:, :, 2] - 128) > 8)).astype(np.uint8) * 255
+    chroma = cv2.morphologyEx(chroma, cv2.MORPH_CLOSE, np.ones((13, 13), np.uint8))
+    n, lab, st, _ = cv2.connectedComponentsWithStats((chroma > 0).astype(np.uint8), 8)
+    if n > 1:
+        big = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
+        cand = ((lab == big).astype(np.uint8) * 255)
+        if _silhouette_sane(cand, (h, w)):
+            return cand
+    # Grey garment on a grey card: GrabCut, seeded with a centred rect.
+    try:
+        gc = np.zeros((h, w), np.uint8)
+        rect = (int(w * 0.08), int(h * 0.05), int(w * 0.84), int(h * 0.9))
+        bgd = np.zeros((1, 65), np.float64)
+        fgd = np.zeros((1, 65), np.float64)
+        cv2.grabCut(garment, gc, rect, bgd, fgd, 3, cv2.GC_INIT_WITH_RECT)
+        cand = (((gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD)).astype(np.uint8) * 255)
+        n2, lab2, st2, _ = cv2.connectedComponentsWithStats((cand > 0).astype(np.uint8), 8)
+        if n2 > 1:
+            big2 = 1 + int(np.argmax(st2[1:, cv2.CC_STAT_AREA]))
+            cand = ((lab2 == big2).astype(np.uint8) * 255)
+        if _silhouette_sane(cand, (h, w)):
+            return cand
+    except Exception:
+        pass
+    return None
 
 
 def _garment_color(garment: np.ndarray) -> np.ndarray | None:
