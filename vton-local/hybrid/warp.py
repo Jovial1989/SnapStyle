@@ -1108,19 +1108,42 @@ def sleeves_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
         return None
     chains.sort(key=lambda c: c[0][0])          # image-left arm first
 
+    # THE SOURCE IS A WEDGE BETWEEN ARMPIT AND CUFF, NOT A COLUMN BAND. The first
+    # cut took every occupied row in the columns beside the torso panel — and on a
+    # boxy tee the BODY is wider than the panel, so its rows rode along and the left
+    # sleeve arrived as vertical smears of body fabric. garment_keypoints already
+    # names the armpit, the shoulder seam and both ends of the cuff; between them
+    # the sleeve is a wedge, and sampling that wedge takes sleeve fabric only.
+    kp = garment_keypoints(sil, kind)
+
     for side, chain in enumerate(chains):       # 0 = image left
-        # SOURCE: the sleeve band of the flat-lay on this side.
-        if side == 0:
-            cx0, cx1 = sx_min, int(gx0)         # cuff .. armpit
+        if kp is not None:
+            sfx = "l" if side == 0 else "r"
+            armpit = kp[f"armpit_{sfx}"]
+            seam = kp[f"seam_{sfx}"]
+            c_top = kp[f"cuff_{sfx}_top"]
+            c_bot = kp[f"cuff_{sfx}_bot"]
+            def src_at(t: float):
+                x = armpit[0] + t * (c_top[0] - armpit[0])
+                y_lo = seam[1] + t * (c_top[1] - seam[1])
+                y_hi = armpit[1] + t * (c_bot[1] - armpit[1])
+                return x, y_lo, y_hi
         else:
-            cx0, cx1 = int(gx1), sx_max         # armpit .. cuff
-        if cx1 - cx0 < 8:
-            continue
-        band = pad_sil[:, cx0:cx1 + 1]
-        rows_occ = np.flatnonzero(band.any(axis=1))
-        if rows_occ.size < 8:
-            continue
-        ry0, ry1 = int(rows_occ[0]), int(rows_occ[-1])
+            if side == 0:
+                cx0, cx1 = sx_min, int(gx0)
+            else:
+                cx0, cx1 = int(gx1), sx_max
+            if cx1 - cx0 < 8:
+                continue
+            band = pad_sil[:, cx0:cx1 + 1]
+            rows_occ = np.flatnonzero(band.any(axis=1))
+            if rows_occ.size < 8:
+                continue
+            ry0, ry1 = int(rows_occ[0]), int(rows_occ[-1])
+            def src_at(t: float, _cx0=cx0, _cx1=cx1, _ry0=ry0, _ry1=ry1,
+                       _side=side):
+                x = (_cx1 - t * (_cx1 - _cx0)) if _side == 0 else (_cx0 + t * (_cx1 - _cx0))
+                return x, _ry0, _ry1
 
         # TARGET: down the arm chain, as far as the sleeve actually reaches.
         seg = [(np.hypot(b[0] - a[0], b[1] - a[1])) for a, b in zip(chain, chain[1:])]
@@ -1153,11 +1176,10 @@ def sleeves_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
             t = r / (rows - 1.0)
             (cx, cy), (px_, py_) = at(t * reach)
             R = (r0 + (r1 - r0) * t)
-            # flat-lay: length axis horizontal. Left sleeve: armpit at cx1 → cuff at cx0.
-            sx = (cx1 - t * (cx1 - cx0)) if side == 0 else (cx0 + t * (cx1 - cx0))
+            sx, sy_lo, sy_hi = src_at(t)
             for c in range(cols):
                 f = c / (cols - 1.0)
-                src_pts.append([sx, ry0 + f * (ry1 - ry0)])
+                src_pts.append([sx, sy_lo + f * (sy_hi - sy_lo)])
                 u = (f - 0.5) * 2.0 * R * (np.pi / 2.0)
                 theta = float(np.clip(u / R, -np.pi / 2, np.pi / 2))
                 off = R * np.sin(theta)
@@ -1172,7 +1194,12 @@ def sleeves_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
         tps.estimateTransformation(dst, src, matches)
 
         region = np.zeros((h, w), np.uint8)
-        region[:, cx0:cx1 + 1] = 255
+        if kp is not None:
+            quad = np.int32([[armpit[0], seam[1]], [c_top[0], c_top[1]],
+                             [c_top[0], c_bot[1]], [armpit[0], armpit[1]]])
+            cv2.fillConvexPoly(region, quad, 255)
+        else:
+            region[:, cx0:cx1 + 1] = 255
         one = cv2.bitwise_and(pad_sil, region)
         img = tps.warpImage(pad, flags=cv2.INTER_LINEAR,
                             borderMode=cv2.BORDER_CONSTANT)
