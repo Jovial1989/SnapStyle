@@ -713,24 +713,39 @@ def _silhouette_sane(sil: np.ndarray | None, shape: tuple[int, int]) -> bool:
     return touches < 3
 
 
-def _trim_weak_tails(sil: np.ndarray) -> np.ndarray:
-    """Drop leading/trailing rows whose width is a sliver of the garment's.
+def _trim_weak_tails(sil: np.ndarray, garment: np.ndarray) -> np.ndarray:
+    """Drop leading/trailing rows that are shadow or label, not garment.
 
-    A shadow under the hem or a baked-in label is pixels, but it is not
-    garment: its rows are a fraction of the garment's width. Rows thinner than
-    18% of the median occupied width are cut from both ends — never from the
-    middle, where a thin row is legitimately a waist."""
+    Two tests, because the tails come in two shapes. A baked-in label is THIN —
+    rows under 18% of the median width. A drop shadow is the opposite: the
+    ellipse under a hanging tee measured WIDER than the tee itself (472px
+    against a 350px body), so a width floor can never catch it — but a shadow
+    is DESATURATED, at a fraction of the garment's own chroma. Rows failing
+    either test are cut from the ends only; a thin or dull row in the middle is
+    legitimately a waist or a dark stripe."""
     on = sil > 0
     widths = on.sum(axis=1)
     rows = np.flatnonzero(widths)
     if rows.size < 10:
         return sil
-    med = float(np.median(widths[rows]))
-    thr = med * 0.18
+    ycc = cv2.cvtColor(garment, cv2.COLOR_BGR2YCrCb).astype(np.int16)
+    sat = np.abs(ycc[:, :, 1] - 128) + np.abs(ycc[:, :, 2] - 128)
+    row_sat = np.where(widths > 0,
+                       (sat * on).sum(axis=1) / np.maximum(widths, 1), 0.0)
+    core = rows[int(rows.size * 0.2): int(rows.size * 0.8)]
+    med_w = float(np.median(widths[rows]))
+    med_s = float(np.median(row_sat[core])) if core.size else 0.0
+    # A grey garment has no chroma to speak of; then only the width test runs,
+    # or the trim would eat the garment itself.
+    sat_thr = med_s * 0.5 if med_s >= 6 else -1.0
+
+    def bad(y: int) -> bool:
+        return widths[y] < med_w * 0.18 or row_sat[y] < sat_thr
+
     lo, hi = rows[0], rows[-1]
-    while lo < hi and widths[lo] < thr:
+    while lo < hi and bad(lo):
         lo += 1
-    while hi > lo and widths[hi] < thr:
+    while hi > lo and bad(hi):
         hi -= 1
     out = sil.copy()
     out[:lo] = 0
@@ -772,7 +787,7 @@ def _rescue_silhouette(garment: np.ndarray) -> np.ndarray | None:
     if n > 1:
         big = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
         cand = ((lab == big).astype(np.uint8) * 255)
-        cand = _trim_weak_tails(cand)
+        cand = _trim_weak_tails(cand, garment)
         if _silhouette_sane(cand, (h, w)):
             return cand
     # Grey garment on a grey card: GrabCut, seeded with a centred rect.
@@ -787,7 +802,7 @@ def _rescue_silhouette(garment: np.ndarray) -> np.ndarray | None:
         if n2 > 1:
             big2 = 1 + int(np.argmax(st2[1:, cv2.CC_STAT_AREA]))
             cand = ((lab2 == big2).astype(np.uint8) * 255)
-        cand = _trim_weak_tails(cand)
+        cand = _trim_weak_tails(cand, garment)
         if _silhouette_sane(cand, (h, w)):
             return cand
     except Exception:
