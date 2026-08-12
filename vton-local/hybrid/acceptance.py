@@ -60,7 +60,12 @@ def main() -> None:
     for fname, kind, hint, why in CASES:
         row = []
         for e in engines:
+            # The engine toggle must actually toggle: XL_KINDS overrides P.XL
+            # per slot, so the sd15 column silently rendered 'lower' through XL
+            # and the two lower tiles came out identical. The sheet compares
+            # engines, so for the sheet the per-slot default is suspended.
             P.XL = (e == "xl")
+            P.XL_KINDS = set() if e == "sd15" else {"upper", "lower", "full", "shoes"}
             t0 = time.time()
             img, _ = eng.generate(cur, Image.open("/workspace/" + fname), kind,
                                   hint, seed=7, pose=pose, return_mask=True)
