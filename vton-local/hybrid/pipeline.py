@@ -1794,6 +1794,16 @@ class HybridVTONPipeline:
                         int(changed.sum())), flush=True)
                     init = lit
                     fill_img[changed] = lit[changed]
+                    # BELOW THE HEM AND BESIDE THE LEG THERE IS NOTHING. The old
+                    # trousers are wider than the legs inside them, and the fabric
+                    # extension had already continued the new garment into that
+                    # margin — so the render kept a grey trouser OUTLINE around
+                    # each bare leg. What is actually there once the trousers are
+                    # gone is the studio background.
+                    margin = (below > 0) & ~changed
+                    if margin.any():
+                        init[margin] = 255
+                        fill_img[margin] = 255
 
             # WHEN THE WARP IS GOOD, IT OWNS THE SILHOUETTE. The band is a rectangle
             # — it has to be, since a mask traced round the old clothes could never
