@@ -163,20 +163,33 @@ export async function buildMinimalBase(db: SupabaseClient, photoPath: string): P
     }
     if (!person) throw new Error("no source image");
 
-    let bare = await generateLookImage(person, BARE_PROMPT);
-    const ok = async (img: typeof bare) => {
+    // THE GATE THAT ACTUALLY MATTERS HERE IS THE SHINS. The first build returned
+    // the source avatar untouched — full-length trousers and all — and passed,
+    // because samePerson and the look validator check identity and integrity,
+    // which an unedited image satisfies perfectly. An edit model declining the
+    // edit is a normal failure mode, and the gate for it has to test the thing
+    // the edit was FOR: warm skin, not neutral grey, in the lower-leg band.
+    const ok = async (img: { data: string; mimeType: string }) => {
       try {
         if (!(await samePerson(img, person!))) return false;
       } catch (_) {/* gate down → fall through */}
       try {
-        return (await validateLookImages([img]))[0] !== false;
-      } catch (_) { return true; }
+        if ((await validateLookImages([img]))[0] === false) return false;
+      } catch (_) {/* validator down → accept */}
+      return await bareShins(b64ToBytes(img.data));
     };
-    if (!(await ok(bare))) {
-      bare = await generateLookImage(person, BARE_PROMPT +
-        " NOTE: a previous attempt FAILED — it changed the person or produced an invalid image. Keep the EXACT person from the photo, decisively.");
-      if (!(await ok(bare))) throw new Error("bare base failed QA twice");
+    const prompts = [
+      BARE_PROMPT,
+      BARE_PROMPT + " NOTE: a previous attempt FAILED because the trousers were kept. REMOVE the long trousers ENTIRELY and draw bare lower legs with grey SHORTS ending mid-thigh. This is the whole point of the edit.",
+      BARE_PROMPT + " CRITICAL: output MUST show bare knees and bare shins (visible skin from mid-thigh to the sneakers). Any long trousers = FAILED generation.",
+    ];
+    let bare: { data: string; mimeType: string } | undefined;
+    for (const pr of prompts) {
+      const cand = await generateLookImage(person, pr);
+      if (await ok(cand)) { bare = cand; break; }
+      console.log("[bare] attempt rejected (identity or shins)");
     }
+    if (!bare) throw new Error("bare base failed QA on all attempts");
 
     const framed = await portraitFrame(b64ToBytes(bare.data));
     const { error } = await db.storage.from(BUCKET).upload(
@@ -187,5 +200,47 @@ export async function buildMinimalBase(db: SupabaseClient, photoPath: string): P
     console.log("[bare] built", photoPath);
   } catch (e) {
     console.error("[bare]", photoPath, (e as Error).message);
+  }
+}
+
+/** Are the lower legs bare skin? Pixel arithmetic, no model call: in the band
+ * between 74% and 90% of the figure's height, count occupied (non-white)
+ * pixels that read WARM — red clearly above blue — against ones that read
+ * NEUTRAL grey. Trousers on this mannequin are neutral by construction; skin
+ * of any tone is warmer than fabric dyed grey. The threshold is deliberately
+ * low (35%) because sneakers and shadow legitimately occupy part of the band. */
+async function bareShins(png: Uint8Array): Promise<boolean> {
+  try {
+    const { Image } = await import("https://deno.land/x/imagescript@1.3.0/mod.ts");
+    const im = await Image.decode(png);
+    const w = im.width, h = im.height, bmp = im.bitmap;
+    // The figure's vertical extent (same occupancy test as portraitFrame).
+    const rowN = new Uint32Array(h);
+    for (let i = 0; i < w * h; i++) {
+      if (Math.max(bmp[i * 4], bmp[i * 4 + 1], bmp[i * 4 + 2]) < 235) rowN[(i / w) | 0]++;
+    }
+    let top = -1, bot = -1;
+    for (let y = 0; y < h; y++) if (rowN[y] > w * 0.02) { top = y; break; }
+    for (let y = h - 1; y >= 0; y--) if (rowN[y] > w * 0.02) { bot = y; break; }
+    if (top < 0 || bot <= top) return false;
+    const y0 = top + Math.round((bot - top) * 0.74);
+    const y1 = top + Math.round((bot - top) * 0.90);
+    let warm = 0, occupied = 0;
+    for (let y = y0; y <= y1; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        const r = bmp[i], g = bmp[i + 1], b = bmp[i + 2];
+        if (Math.max(r, g, b) >= 235) continue;      // background
+        occupied++;
+        if (r - b > 14 && r > 80) warm++;
+      }
+    }
+    if (occupied < 200) return false;
+    const frac = warm / occupied;
+    console.log(`[bare] shin band warm fraction: ${(frac * 100).toFixed(0)}%`);
+    return frac > 0.35;
+  } catch (e) {
+    console.error("[bare] shin gate error:", (e as Error).message);
+    return false;   // an ungateable image is a failed image; the edit is cheap
   }
 }
