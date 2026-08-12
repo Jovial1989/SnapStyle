@@ -1057,3 +1057,162 @@ def dual_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose,
     if not mask.any():
         return None
     return Warped(image=out, mask=mask, coverage=_coverage(mask, slot_mask))
+
+
+def sleeves_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
+                          slot_mask: np.ndarray, sleeve_ratio: float | None,
+                          rows: int = 7, cols: int = 5) -> Warped | None:
+    """Each sleeve onto its own arm cylinder — the leg treatment, one joint up.
+
+    Six attempts at a sleeve QUAD failed for a reason that is now understood rather
+    than mysterious: the armhole edge lies along the arm's axis, so a quad anchored
+    to it is degenerate by construction. The dual-cylinder legs proved the primitive
+    that works — a cylinder per limb, axis interpolated along the limb's own chain,
+    its own TPS solver so the joint stays a boundary. An arm is the same problem one
+    joint up, with one addition: the sleeve ENDS partway down, and where it ends
+    comes from the flat-lay's own sleeve_ratio, not from a guess.
+
+    Source geometry: on a flat-lay the sleeves stick out SIDEWAYS — the length axis
+    is horizontal (armpit to cuff), the width axis vertical. The torso panel's
+    columns say where the sleeves start; everything outside them is sleeve.
+    Front-of-garment and front-of-person agree on image left/right, same as legs.
+    """
+    panel = _panel(sil, kind)
+    if panel is None:
+        return None
+    gx0, gy0, gx1, gy1 = panel
+    ys_s, xs_s = np.nonzero(sil)
+    if not ys_s.size:
+        return None
+    sx_min, sx_max = int(xs_s.min()), int(xs_s.max())
+
+    pts = pose.pts
+    ys_all = [q[1] for q in pts if q]
+    span = max(1.0, max(ys_all) - min(ys_all))
+    h, w = pose.h, pose.w
+    out = np.zeros((h, w, 3), np.uint8)
+    filled = np.zeros((h, w), np.uint8)
+
+    pad = np.zeros((h, w, 3), np.uint8)
+    ph, pw = min(h, garment.shape[0]), min(w, garment.shape[1])
+    pad[:ph, :pw] = garment[:ph, :pw]
+    pad_sil = np.zeros((h, w), np.uint8)
+    pad_sil[:ph, :pw] = sil[:ph, :pw]
+
+    chains = []
+    for ids in ((2, 3, 4), (5, 6, 7)):
+        chain = [pts[i] for i in ids if pts[i]]
+        if len(chain) >= 2:
+            chains.append(chain)
+    if len(chains) < 2:
+        return None
+    chains.sort(key=lambda c: c[0][0])          # image-left arm first
+
+    for side, chain in enumerate(chains):       # 0 = image left
+        # SOURCE: the sleeve band of the flat-lay on this side.
+        if side == 0:
+            cx0, cx1 = sx_min, int(gx0)         # cuff .. armpit
+        else:
+            cx0, cx1 = int(gx1), sx_max         # armpit .. cuff
+        if cx1 - cx0 < 8:
+            continue
+        band = pad_sil[:, cx0:cx1 + 1]
+        rows_occ = np.flatnonzero(band.any(axis=1))
+        if rows_occ.size < 8:
+            continue
+        ry0, ry1 = int(rows_occ[0]), int(rows_occ[-1])
+
+        # TARGET: down the arm chain, as far as the sleeve actually reaches.
+        seg = [(np.hypot(b[0] - a[0], b[1] - a[1])) for a, b in zip(chain, chain[1:])]
+        chain_len = float(sum(seg))
+        if chain_len < 8:
+            continue
+        gw_ref = float(gx1 - gx0)
+        reach = min(chain_len, (sleeve_ratio * gw_ref) if sleeve_ratio
+                    else 0.42 * chain_len)
+        unit = float(np.hypot(chain[-1][0] - chain[-2][0],
+                              chain[-1][1] - chain[-2][1])) or chain_len * 0.5
+        r0, r1 = 0.45 * unit, 0.30 * unit
+
+        # points along the chain at arc length t·reach, with the local perpendicular
+        def at(dist: float):
+            d = dist
+            for a, b in zip(chain, chain[1:]):
+                L = float(np.hypot(b[0] - a[0], b[1] - a[1]))
+                if d <= L or (a, b) == (chain[-2], chain[-1]):
+                    f = 0.0 if L == 0 else min(1.0, d / L)
+                    cx = a[0] + (b[0] - a[0]) * f
+                    cy = a[1] + (b[1] - a[1]) * f
+                    ux, uy = ((b[0] - a[0]) / L, (b[1] - a[1]) / L) if L else (0, 1)
+                    return (cx, cy), (-uy, ux)
+                d -= L
+            return (chain[-1][0], chain[-1][1]), (0.0, 1.0)
+
+        src_pts, dst_pts = [], []
+        for r in range(rows):
+            t = r / (rows - 1.0)
+            (cx, cy), (px_, py_) = at(t * reach)
+            R = (r0 + (r1 - r0) * t)
+            # flat-lay: length axis horizontal. Left sleeve: armpit at cx1 → cuff at cx0.
+            sx = (cx1 - t * (cx1 - cx0)) if side == 0 else (cx0 + t * (cx1 - cx0))
+            for c in range(cols):
+                f = c / (cols - 1.0)
+                src_pts.append([sx, ry0 + f * (ry1 - ry0)])
+                u = (f - 0.5) * 2.0 * R * (np.pi / 2.0)
+                theta = float(np.clip(u / R, -np.pi / 2, np.pi / 2))
+                off = R * np.sin(theta)
+                dst_pts.append([cx + px_ * off, cy + py_ * off])
+        if len(src_pts) < 12:
+            continue
+
+        src = np.asarray(src_pts, np.float32).reshape(1, -1, 2)
+        dst = np.asarray(dst_pts, np.float32).reshape(1, -1, 2)
+        matches = [cv2.DMatch(i, i, 0) for i in range(src.shape[1])]
+        tps = cv2.createThinPlateSplineShapeTransformer()
+        tps.estimateTransformation(dst, src, matches)
+
+        region = np.zeros((h, w), np.uint8)
+        region[:, cx0:cx1 + 1] = 255
+        one = cv2.bitwise_and(pad_sil, region)
+        img = tps.warpImage(pad, flags=cv2.INTER_LINEAR,
+                            borderMode=cv2.BORDER_CONSTANT)
+        msk = tps.warpImage(one, flags=cv2.INTER_NEAREST,
+                            borderMode=cv2.BORDER_CONSTANT)
+        msk = cv2.erode((msk > 0).astype(np.uint8) * 255, np.ones((3, 3), np.uint8))
+        take = (msk > 0) & (filled == 0)
+        out[take] = img[take]
+        filled[take] = 255
+
+    mask = cv2.bitwise_and(filled, (slot_mask > 20).astype(np.uint8) * 255)
+    if not mask.any():
+        return None
+    return Warped(image=out, mask=mask, coverage=_coverage(mask, slot_mask))
+
+
+def sigmoid_merge(torso: Warped, sleeves: Warped, k: float = 0.5,
+                  d0: float = 4.0) -> Warped:
+    """Join two warps with a sigmoid over the distance to the torso's own region.
+
+    The armhole is a topological break — torso and sleeve are different cylinders —
+    so the join must be a RAMP, not a seam. W(d) = 1/(1+exp(k·(d−d0))) is 1 deep
+    inside the torso's alpha and falls to 0 within ~2·d0/k pixels outside it, so in
+    the overlap the torso owns its side, the sleeve owns the far side, and the
+    handover is a few soft pixels along the seam line.
+    """
+    inv = (torso.mask == 0).astype(np.uint8)
+    D = cv2.distanceTransform(inv, cv2.DIST_L2, 3)
+    W = 1.0 / (1.0 + np.exp(np.clip(k * (D - d0), -30, 30)))
+    both = (torso.mask > 0).astype(np.float32) | 0
+    img = torso.image.astype(np.float32)
+    s_img = sleeves.image.astype(np.float32)
+    only_s = (sleeves.mask > 0) & (torso.mask == 0)
+    overlap = (sleeves.mask > 0) & (torso.mask > 0)
+    outim = torso.image.copy()
+    outim[only_s] = sleeves.image[only_s]
+    if overlap.any():
+        Wf = W[:, :, None]
+        blend = img * Wf + s_img * (1.0 - Wf)
+        outim[overlap] = np.clip(blend[overlap], 0, 255).astype(np.uint8)
+    mask = cv2.bitwise_or(torso.mask, sleeves.mask)
+    return Warped(image=outim, mask=mask, coverage=max(torso.coverage,
+                                                       sleeves.coverage))

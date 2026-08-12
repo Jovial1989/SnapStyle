@@ -36,7 +36,8 @@ from PIL import Image
 
 from kinematic import apply_kinematic_shield, arm_shield
 from warp import (apply_shading, dual_cylinder_warp, harmonise_poisson, mesh_warp,
-                  parts_warp, shoes_warp, torso_warp, tps_warp)
+                  parts_warp, shoes_warp, sigmoid_merge, sleeves_cylinder_warp,
+                  torso_warp, tps_warp)
 
 # ─────────────────────────────── device / precision ──────────────────────────
 
@@ -117,6 +118,15 @@ DUAL_CYL = os.getenv("VTON_DUAL_CYL", "1") == "1"
 # Off until weighed against the `cover` warp, which measured 0.76 coverage and returns
 # the shoe's real colour and material.
 SHOE_SEMANTIC = os.getenv("VTON_SHOE_SEMANTIC", "0") == "1"
+# A cylinder per sleeve, joined to the torso by a sigmoid over the armhole. The leg
+# treatment one joint up — off until the striped tee says the stripes arrive.
+SLEEVE_CYL = os.getenv("VTON_SLEEVE_CYL", "0") == "1"
+# Lambertian micro-relief: pseudo-normals from the warped fabric's own luminance
+# gradients, lit by a fixed virtual light, multiplied into the init at this weight.
+# 0 disables. Denoise strength was already measured to buy no folds (9.80/9.98/9.84
+# at 0.55/0.68/0.80), so if relief is to come from anywhere before the sampler, it
+# has to be painted in — this is that experiment, not a proven default.
+RELIEF = float(os.getenv("VTON_RELIEF", "0"))
 POISSON = os.getenv("VTON_POISSON", "0") == "1"
 # Deformable parts — torso quad plus a quad per sleeve — is the right idea and is
 # NOT ready. Two measured attempts at warping sleeves (one mesh, one parts) both
@@ -557,7 +567,54 @@ def _extend_fabric(img: np.ndarray, have: np.ndarray,
     ac = ac / (ac[0] if ac[0] else 1.0)
     period = int(lo + np.argmax(ac[lo:hi]))
     if float(ac[lo:hi].max()) < 0.45:
-        return _nearest_fill(img, have)
+        # NO 1-D PERIOD — try the 2-D lattice before giving up on pattern. The row
+        # profile answers stripes and nothing else: polka dots average out along a
+        # row, plaid halfway. The 2-D autocorrelation (|F|² by Wiener–Khinchin) sees
+        # any translational repeat as an off-origin peak, and its coordinates ARE the
+        # lattice vector. Gated at 0.30 of the origin peak; below that the garment is
+        # genuinely plain and nearest is correct.
+        ys0, xs0 = np.nonzero(src)
+        by0, by1 = int(ys0.min()), int(ys0.max())
+        bx0, bx1 = int(xs0.min()), int(xs0.max())
+        patch = grey[by0:by1 + 1, bx0:bx1 + 1].copy()
+        pm = src[by0:by1 + 1, bx0:bx1 + 1]
+        patch[~pm] = float(patch[pm].mean()) if pm.any() else 0.0
+        patch -= float(patch.mean())
+        F = np.fft.rfft2(patch)
+        ac2 = np.fft.irfft2(F * np.conj(F), s=patch.shape)
+        norm0 = float(ac2[0, 0]) or 1.0
+        ac2 = ac2 / norm0
+        Hh, Ww = ac2.shape
+        ac2[:5, :5] = ac2[-5:, :5] = ac2[:5, -5:] = ac2[-5:, -5:] = 0
+        ac2[Hh // 4: 3 * Hh // 4, :] = 0        # keep shifts under a quarter frame
+        ac2[:, Ww // 4: 3 * Ww // 4] = 0
+        peak = np.unravel_index(int(np.argmax(ac2)), ac2.shape)
+        if float(ac2[peak]) < 0.30:
+            return _nearest_fill(img, have)
+        dy = peak[0] if peak[0] <= Hh // 2 else peak[0] - Hh
+        dx = peak[1] if peak[1] <= Ww // 2 else peak[1] - Ww
+        out = img.copy()
+        ys, xs = np.nonzero(holes)
+        filled = np.zeros(holes.shape, bool)
+        h_img, w_img = img.shape[:2]
+        for m1, m2 in ((1, 0), (-1, 0), (2, 0), (-2, 0), (1, 1), (-1, -1),
+                       (3, 0), (-3, 0), (2, 1), (-2, -1)):
+            todo = ~filled[ys, xs]
+            if not todo.any():
+                break
+            yy, xx = ys[todo], xs[todo]
+            sy = yy + m1 * dy + m2 * dy
+            sxp = xx + m1 * dx + m2 * dx
+            ok = (sy >= 0) & (sy < h_img) & (sxp >= 0) & (sxp < w_img)
+            yy, xx, sy, sxp = yy[ok], xx[ok], sy[ok], sxp[ok]
+            good = src[sy, sxp]
+            out[yy[good], xx[good]] = img[sy[good], sxp[good]]
+            filled[yy[good], xx[good]] = True
+        if not filled[holes].all():
+            rest = _nearest_fill(img, have)
+            left = holes & ~filled
+            out[left] = rest[left]
+        return out
 
     out = img.copy()
     ys, xs = np.nonzero(holes)
@@ -1540,6 +1597,15 @@ class HybridVTONPipeline:
                 warped = None
             # A warp that covers almost none of the slot did not work out; falling
             # back to plain inpainting beats compositing a sliver.
+            if (SLEEVE_CYL and warped is not None and kind in ("upper", "full")):
+                try:
+                    slv = sleeves_cylinder_warp(
+                        g_bgr, sil, pose, kind, mask_full,
+                        (_garment_metrics(g_bgr, kind) or {}).get("sleeve_ratio"))
+                except Exception:
+                    slv = None
+                if slv is not None:
+                    warped = sigmoid_merge(warped, slv)
             if warped is not None and warped.coverage < 0.35:
                 warped = None
         if warped is not None:
@@ -1549,6 +1615,26 @@ class HybridVTONPipeline:
             warped.image[:] = apply_shading(
                 warped.image, warped.mask, full,
                 float(os.getenv("VTON_SHADING", "2.0")))
+            if RELIEF > 0:
+                # PSEUDO-NORMALS FROM THE FABRIC'S OWN GRADIENTS. N = (-Gx,-Gy,1)
+                # normalised, lit by a fixed front-top light V=(0,0.5,0.86); the
+                # Lambertian term max(N·V,0) modulates the warp around its own mean
+                # so overall brightness is untouched and only the folds move. The
+                # gradients are divided by 32 first — raw Sobel units are far too
+                # steep to read as cloth relief.
+                Lg = cv2.GaussianBlur(cv2.cvtColor(warped.image,
+                                                   cv2.COLOR_BGR2GRAY), (5, 5), 0
+                                      ).astype(np.float32)
+                Gx = cv2.Sobel(Lg, cv2.CV_32F, 1, 0, ksize=3) / 32.0
+                Gy = cv2.Sobel(Lg, cv2.CV_32F, 0, 1, ksize=3) / 32.0
+                nz = 1.0 / np.sqrt(Gx * Gx + Gy * Gy + 1.0)
+                I = np.maximum((-Gx * 0.0 - Gy * 0.5 + 0.86) * nz, 0.0)
+                mwm = warped.mask > 0
+                mean_I = float(I[mwm].mean()) or 1.0
+                mod = 1.0 + RELIEF * (I / mean_I - 1.0)
+                warped.image[mwm] = np.clip(
+                    warped.image[mwm].astype(np.float32)
+                    * mod[mwm][:, None], 0, 255).astype(np.uint8)
             wm = (cv2.GaussianBlur(warped.mask, (9, 9), 0).astype(np.float32) / 255.0)
             init = np.clip(warped.image * wm[:, :, None] +
                            init * (1.0 - wm[:, :, None]), 0, 255).astype(np.uint8)
