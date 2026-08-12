@@ -713,6 +713,31 @@ def _silhouette_sane(sil: np.ndarray | None, shape: tuple[int, int]) -> bool:
     return touches < 3
 
 
+def _trim_weak_tails(sil: np.ndarray) -> np.ndarray:
+    """Drop leading/trailing rows whose width is a sliver of the garment's.
+
+    A shadow under the hem or a baked-in label is pixels, but it is not
+    garment: its rows are a fraction of the garment's width. Rows thinner than
+    18% of the median occupied width are cut from both ends — never from the
+    middle, where a thin row is legitimately a waist."""
+    on = sil > 0
+    widths = on.sum(axis=1)
+    rows = np.flatnonzero(widths)
+    if rows.size < 10:
+        return sil
+    med = float(np.median(widths[rows]))
+    thr = med * 0.18
+    lo, hi = rows[0], rows[-1]
+    while lo < hi and widths[lo] < thr:
+        lo += 1
+    while hi > lo and widths[hi] < thr:
+        hi -= 1
+    out = sil.copy()
+    out[:lo] = 0
+    out[hi + 1:] = 0
+    return out
+
+
 def _rescue_silhouette(garment: np.ndarray) -> np.ndarray | None:
     """Segment a flat-lay whose background defeats the flood fill.
 
@@ -734,11 +759,20 @@ def _rescue_silhouette(garment: np.ndarray) -> np.ndarray | None:
     ycc = cv2.cvtColor(garment, cv2.COLOR_BGR2YCrCb).astype(np.int16)
     chroma = ((np.abs(ycc[:, :, 1] - 128) > 8)
               | (np.abs(ycc[:, :, 2] - 128) > 8)).astype(np.uint8) * 255
+    # OPEN before CLOSE: closing first glued the card's baked-in label and the
+    # garment's drop shadow onto the main component, and that tail rode into
+    # everything downstream — the silhouette's bbox ran ~120 rows past the
+    # garment, len_ratio inflated to 2.0 on an ordinary tee, and the warp
+    # mapped a SLICE OF THE CARD as the garment's lower half: the beveled
+    # yellow apron across the hem on the phone, at every strength and both
+    # engines, because it was in the source pixels.
+    chroma = cv2.morphologyEx(chroma, cv2.MORPH_OPEN, np.ones((7, 7), np.uint8))
     chroma = cv2.morphologyEx(chroma, cv2.MORPH_CLOSE, np.ones((13, 13), np.uint8))
     n, lab, st, _ = cv2.connectedComponentsWithStats((chroma > 0).astype(np.uint8), 8)
     if n > 1:
         big = 1 + int(np.argmax(st[1:, cv2.CC_STAT_AREA]))
         cand = ((lab == big).astype(np.uint8) * 255)
+        cand = _trim_weak_tails(cand)
         if _silhouette_sane(cand, (h, w)):
             return cand
     # Grey garment on a grey card: GrabCut, seeded with a centred rect.
@@ -753,6 +787,7 @@ def _rescue_silhouette(garment: np.ndarray) -> np.ndarray | None:
         if n2 > 1:
             big2 = 1 + int(np.argmax(st2[1:, cv2.CC_STAT_AREA]))
             cand = ((lab2 == big2).astype(np.uint8) * 255)
+        cand = _trim_weak_tails(cand)
         if _silhouette_sane(cand, (h, w)):
             return cand
     except Exception:
