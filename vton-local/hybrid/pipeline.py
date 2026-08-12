@@ -120,6 +120,11 @@ DUAL_CYL = os.getenv("VTON_DUAL_CYL", "1") == "1"
 # no adapter — the warp already carries structure and colour, and the question
 # is purely whether a stronger prior drapes fabric better.
 XL = os.getenv("VTON_XL", "0") == "1"
+# Per-slot engine choice, decided by the first acceptance sheet rather than by a
+# single crop: XL wins the lower slot outright (denim drape), loses stripes at
+# the collar and does not repaint shoes at all. A slot moves into this set when
+# the sheet says so, not before.
+XL_KINDS = set((os.getenv("VTON_XL_KINDS", "lower") or "").split(","))
 XL_STRENGTH = float(os.getenv("VTON_XL_STRENGTH", "0.55"))
 # SHOES BY SEMANTICS ONLY: no spatial warp, the adapter carries the identity, the pose
 # carries the orientation. A shoe is the one garment whose flat-lay and worn appearance
@@ -2026,7 +2031,7 @@ class HybridVTONPipeline:
             except Exception:
                 cb = None
 
-        if XL:
+        if XL or kind in XL_KINDS:
             # Same init, same mask, a different engine: everything downstream —
             # the reverse composite, the drew test, the identity guarantee —
             # treats this exactly like the SD1.5 output.
