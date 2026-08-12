@@ -739,8 +739,13 @@ def _garment_metrics(garment: np.ndarray, kind: str) -> dict | None:
     # garments live in a narrow band of length-over-width; outside it, fall back
     # to the slot band rather than trust a measurement of the wrong thing.
     len_ratio = H / ref
+    # lower's floor admits SHORTS: 0.7 was tuned on trousers and rejected every
+    # pair of shorts outright (len_ratio ~0.5), which silently downgraded them to
+    # the no-metrics path — full-figure band, panel-guessed aspect, hem at the
+    # ankle. That is how "grey knee shorts" rendered as grey trousers three seeds
+    # in a row while every individual stage reported success.
     lo_r, hi_r = {"upper": (0.55, 2.6), "full": (1.2, 4.0),
-                  "lower": (0.7, 4.2)}[kind]
+                  "lower": (0.35, 4.2)}[kind]
     if not lo_r <= len_ratio <= hi_r:
         return None
 
@@ -1599,7 +1604,9 @@ class HybridVTONPipeline:
                         # been weighed against the quad on the phone, the way the torso's
                         # cylinder was — the single-cylinder version of this shipped and
                         # had to be pulled the same hour.
-                        warped = dual_cylinder_warp(g_bgr, sil, pose, mask_full) or warped
+                        warped = dual_cylinder_warp(
+                            g_bgr, sil, pose, mask_full,
+                            len_ratio=(met or {}).get("len_ratio")) or warped
                     if TPS_WARP and kind in ("upper", "full"):
                         # UPPER BODY ONLY. A torso is one cylinder and the model fits it;
                         # a pair of legs is TWO, and fitting one cylinder across the whole

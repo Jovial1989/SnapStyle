@@ -936,7 +936,8 @@ def harmonise_poisson(init: np.ndarray, warped: np.ndarray, mask: np.ndarray,
 
 def dual_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose,
                        slot_mask: np.ndarray, rows: int = 9, cols: int = 5,
-                       wrap: float = 1.0, radius_k: float = 0.55) -> Warped | None:
+                       wrap: float = 1.0, radius_k: float = 0.55,
+                       len_ratio: float | None = None) -> Warped | None:
     """Trousers onto TWO cylinders, one per leg, each with its own solver.
 
     The single-cylinder fit that works on a torso is wrong here and it showed: spanning
@@ -985,8 +986,14 @@ def dual_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose,
     h, w = pose.h, pose.w
     ty0 = min(lh[1], rh[1]) - span * 0.02
     ankles = [pts[i][1] for i in (10, 13) if pts[i]]
-    aspect = gh / max(1.0, gw)
-    ty1 = min(ty0 + aspect * (2.0 * abs(lh[0] - rh[0]) * 0.78),
+    # THE GARMENT'S LENGTH COMES FROM ITS OWN MEASUREMENT when one exists.
+    # len_ratio is length over reference width, both read off the flat-lay, so
+    # length-on-body = len_ratio x width-on-body — no panel involved. The panel's
+    # aspect stays only as the metric-less fallback: on a wardrobe shorts photo
+    # the panel misread the frame and stretched knee shorts to the ankle.
+    width_on_body = 2.0 * abs(lh[0] - rh[0]) * 0.78
+    length = (len_ratio * width_on_body) if len_ratio else         (gh / max(1.0, gw)) * width_on_body
+    ty1 = min(ty0 + length,
               (max(ankles) + span * 0.02) if ankles else ty0 + span * 0.45)
     if ty1 - ty0 < 16:
         return None
