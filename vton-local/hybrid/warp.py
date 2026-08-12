@@ -1061,7 +1061,7 @@ def dual_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose,
 
 def sleeves_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
                           slot_mask: np.ndarray, sleeve_ratio: float | None,
-                          rows: int = 7, cols: int = 5) -> Warped | None:
+                          rows: int = 9, cols: int = 5) -> Warped | None:
     """Each sleeve onto its own arm cylinder — the leg treatment, one joint up.
 
     Six attempts at a sleeve QUAD failed for a reason that is now understood rather
@@ -1177,12 +1177,19 @@ def sleeves_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
             (cx, cy), (px_, py_) = at(t * reach)
             R = (r0 + (r1 - r0) * t)
             sx, sy_lo, sy_hi = src_at(t)
+            # THE ACROSS-AXIS MUST POINT LATERAL ON BOTH ARMS. The chain runs
+            # downward on both sides, so its perpendicular (-uy, ux) points the SAME
+            # image direction for both — which is lateral for one arm and medial for
+            # the other. With one sign, one sleeve mapped its outer edge onto the
+            # inner side of the arm and the spline expressed the flip as a full
+            # twist: the left sleeve arrived as a swirl while the right was clean.
+            lat = 1.0 if side == 0 else -1.0
             for c in range(cols):
                 f = c / (cols - 1.0)
                 src_pts.append([sx, sy_lo + f * (sy_hi - sy_lo)])
                 u = (f - 0.5) * 2.0 * R * (np.pi / 2.0)
                 theta = float(np.clip(u / R, -np.pi / 2, np.pi / 2))
-                off = R * np.sin(theta)
+                off = R * np.sin(theta) * lat
                 dst_pts.append([cx + px_ * off, cy + py_ * off])
         if len(src_pts) < 12:
             continue
