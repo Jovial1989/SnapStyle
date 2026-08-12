@@ -127,6 +127,14 @@ SLEEVE_CYL = os.getenv("VTON_SLEEVE_CYL", "0") == "1"
 # at 0.55/0.68/0.80), so if relief is to come from anywhere before the sampler, it
 # has to be painted in — this is that experiment, not a proven default.
 RELIEF = float(os.getenv("VTON_RELIEF", "0"))
+# Luminance injection: the BODY's own high-frequency shading, multiplied into the
+# warped garment. Different from RELIEF (which read gradients off the FLAT-LAY and
+# measured nothing — the flat-lay has no folds to read) and different from raw
+# L-channel transfer (which would carry the grey tank's seams and the waist step,
+# the exact class the row-normalised shading was built to kill): the RESIDUAL
+# L − blur(L) is zero-mean, so the garment's colour and level are untouched and
+# only the body's fold-scale detail arrives.
+LUMA = float(os.getenv("VTON_LUMA", "0"))
 POISSON = os.getenv("VTON_POISSON", "0") == "1"
 # Deformable parts — torso quad plus a quad per sleeve — is the right idea and is
 # NOT ready. Two measured attempts at warping sleeves (one mesh, one parts) both
@@ -1615,6 +1623,14 @@ class HybridVTONPipeline:
             warped.image[:] = apply_shading(
                 warped.image, warped.mask, full,
                 float(os.getenv("VTON_SHADING", "2.0")))
+            if LUMA > 0:
+                Lb = cv2.cvtColor(full, cv2.COLOR_BGR2GRAY).astype(np.float32)
+                detail = Lb - cv2.GaussianBlur(Lb, (31, 31), 0)
+                mwm2 = warped.mask > 0
+                ratio2 = np.clip(1.0 + LUMA * (detail / 128.0), 0.70, 1.30)
+                warped.image[mwm2] = np.clip(
+                    warped.image[mwm2].astype(np.float32)
+                    * ratio2[mwm2][:, None], 0, 255).astype(np.uint8)
             if RELIEF > 0:
                 # PSEUDO-NORMALS FROM THE FABRIC'S OWN GRADIENTS. N = (-Gx,-Gy,1)
                 # normalised, lit by a fixed front-top light V=(0,0.5,0.86); the
