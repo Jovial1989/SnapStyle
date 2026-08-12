@@ -1443,7 +1443,8 @@ class HybridVTONPipeline:
         return self._xl
 
     def _sdxl_roi(self, init: np.ndarray, mask_full: np.ndarray,
-                  prompt_hint: str, seed: int | None) -> np.ndarray:
+                  prompt_hint: str, seed: int | None,
+                  strength: float | None = None) -> np.ndarray:
         """Sample the mask's ROI at native resolution with SDXL-inpaint.
 
         The SD1.5 path downscales the WHOLE frame to 512x768, so a garment
@@ -1474,7 +1475,7 @@ class HybridVTONPipeline:
             prompt=_PROMPT.format(g=prompt_hint),
             negative_prompt=_NEGATIVE,
             image=im, mask_image=mk,
-            strength=XL_STRENGTH,
+            strength=XL_STRENGTH if strength is None else strength,
             num_inference_steps=int(os.getenv("VTON_XL_STEPS", "24")),
             guidance_scale=float(os.getenv("VTON_CFG", "6.5")),
             generator=gen,
@@ -1790,6 +1791,22 @@ class HybridVTONPipeline:
                 near = _extend_fabric(warped.image, warped.mask, holes)
                 fill_img[holes] = near[holes]
                 init[holes] = near[holes]
+            # A COLLAR IS A BAND, NOT MORE PATTERN. Above the shoulder line the mask
+            # reaches for the OLD garment's collar, the warp has nothing there, and
+            # the periodic extension dutifully continued the body's stripes upward —
+            # concentric arcs around the neck, which SD1.5 smoothed away and SDXL
+            # rendered faithfully as gathered ruffles and a black blob (the first
+            # acceptance sheet's worst defect). Real collars are plain: rib or bias
+            # tape in the garment's own colour. Plain mean fill says exactly that.
+            if kind in ("upper", "full"):
+                sh_row = int(min(pose.pts[2][1], pose.pts[5][1])) \
+                    if (pose.pts[2] and pose.pts[5]) else 0
+                if sh_row > 0:
+                    collar_holes = holes.copy()
+                    collar_holes[sh_row:] = False
+                    if collar_holes.any():
+                        init[collar_holes] = fill
+                        fill_img[collar_holes] = fill
 
             # BELOW THE HEM IS A LEG, NOT MORE FABRIC. For 'full' and 'lower' the band
             # deliberately runs to the ankle whatever the garment measures, because the
@@ -2035,7 +2052,14 @@ class HybridVTONPipeline:
             # Same init, same mask, a different engine: everything downstream —
             # the reverse composite, the drew test, the identity guarantee —
             # treats this exactly like the SD1.5 output.
-            xl_full = self._sdxl_roi(init, mask_full, prompt_hint, seed)
+            # Shoes need near-total replacement, not refinement: at 0.35 the XL
+            # branch left the base's sneakers standing (a no-op on the sheet). A
+            # shoe has no drape to preserve — the warp pins shape and colour, and
+            # the sampler's job is materials, which wants a high strength.
+            xl_str = (float(os.getenv("VTON_XL_STRENGTH_SHOES", "0.8"))
+                      if kind == "shoes" else XL_STRENGTH)
+            xl_full = self._sdxl_roi(init, mask_full, prompt_hint, seed,
+                                     strength=xl_str)
             out = _to_pil(xl_full[:, :, ::-1])
         else:
           with self._lock:      # MPS serialises kernels anyway; make it explicit
