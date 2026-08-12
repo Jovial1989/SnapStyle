@@ -1202,7 +1202,6 @@ def sigmoid_merge(torso: Warped, sleeves: Warped, k: float = 0.5,
     inv = (torso.mask == 0).astype(np.uint8)
     D = cv2.distanceTransform(inv, cv2.DIST_L2, 3)
     W = 1.0 / (1.0 + np.exp(np.clip(k * (D - d0), -30, 30)))
-    both = (torso.mask > 0).astype(np.float32) | 0
     img = torso.image.astype(np.float32)
     s_img = sleeves.image.astype(np.float32)
     only_s = (sleeves.mask > 0) & (torso.mask == 0)
