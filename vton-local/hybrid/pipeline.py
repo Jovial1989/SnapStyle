@@ -397,7 +397,12 @@ def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
     with one cause."""
     sil = _flatlay_silhouette_flood(garment)
     if _silhouette_sane(sil, garment.shape[:2]):
-        return sil
+        # The tails are trimmed HERE, not only on the rescue path: the flood
+        # happily succeeds on a card whose shadow is darker than its background,
+        # and that silhouette passes every sanity test while carrying a shadow
+        # ellipse WIDER than the garment under its hem. That slice, warped, was
+        # the apron — and it rode in through the sane branch.
+        return _trim_weak_tails(sil, garment)
     rescued = _rescue_silhouette(garment)
     if rescued is not None:
         print("[silhouette] flood failed, rescued by segmentation", flush=True)
