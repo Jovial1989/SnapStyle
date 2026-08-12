@@ -1503,6 +1503,16 @@ class HybridVTONPipeline:
         return self._pipe
 
     def warmup(self) -> None:
+        # WARM THE XL STACK TOO, when any slot routes through it. Lazy loading
+        # made the FIRST user render after every worker restart pay the ~40s
+        # model load — reported from the phone as "more than forty seconds".
+        # The pod restarts often (migrations, deploys); the user should never
+        # be the one who pays for that.
+        if XL or XL_KINDS:
+            try:
+                self._ensure_xl()
+            except Exception as e:
+                print(f"[warmup] xl load failed: {e}", flush=True)
         """Load weights AND run one throwaway 2-step render.
 
         Loading alone is not warm: the first real diffusion still pays for CUDA
