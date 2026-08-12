@@ -23,6 +23,7 @@ import '../services/native_looktok_engine.dart';
 import '../state/outfit_state.dart';
 import '../theme.dart';
 import '../widgets/closet_badge.dart';
+import '../widgets/progressive_garment_stream.dart';
 import '../widgets/style_scanner.dart';
 import '../widgets/subject_sheet.dart';
 import 'paywall_screen.dart';
@@ -180,6 +181,10 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
   // shimmer and each card's micro-progress strip (works for user taps AND
   // background prefetch alike, since both funnel through _renderSet).
   final Set<String> _rendering = {};
+  // Latent streaming: the fix_renders id whose TAESD previews are currently
+  // crystallizing over the avatar. Null when nothing is in flight — the widget
+  // it feeds is garnish over the normal polling path, never a gate.
+  String? _streamRenderId;
   String? _guestName; // captured once on save for a guest (§14.10)
   final TransformationController _zoom = TransformationController();
 
@@ -742,6 +747,9 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
     void finish() {
       guard?.cancel();
       sub?.cancel();
+      if (mounted && _streamRenderId == d.renderId) {
+        setState(() => _streamRenderId = null);
+      }
     }
 
     // Zombie protection: a dead worker leaves the row pending forever — the
@@ -756,6 +764,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
     });
     String? paintedPath;
     String? paintedTuckedPath;
+    if (mounted) setState(() => _streamRenderId = d.renderId);
     sub = api.fixRender(d.renderId!).listen((row) async {
       if (row.isEmpty) return;
       final status = (row['status'] ?? '').toString();
@@ -2823,6 +2832,19 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
                           // Fit controls moved INTO the sheet (under the slot
                           // rail) — floating pills over the photo read as
                           // clutter (owner call 23.07).
+                          // Latent streaming: the render crystallizes out of
+                          // blur while the GPU denoises. Invisible until the
+                          // first preview lands, so a cold engine changes
+                          // nothing about the existing loader.
+                          if (_streamRenderId != null)
+                            Positioned.fill(
+                              child: IgnorePointer(
+                                child: ProgressiveGarmentStream(
+                                  renderId: _streamRenderId!,
+                                  placeholder: const SizedBox.shrink(),
+                                ),
+                              ),
+                            ),
                           // The QA replacement is in flight for THIS combo —
                           // say so instead of looking like a failed edit.
                           if (_refining.contains(_keyFor(_effective)))
