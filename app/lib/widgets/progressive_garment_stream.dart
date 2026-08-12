@@ -65,7 +65,19 @@ class _ProgressiveGarmentStreamState extends State<ProgressiveGarmentStream> {
         .onBroadcast(
           event: 'preview',
           callback: (payload) {
-            final jpg = payload['jpg'];
+            // COUNT ARRIVAL BEFORE PARSING. The chip exists to separate "nothing
+            // arrived" from "arrived in a shape I did not expect", and counting
+            // after the parse collapsed the two: the Dart SDK hands broadcast
+            // messages WRAPPED ({event, type, payload: {…}}) where supabase-js
+            // hands the inner payload directly — verified with a JS subscriber
+            // that received what the phone reported as silence. Nine frames sent,
+            // zero counted, all nine discarded by a shape check one line above
+            // the counter.
+            if (mounted && kStreamDebug) setState(() => _received++);
+            final inner = (payload['payload'] is Map)
+                ? Map<String, dynamic>.from(payload['payload'] as Map)
+                : payload;
+            final jpg = inner['jpg'];
             if (jpg is! String) return;
             Uint8List bytes;
             try {
@@ -75,11 +87,10 @@ class _ProgressiveGarmentStreamState extends State<ProgressiveGarmentStream> {
             }
             if (!mounted) return;
             setState(() {
-              _received++;
               _frame = bytes;
-              _step = (payload['step'] as num?)?.toInt() ?? _step;
-              _layer = (payload['layer'] as num?)?.toInt() ?? _layer;
-              _layers = (payload['layers'] as num?)?.toInt() ?? _layers;
+              _step = (inner['step'] as num?)?.toInt() ?? _step;
+              _layer = (inner['layer'] as num?)?.toInt() ?? _layer;
+              _layers = (inner['layers'] as num?)?.toInt() ?? _layers;
             });
           },
         )
