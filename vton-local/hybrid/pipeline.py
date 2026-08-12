@@ -1897,7 +1897,12 @@ class HybridVTONPipeline:
                         pass          # a lost preview must never cost the render
 
                 def cb(_pipe, step_i, _t, kw):
-                    if step_i > 0 and step_i % 5 == 0:
+                    # Steps 2,5,8,11,14,17 of 20 — six frames a layer, ~3 KB each.
+                    # At every fifth step the stream was three frames blinking past
+                    # in a second; a loader that is supposed to CRYSTALLIZE needs
+                    # enough frames to read as motion, and the decode is single-digit
+                    # milliseconds, so the cadence is nearly free.
+                    if step_i % 3 == 2:
                         _emit(step_i, kw["latents"])
                     return kw
             except Exception:
