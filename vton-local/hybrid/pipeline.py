@@ -1737,7 +1737,29 @@ class HybridVTONPipeline:
             # nothing below their hem to repaint; the flood there could only ever be a
             # bug. Shorts and skirts want it and will get it through their own measured
             # length, not by inference from a patchy warp.
-            if kind == "full":
+            # …AND FOR SHORTS. 'lower' was excluded wholesale after the jeans
+            # regression, but the regression had two causes and only one was the
+            # slot: the per-column hem. With the hem a single row, the remaining
+            # question is WHICH lower garments end above the ankle — and that is
+            # measurable: a hem clearly above the ankle means shorts or a skirt,
+            # and below it the base's trousers must become legs, which is the
+            # exact situation the dress already handles. Trousers reach the
+            # ankle, fail the gate, and flood nothing — the jeans case stays
+            # byte-identical.
+            flood_kind = kind == "full"
+            if not flood_kind and kind == "lower" and warped is not None:
+                wm_t = (warped.mask > 0)
+                if wm_t.any():
+                    cols_t = wm_t.any(axis=0)
+                    ends_t = (wm_t.shape[0] - 1
+                              - np.argmax(wm_t[::-1], axis=0))[cols_t]
+                    hem_t = int(np.percentile(ends_t, 85)) if ends_t.size else 0
+                    ankles_t = [pose.pts[i][1] for i in (10, 13) if pose.pts[i]]
+                    ys_t = [q[1] for q in pose.pts if q]
+                    span_t = max(1.0, max(ys_t) - min(ys_t))
+                    if ankles_t and hem_t < min(ankles_t) - 0.15 * span_t:
+                        flood_kind = True
+            if flood_kind:
                 wm_any = (warped.mask > 0)
                 if wm_any.any():
                     cols = wm_any.any(axis=0)
