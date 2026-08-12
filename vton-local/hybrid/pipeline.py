@@ -1754,6 +1754,7 @@ class HybridVTONPipeline:
             # ankle, fail the gate, and flood nothing — the jeans case stays
             # byte-identical.
             flood_kind = kind == "full"
+            flood_hem_dbg = -1
             if not flood_kind and kind == "lower" and warped is not None:
                 wm_t = (warped.mask > 0)
                 if wm_t.any():
@@ -1764,8 +1765,12 @@ class HybridVTONPipeline:
                     ankles_t = [pose.pts[i][1] for i in (10, 13) if pose.pts[i]]
                     ys_t = [q[1] for q in pose.pts if q]
                     span_t = max(1.0, max(ys_t) - min(ys_t))
+                    flood_hem_dbg = hem_t
                     if ankles_t and hem_t < min(ankles_t) - 0.15 * span_t:
                         flood_kind = True
+            if kind == "lower" and not flood_kind:
+                print("[flood] kind=lower declined hem=%d" % flood_hem_dbg,
+                      flush=True)
             if flood_kind:
                 wm_any = (warped.mask > 0)
                 if wm_any.any():
@@ -1780,6 +1785,12 @@ class HybridVTONPipeline:
                                            pose.silhouette, full)
                     changed = np.abs(lit.astype(np.int16)
                                      - init.astype(np.int16)).max(axis=2) > 0
+                    # ONE LINE PER FLOOD, always. Three separate hunts this week
+                    # ended at "the stage silently did nothing"; a stage that can
+                    # decline must say so in numbers, not in absence.
+                    print("[flood] kind=%s hem=%d below_px=%d changed_px=%d" % (
+                        kind, hem_row, int((below > 0).sum()),
+                        int(changed.sum())), flush=True)
                     init = lit
                     fill_img[changed] = lit[changed]
 
