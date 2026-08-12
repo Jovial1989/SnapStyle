@@ -24,7 +24,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 /// subscription's health visible ON the phone — "no chip" = the widget never
 /// mounted, "LIVE 0" = joined but nothing arrived, "LIVE n" = frames flowing.
 /// Turn off together with the pod's OSD before any demo.
-const bool kStreamDebug = true;
+const bool kStreamDebug = false;
 
 class ProgressiveGarmentStream extends StatefulWidget {
   const ProgressiveGarmentStream({
@@ -138,23 +138,31 @@ class _ProgressiveGarmentStreamState extends State<ProgressiveGarmentStream> {
         if (kStreamDebug) _chip(),
       ]);
     }
-    return _withChip(ClipRect(
-      child: ImageFiltered(
-        imageFilter: ui.ImageFilter.blur(
-            sigmaX: _blur, sigmaY: _blur, tileMode: TileMode.decal),
-        child: AnimatedSwitcher(
-          duration: const Duration(milliseconds: 360),
-          switchInCurve: Curves.easeOut,
-          child: Image.memory(
-            frame,
-            key: ValueKey(_frame.hashCode),
-            fit: widget.fit,
-            gaplessPlayback: true,
-            filterQuality: FilterQuality.low, // 128px source: bilinear, not cubic
+    // THE PREVIEW REPLACES THE AVATAR AREA, not floats over it. The frame is the
+    // same studio shot the final render is — person on white — so a solid white
+    // backdrop under the contained image makes the whole region read as "the
+    // image is forming here", while a bare contained frame over the loader read
+    // as a small card drifting in front of somebody's photo.
+    return _withChip(Stack(fit: StackFit.expand, children: [
+      const ColoredBox(color: Colors.white),
+      ClipRect(
+        child: ImageFiltered(
+          imageFilter: ui.ImageFilter.blur(
+              sigmaX: _blur, sigmaY: _blur, tileMode: TileMode.decal),
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 360),
+            switchInCurve: Curves.easeOut,
+            child: Image.memory(
+              frame,
+              key: ValueKey(_frame.hashCode),
+              fit: widget.fit,
+              gaplessPlayback: true,
+              filterQuality: FilterQuality.low,
+            ),
           ),
         ),
       ),
-    ));
+    ]));
   }
 
   Widget _withChip(Widget body) => Stack(fit: StackFit.expand, children: [
