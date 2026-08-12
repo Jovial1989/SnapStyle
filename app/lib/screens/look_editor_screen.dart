@@ -2842,6 +2842,11 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
                                 child: ProgressiveGarmentStream(
                                   renderId: _streamRenderId!,
                                   placeholder: const SizedBox.shrink(),
+                                  // Same contain as the final avatar: the preview
+                                  // is the SAME frame at low res, and a fit
+                                  // mismatch made it read as a tiny floating
+                                  // figure rather than the image forming.
+                                  fit: BoxFit.contain,
                                 ),
                               ),
                             ),
