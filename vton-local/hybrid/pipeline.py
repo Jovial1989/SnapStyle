@@ -1717,6 +1717,7 @@ class HybridVTONPipeline:
                 near = _extend_fabric(warped.image, warped.mask, holes)
                 fill_img[holes] = near[holes]
                 init[holes] = near[holes]
+            print("[probe] after holes, kind=%s" % kind, flush=True)
 
             # BELOW THE HEM IS A LEG, NOT MORE FABRIC. For 'full' and 'lower' the band
             # deliberately runs to the ankle whatever the garment measures, because the
