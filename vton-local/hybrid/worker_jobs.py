@@ -224,6 +224,7 @@ def render(job: dict) -> str:
             core_protect=st.get("core_protect"),
             pose=base_pose,
             return_mask=True,
+            tuck=bool(st.get("tuck")),
             on_preview=(None if stream_key is None else
                         (lambda step_i, jpg, _i=i, _n=len(steps):
                          threading.Thread(target=_broadcast,

@@ -1729,6 +1729,14 @@ class HybridVTONPipeline:
         # composite several INDEPENDENT layers itself instead of chaining them.
         # See the unified-batch loop in worker_jobs.
         return_mask: bool = False,
+        # TUCKED LOWER STEP. A tuck is not a prompt, it is a dressing order:
+        # the top is painted first and the bottoms after, so the waistband
+        # lands OVER the hem. This flag marks that second step, where two hole
+        # families change meaning: above the waistband the canvas already
+        # holds the FINISHED top (protect it, never extend denim into it),
+        # and outside the person's silhouette the top's overhang must vanish
+        # into the backdrop (a tucked hem is not wider than the trousers).
+        tuck: bool = False,
     ) -> Image.Image | tuple[Image.Image, np.ndarray]:
         avatar = _fix_exif(avatar).convert("RGB")
         garment = _fix_exif(garment).convert("RGB")
@@ -1968,6 +1976,22 @@ class HybridVTONPipeline:
             # the warp has nothing to say, and it feeds BOTH the init the sampler starts
             # from and the fallback the composite lands on, so the two cannot disagree.
             holes = (mask_full > 20) & (warped.mask == 0)
+            if tuck and kind == "lower":
+                ys_w = np.nonzero((warped.mask > 0).any(axis=1))[0]
+                if ys_w.size:
+                    band_top = int(np.percentile(ys_w, 2))
+                    # Above the waistband lives the already-final top: cut the
+                    # mask so the sampler cannot touch it, and drop those holes.
+                    mask_full[:band_top] = 0
+                    holes[:band_top] = False
+                # The hem's sideways overhang is outside the body silhouette
+                # and there are no trousers there to cover it — tucked fabric
+                # is simply GONE from that space, so it becomes backdrop.
+                h_out = holes & (pose.silhouette == 0)
+                if h_out.any():
+                    init[h_out] = 255
+                    fill_img[h_out] = 255
+                    holes[h_out] = False
             if holes.any():
                 near = _extend_fabric(warped.image, warped.mask, holes)
                 fill_img[holes] = near[holes]

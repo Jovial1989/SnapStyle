@@ -72,10 +72,19 @@ export async function hybridDress(
   // queue schema stays untouched — the worker reads it and the engine never
   // sees it.
   streamKey?: string,
+  // Tucked look: flips the dressing order so the bottoms composite OVER the
+  // top's hem, and marks the lower step so the engine treats the holes around
+  // the waist as body/backdrop instead of more fabric. A tuck is not a prompt.
+  tucked?: boolean,
 ): Promise<Inline> {
   if (!steps.length) throw new Error("hybridDress: no steps");
 
-  const sorted = sortSteps(steps);
+  const sorted = sortSteps(steps, tucked);
+  if (tucked) {
+    for (const st of sorted) {
+      if (st.kind === "lower") (st as Record<string, unknown>).tuck = true;
+    }
+  }
   if (streamKey && /^[A-Za-z0-9-]{8,64}$/.test(streamKey)) {
     (sorted[0] as Record<string, unknown>).stream_key = streamKey;
   }
@@ -234,7 +243,12 @@ export function slotOf(category: string | undefined | null): Slot | null {
  *  obsolete: back then the sampler invented both garments, now the warp pins
  *  them. Shoes stay last so the trouser hem is final before footwear. */
 const ORDER: Record<Slot, number> = { full: 0, lower: 1, upper: 2, shoes: 3 };
+/** Tucked is the mirror image at the waist: the top paints first and the
+ *  bottoms after, so the waistband lands OVER the hem — the same measurement
+ *  that put upper after lower for the untucked drape, run in reverse. */
+const ORDER_TUCKED: Record<Slot, number> = { full: 0, upper: 1, lower: 2, shoes: 3 };
 
-export function sortSteps(steps: DressStep[]): DressStep[] {
-  return [...steps].sort((a, b) => ORDER[a.kind] - ORDER[b.kind]);
+export function sortSteps(steps: DressStep[], tucked = false): DressStep[] {
+  const ord = tucked ? ORDER_TUCKED : ORDER;
+  return [...steps].sort((a, b) => ord[a.kind] - ord[b.kind]);
 }

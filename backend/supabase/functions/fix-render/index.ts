@@ -249,8 +249,14 @@ Deno.serve(async (req) => {
         // The stream key IS the fix_renders row id: the client got it from
         // fix-dispatch before this function ever ran, so it can subscribe to
         // `vton:<id>` while the queue is still being claimed — no new API surface.
+        // A FIT flip arrives as the PRIMARY instruction carrying the tuck
+        // clause (the dual twin is hosted-only) — the clause's key phrase is
+        // the contract with the client's buildSpec. On our engine a tuck is a
+        // dressing order, not a prompt, so detect and pass the flag; the
+        // clause text itself never reaches the worker.
+        const wantsTuck = /TUCKED INTO the bottoms/i.test(String(instruction));
         const img = await hybridDress(db, String(row.user_id), personUrl, steps,
-                                      String(row.id));
+                                      String(row.id), wantsTuck);
         hybridUsed = true;
         return img;
       } catch (e) {
