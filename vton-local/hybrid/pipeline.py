@@ -2465,10 +2465,11 @@ class HybridVTONPipeline:
 
                 def _skin_below(img_rgb):
                     ycc_ = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2YCrCb)
-                    m_ = ((ycc_[:, :, 1] >= 135) & (ycc_[:, :, 1] <= 180)
-                          & (ycc_[:, :, 2] >= 77) & (ycc_[:, :, 2] <= 127)
-                          & (pose.silhouette > 0))
-                    m_[:y_hip] = False
+                    m_ = (((ycc_[:, :, 1] >= 135) & (ycc_[:, :, 1] <= 180)
+                           & (ycc_[:, :, 2] >= 77) & (ycc_[:, :, 2] <= 127)
+                           & (pose.silhouette > 0))
+                          .astype(np.uint8) * 255)
+                    m_[:y_hip] = 0
                     # HANDS OUT. They hang at hip height in the canonical
                     # pose, they are skin, and they are usually painted
                     # honestly — leaving them in diluted the leg measurement
@@ -2477,8 +2478,8 @@ class HybridVTONPipeline:
                         q = pose.pts[wi]
                         if q:
                             cv2.circle(m_, q, int(full.shape[0] * 0.05),
-                                       False, -1)
-                    return m_
+                                       0, -1)
+                    return m_ > 0
                 # THE REFERENCE IS THE SAME BODY PART. The minimal base's own
                 # legs are bare and true; forearms answer only when the base
                 # keeps its legs covered (canonical avatar), because arms and
