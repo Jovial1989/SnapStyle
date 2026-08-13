@@ -108,6 +108,14 @@ CANNY_SCALE = float(os.getenv("VTON_CANNY_SCALE", "0.45"))
 # source print, and which of those a given garment needs is a measurement, not a
 # guess — the pod was down when this landed, so nothing has weighed it yet.
 CORE_PROTECT = float(os.getenv("VTON_CORE_PROTECT", "0"))
+# Second pass over the skin flood, at replacement strength. The flood paints a
+# flat lit-skin region below a dress's or shorts' hem, and at 0.55 the sampler
+# REFINES flat salmon into flat salmon — a global strength cannot say "refine
+# the garment, replace the legs" in one number. The leg pass says it with a
+# second: an XL ROI over the flooded region at 0.85, pose-guided, where the
+# region's whole job is to become anatomy.
+LEG_PASS = os.getenv("VTON_LEG_PASS", "1") == "1"
+LEG_STRENGTH = float(os.getenv("VTON_LEG_STRENGTH", "0.85"))
 TPS_WARP = os.getenv("VTON_TPS", "1") == "1"
 # Two cylinders for the legs, one solver each. Off until measured on a phone: the
 # single-cylinder version of the same idea looked fine in a metric and was visibly
@@ -2034,6 +2042,8 @@ class HybridVTONPipeline:
                     print("[flood] kind=%s hem=%d below_px=%d changed_px=%d" % (
                         kind, hem_row, int((below > 0).sum()),
                         int(changed.sum())), flush=True)
+                    flood_leg_mask = ((below > 0) & changed
+                                      ).astype(np.uint8) * 255
                     init = lit
                     fill_img[changed] = lit[changed]
                     # BELOW THE HEM AND BESIDE THE LEG THERE IS NOTHING. The old
@@ -2125,6 +2135,7 @@ class HybridVTONPipeline:
         # argument until now, and argument has been wrong twice. VTON_DUMP=<dir>
         # writes the four arrays that decide the render, named by slot so a
         # three-layer look does not overwrite itself.
+        flood_leg_mask = None
         dump = os.getenv("VTON_DUMP")
         pose_scale = POSE_SCALE if pose_scale is None else float(pose_scale)
         canny_scale = CANNY_SCALE if canny_scale is None else float(canny_scale)
@@ -2357,6 +2368,28 @@ class HybridVTONPipeline:
                           f"max={float(prot.max()):.2f}", flush=True)
                 blended = (warped.image[:, :, ::-1].astype(np.float32) * prot
                            + blended * (1.0 - prot))
+
+        # THE LEG PASS: replacement, not refinement, and only where the flood ran.
+        # The flooded region's job is to BECOME legs, and at the garment's own 0.55
+        # the sampler refines flat salmon into flat salmon — measured on shorts and
+        # the dress across two sheets, prompt wording included and irrelevant. An XL
+        # ROI at 0.85 gives the region 1024px and a strong anatomy prior; the pose is
+        # already in the crop's own pixels.
+        if LEG_PASS and flood_leg_mask is not None and int((flood_leg_mask > 0).sum()) > 50_000:
+            try:
+                legs_bgr = self._sdxl_roi(
+                    np.clip(blended, 0, 255).astype(np.uint8)[:, :, ::-1],
+                    flood_leg_mask,
+                    "bare human legs, natural knees and calves, photorealistic "
+                    "smooth skin, soft studio light",
+                    seed, strength=LEG_STRENGTH)
+                a_leg = (cv2.GaussianBlur(flood_leg_mask, (9, 9), 0)
+                         .astype(np.float32) / 255.0)[:, :, None]
+                blended = (legs_bgr[:, :, ::-1].astype(np.float32) * a_leg
+                           + blended * (1.0 - a_leg))
+                alpha = np.maximum(alpha, a_leg)
+            except Exception as e:
+                print(f"[legs] pass failed: {e}", flush=True)
 
         out_img = Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
         if not return_mask:
