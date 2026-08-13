@@ -2061,20 +2061,31 @@ class HybridVTONPipeline:
                     collar_holes = holes.copy()
                     collar_holes[sh_row:] = False
                     if collar_holes.any():
-                        # ABOVE THE NECKLINE THERE IS NO GARMENT AT ALL. Every
-                        # fabric-coloured fill tried here (mean, then median)
-                        # painted a shawl across the shoulders that SD1.5 mostly
-                        # dissolved and XL faithfully kept — the recurring grey
-                        # yoke. What actually lives above a neckline is the
-                        # person's own shoulders and the backdrop, so the fill
-                        # is skin inside the silhouette (same nose-median the
-                        # leg flood trusts) and the pristine base outside it —
-                        # which is to say, no fill at all.
+                        # SKIN AT THE NECK, FABRIC ON THE SHOULDERS. The first
+                        # cut of this fill painted skin across the WHOLE band
+                        # above the shoulder line — and on any flat-lay with
+                        # sloped shoulders (most real garment photos) the warp
+                        # leaves exactly that band uncovered, so the yellow
+                        # wardrobe tee reached the phone as a bib with bare
+                        # painted shoulders. Only the boat-neck stripes, whose
+                        # warp happens to cover the shoulders, ever looked
+                        # right. What lives above the shoulder line is skin
+                        # ONLY in the neck column; to the sides of it a garment
+                        # grows its shoulders and sleeve caps, which need
+                        # fabric-coloured ground (the collar-strip median — for
+                        # plain garments simply the fabric). Outside the body's
+                        # silhouette the pristine base shows through as before.
                         sil_p = pose.silhouette > 0
-                        c_in = collar_holes & sil_p
+                        xs_g = np.arange(collar_holes.shape[1])[None, :]
+                        cx = (pose.pts[1][0] if pose.pts[1] else
+                              (pose.pts[2][0] + pose.pts[5][0]) // 2)
+                        span = max(20, abs(pose.pts[5][0] - pose.pts[2][0]))
+                        neck_cols = np.abs(xs_g - cx) < span * 0.22
+                        c_skin = collar_holes & sil_p & neck_cols
+                        c_fab = collar_holes & sil_p & ~neck_cols
                         c_out = collar_holes & ~sil_p
                         nose = pose.pts[0]
-                        if nose is not None and c_in.any():
+                        if nose is not None and c_skin.any():
                             r = max(6, int(round(full.shape[0] * 0.02)))
                             ny0 = max(0, int(nose[1]) - r)
                             nx0 = max(0, int(nose[0]) - r)
@@ -2084,8 +2095,27 @@ class HybridVTONPipeline:
                                 skin_c = np.median(
                                     patch.reshape(-1, 3), axis=0
                                 ).astype(np.uint8)
-                                init[c_in] = skin_c
-                                fill_img[c_in] = skin_c
+                                init[c_skin] = skin_c
+                                fill_img[c_skin] = skin_c
+                        if c_fab.any():
+                            collar_c = fill
+                            try:
+                                ys_g2, _ = np.nonzero(sil > 0)
+                                if ys_g2.size:
+                                    g_top = int(ys_g2.min())
+                                    g_h = int(ys_g2.max()) - g_top + 1
+                                    strip = np.zeros(sil.shape, np.uint8)
+                                    strip[g_top:g_top
+                                          + max(4, int(g_h * 0.08))] = 255
+                                    strip = cv2.bitwise_and(strip, sil)
+                                    if int((strip > 0).sum()) > 100:
+                                        collar_c = np.median(
+                                            g_bgr[strip > 0], axis=0
+                                        ).astype(np.uint8)
+                            except Exception:
+                                pass
+                            init[c_fab] = collar_c
+                            fill_img[c_fab] = collar_c
                         if c_out.any():
                             init[c_out] = full[c_out]
 
