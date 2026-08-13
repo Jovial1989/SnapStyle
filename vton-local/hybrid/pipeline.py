@@ -2433,40 +2433,6 @@ class HybridVTONPipeline:
                     "bare human legs, natural knees and calves, photorealistic "
                     "smooth skin, soft studio light",
                     seed, strength=LEG_STRENGTH)
-                # TONE LOCK. At 0.85 the pass invents its own complexion — the
-                # legs came back TANNED against pale arms (dE 67, worse than the
-                # face sampling it replaced). Text cannot carry an exact colour,
-                # but arithmetic can: shift the painted legs' per-channel mean
-                # onto the forearms' skin, keeping every fold and knee the pass
-                # just built. Deterministic, no knob to sweep.
-                leg_on = flood_leg_mask > 0
-                probe_t = np.zeros(flood_leg_mask.shape, np.uint8)
-                for a_i, b_i in ((3, 4), (6, 7)):
-                    qa, qb = pose.pts[a_i], pose.pts[b_i]
-                    if qa and qb:
-                        cv2.line(probe_t, qa, qb, 255,
-                                 max(6, int(full.shape[0] * 0.012)))
-                probe_t = cv2.bitwise_and(probe_t, pose.silhouette)
-                # The ref is read from the ORIGINAL base, whose forearms are bare
-                # by construction — so no need to dodge the inpaint mask. The
-                # first version wiped probe pixels under mask_full and a dress's
-                # mask covers the arms: the probe emptied and the lock silently
-                # declined, which the log below now makes impossible to miss.
-                if int((probe_t > 0).sum()) > 200 and leg_on.any():
-                    arm_ref = np.array(cv2.mean(full, mask=probe_t)[:3],
-                                       np.float32)
-                    leg_mean = legs_bgr[leg_on].mean(axis=0).astype(np.float32)
-                    print("[tonelock] probe_px=%d arm=%s legs=%s" % (
-                        int((probe_t > 0).sum()),
-                        arm_ref.astype(int).tolist(),
-                        leg_mean.astype(int).tolist()), flush=True)
-                    legs_bgr = legs_bgr.astype(np.float32)
-                    legs_bgr[leg_on] = np.clip(
-                        legs_bgr[leg_on] + (arm_ref - leg_mean)[None, :], 0, 255)
-                    legs_bgr = legs_bgr.astype(np.uint8)
-                else:
-                    print("[tonelock] declined probe_px=%d" %
-                          int((probe_t > 0).sum()), flush=True)
                 a_leg = (cv2.GaussianBlur(flood_leg_mask, (9, 9), 0)
                          .astype(np.float32) / 255.0)[:, :, None]
                 blended = (legs_bgr[:, :, ::-1].astype(np.float32) * a_leg
@@ -2494,29 +2460,56 @@ class HybridVTONPipeline:
                              max(6, int(full.shape[0] * 0.012)))
             probe_s = cv2.bitwise_and(probe_s, pose.silhouette)
             hips = [pose.pts[i] for i in (8, 11) if pose.pts[i]]
-            if int((probe_s > 0).sum()) > 200 and hips:
-                arm_ref = np.array(cv2.mean(full, mask=probe_s)[:3],
+            if hips:
+                y_hip = int(min(q[1] for q in hips))
+
+                def _skin_below(img_rgb):
+                    ycc_ = cv2.cvtColor(img_rgb, cv2.COLOR_RGB2YCrCb)
+                    m_ = ((ycc_[:, :, 1] >= 135) & (ycc_[:, :, 1] <= 180)
+                          & (ycc_[:, :, 2] >= 77) & (ycc_[:, :, 2] <= 127)
+                          & (pose.silhouette > 0))
+                    m_[:y_hip] = False
+                    # HANDS OUT. They hang at hip height in the canonical
+                    # pose, they are skin, and they are usually painted
+                    # honestly — leaving them in diluted the leg measurement
+                    # enough to hide a visible tan under the threshold.
+                    for wi in (4, 7):
+                        q = pose.pts[wi]
+                        if q:
+                            cv2.circle(m_, q, int(full.shape[0] * 0.05),
+                                       False, -1)
+                    return m_
+                # THE REFERENCE IS THE SAME BODY PART. The minimal base's own
+                # legs are bare and true; forearms answer only when the base
+                # keeps its legs covered (canonical avatar), because arms and
+                # legs differ enough on real people to blur the verdict.
+                base_rgb = full[:, :, ::-1].copy()
+                ref_m = _skin_below(base_rgb)
+                if int(ref_m.sum()) > 3000:
+                    ref = base_rgb[ref_m].mean(axis=0).astype(np.float32)
+                elif int((probe_s > 0).sum()) > 200:
+                    ref = np.array(cv2.mean(full, mask=probe_s)[:3],
                                    np.float32)[::-1]          # BGR → RGB
+                else:
+                    ref = None
                 b8 = np.clip(blended, 0, 255).astype(np.uint8)
-                ycc = cv2.cvtColor(b8, cv2.COLOR_RGB2YCrCb)
-                skin = ((ycc[:, :, 1] >= 135) & (ycc[:, :, 1] <= 180)
-                        & (ycc[:, :, 2] >= 77) & (ycc[:, :, 2] <= 127)
-                        & (pose.silhouette > 0))
-                skin[:int(min(q[1] for q in hips))] = False
+                skin = _skin_below(b8)
                 n_skin = int(skin.sum())
+                if ref is None:
+                    n_skin = 0
                 if n_skin > 3000:
                     leg_mean = blended[skin].mean(axis=0).astype(np.float32)
-                    d_e = float(np.abs(arm_ref - leg_mean).max())
-                    print("[skintone] px=%d legs=%s arms=%s dE=%.0f" % (
+                    d_e = float(np.abs(ref - leg_mean).max())
+                    print("[skintone] px=%d legs=%s ref=%s dE=%.0f" % (
                         n_skin, leg_mean.astype(int).tolist(),
-                        arm_ref.astype(int).tolist(), d_e), flush=True)
-                    if d_e > 12.0:
+                        ref.astype(int).tolist(), d_e), flush=True)
+                    if d_e > 8.0:
                         m = cv2.erode(skin.astype(np.uint8) * 255,
                                       np.ones((3, 3), np.uint8))
                         a_s = (cv2.GaussianBlur(m, (7, 7), 0)
                                .astype(np.float32) / 255.0)[:, :, None]
                         shifted = np.clip(
-                            blended + (arm_ref - leg_mean)[None, None, :],
+                            blended + (ref - leg_mean)[None, None, :],
                             0, 255)
                         blended = shifted * a_s + blended * (1.0 - a_s)
                 else:
