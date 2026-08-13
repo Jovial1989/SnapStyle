@@ -1977,8 +1977,6 @@ class HybridVTONPipeline:
             # the periodic extension dutifully continued the body's stripes upward —
             # concentric arcs around the neck, which SD1.5 smoothed away and SDXL
             # rendered faithfully as gathered ruffles and a black blob (the first
-            # acceptance sheet's worst defect). Real collars are plain: rib or bias
-            # tape in the garment's own colour. Plain mean fill says exactly that.
             if kind in ("upper", "full"):
                 sh_row = int(min(pose.pts[2][1], pose.pts[5][1])) \
                     if (pose.pts[2] and pose.pts[5]) else 0
@@ -1986,38 +1984,33 @@ class HybridVTONPipeline:
                     collar_holes = holes.copy()
                     collar_holes[sh_row:] = False
                     if collar_holes.any():
-                        # THE COLLAR'S COLOUR IS THE COLLAR'S, not the garment's
-                        # mean. A striped tee averages to MID GREY, and XL painted
-                        # that fill faithfully as a grey smear around the neck —
-                        # the sheet's recurring upper-XL defect. The flat-lay's own
-                        # top strip is where the real collar lives (rib, bias
-                        # tape), and its mean is the right answer for plain
-                        # garments too, where it just equals the fabric.
-                        collar_c = fill
-                        try:
-                            ys_g, _ = np.nonzero(sil > 0)
-                            if ys_g.size:
-                                g_top = int(ys_g.min())
-                                g_h = int(ys_g.max()) - g_top + 1
-                                strip = np.zeros(sil.shape, np.uint8)
-                                strip[g_top:g_top + max(4, int(g_h * 0.08))] = 255
-                                strip = cv2.bitwise_and(strip, sil)
-                                if int((strip > 0).sum()) > 100:
-                                    # MEDIAN, not mean. Striped fabric averages
-                                    # to grey no matter where you average it —
-                                    # the grey yoke XL painted was the mean
-                                    # doing its job. The median of a bimodal
-                                    # strip lands ON one of the fabric's real
-                                    # colours (the rib is usually the light
-                                    # one), which is a collar a garment could
-                                    # actually have.
-                                    px = g_bgr[strip > 0]
-                                    collar_c = np.median(px, axis=0
-                                                         ).astype(np.uint8)
-                        except Exception:
-                            pass
-                        init[collar_holes] = collar_c
-                        fill_img[collar_holes] = collar_c
+                        # ABOVE THE NECKLINE THERE IS NO GARMENT AT ALL. Every
+                        # fabric-coloured fill tried here (mean, then median)
+                        # painted a shawl across the shoulders that SD1.5 mostly
+                        # dissolved and XL faithfully kept — the recurring grey
+                        # yoke. What actually lives above a neckline is the
+                        # person's own shoulders and the backdrop, so the fill
+                        # is skin inside the silhouette (same nose-median the
+                        # leg flood trusts) and the pristine base outside it —
+                        # which is to say, no fill at all.
+                        sil_p = pose.silhouette > 0
+                        c_in = collar_holes & sil_p
+                        c_out = collar_holes & ~sil_p
+                        nose = pose.pts[0]
+                        if nose is not None and c_in.any():
+                            r = max(6, int(round(full.shape[0] * 0.02)))
+                            ny0 = max(0, int(nose[1]) - r)
+                            nx0 = max(0, int(nose[0]) - r)
+                            patch = full[ny0:int(nose[1]) + r,
+                                         nx0:int(nose[0]) + r]
+                            if patch.size:
+                                skin_c = np.median(
+                                    patch.reshape(-1, 3), axis=0
+                                ).astype(np.uint8)
+                                init[c_in] = skin_c
+                                fill_img[c_in] = skin_c
+                        if c_out.any():
+                            init[c_out] = full[c_out]
 
             # BELOW THE HEM IS A LEG, NOT MORE FABRIC. For 'full' and 'lower' the band
             # deliberately runs to the ankle whatever the garment measures, because the
