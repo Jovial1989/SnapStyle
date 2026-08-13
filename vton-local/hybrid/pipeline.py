@@ -413,11 +413,23 @@ def _prune_card_bg(sil: np.ndarray, garment: np.ndarray) -> np.ndarray:
     ring = np.ones(garment.shape[:2], bool)
     ring[8:-8, 8:-8] = False
     bg = np.median(garment[ring].reshape(-1, 3), axis=0)
+    # THE HALO IS THE CARD'S SHADOW, NOT THE CARD. It sits 20–40 under the
+    # bg's luma, so a tight distance-to-bg misses it entirely (first version
+    # declined on the exact tee it was written for). Background and shadow
+    # share what fabric does not: no chroma. So a pixel is card, not garment,
+    # when it is NEAR the bg colour and NEUTRAL relative to the garment's own
+    # saturation.
+    ycc = cv2.cvtColor(garment, cv2.COLOR_BGR2YCrCb).astype(np.int16)
+    chroma = np.abs(ycc[:, :, 1] - 128) + np.abs(ycc[:, :, 2] - 128)
+    med_c = float(np.median(chroma[sil > 0])) if (sil > 0).any() else 0.0
     close = ((np.abs(garment.astype(np.int16)
-                     - bg[None, None, :]).max(axis=2) < 14) & (sil > 0))
+                     - bg[None, None, :]).max(axis=2) < 45)
+             & (chroma < max(6.0, med_c * 0.5)) & (sil > 0))
     n_sil = int((sil > 0).sum())
     n_close = int(close.sum())
     if n_close < max(200, n_sil // 50) or n_close > int(n_sil * 0.6):
+        print("[silhouette] card-bg prune declined: %d/%d px (med_c=%.0f)"
+              % (n_close, n_sil, med_c), flush=True)
         return sil
     out = sil.copy()
     out[close] = 0
