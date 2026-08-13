@@ -396,59 +396,6 @@ def _flatlay_silhouette_flood(garment: np.ndarray) -> np.ndarray | None:
 
 
 
-def _prune_card_bg(sil: np.ndarray, garment: np.ndarray) -> np.ndarray:
-    """Cut card-background pixels OUT of the silhouette, wherever they sit.
-
-    The tail trim handles shadows at the ENDS, but a pale garment on a pale
-    card defeats the flood everywhere at once: the yellow wardrobe tee came
-    back wrapped in a halo of card grey, with a bg strip riding under its hem.
-    Warped, that halo widened the quad (boat neck, skin shoulders) and the
-    strip became a pale apron over dark jeans — one silhouette, two phone
-    defects. The card's own colour is measurable from the frame's border ring,
-    so any silhouette pixel within a small distance of it is background, not
-    garment. Guards: if most of the silhouette matches (a white tee on a white
-    card is genuinely ambiguous) nothing is cut; afterwards the largest
-    component wins and enclosed holes are refilled, so a print patch that
-    happens to match the card cannot punch through the fabric."""
-    ring = np.ones(garment.shape[:2], bool)
-    ring[8:-8, 8:-8] = False
-    bg = np.median(garment[ring].reshape(-1, 3), axis=0)
-    # THE HALO IS THE CARD'S SHADOW, NOT THE CARD. It sits 20–40 under the
-    # bg's luma, so a tight distance-to-bg misses it entirely (first version
-    # declined on the exact tee it was written for). Background and shadow
-    # share what fabric does not: no chroma. So a pixel is card, not garment,
-    # when it is NEAR the bg colour and NEUTRAL relative to the garment's own
-    # saturation.
-    ycc = cv2.cvtColor(garment, cv2.COLOR_BGR2YCrCb).astype(np.int16)
-    chroma = np.abs(ycc[:, :, 1] - 128) + np.abs(ycc[:, :, 2] - 128)
-    med_c = float(np.median(chroma[sil > 0])) if (sil > 0).any() else 0.0
-    close = ((np.abs(garment.astype(np.int16)
-                     - bg[None, None, :]).max(axis=2) < 45)
-             & (chroma < max(6.0, med_c * 0.5)) & (sil > 0))
-    n_sil = int((sil > 0).sum())
-    n_close = int(close.sum())
-    if n_close < max(200, n_sil // 50) or n_close > int(n_sil * 0.6):
-        print("[silhouette] card-bg prune declined: %d/%d px (med_c=%.0f)"
-              % (n_close, n_sil, med_c), flush=True)
-        return sil
-    out = sil.copy()
-    out[close] = 0
-    n, lab = cv2.connectedComponents((out > 0).astype(np.uint8))
-    if n > 1:
-        sizes = [int((lab == i).sum()) for i in range(1, n)]
-        out = ((lab == (1 + int(np.argmax(sizes))))
-               .astype(np.uint8) * 255)
-    # refill enclosed holes: whatever the border flood cannot reach is inside
-    inv = (out == 0).astype(np.uint8)
-    ff = inv.copy()
-    m2 = np.zeros((ff.shape[0] + 2, ff.shape[1] + 2), np.uint8)
-    cv2.floodFill(ff, m2, (0, 0), 2)
-    out[(inv == 1) & (ff != 2)] = 255
-    print("[silhouette] card-bg pruned %dpx of %d (bg=%s)"
-          % (n_close, n_sil, bg.astype(int).tolist()), flush=True)
-    return out
-
-
 def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
     """Flood fill first; when its answer is insane, rescue by segmentation.
 
@@ -463,11 +410,11 @@ def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
         # and that silhouette passes every sanity test while carrying a shadow
         # ellipse WIDER than the garment under its hem. That slice, warped, was
         # the apron — and it rode in through the sane branch.
-        return _prune_card_bg(_trim_weak_tails(sil, garment), garment)
+        return _trim_weak_tails(sil, garment)
     rescued = _rescue_silhouette(garment)
     if rescued is not None:
         print("[silhouette] flood failed, rescued by segmentation", flush=True)
-        return _prune_card_bg(rescued, garment)
+        return rescued
     return sil
 
 def _nearest_fill(img: np.ndarray, have: np.ndarray) -> np.ndarray:
