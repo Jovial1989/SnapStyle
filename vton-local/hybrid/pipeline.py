@@ -2447,15 +2447,26 @@ class HybridVTONPipeline:
                         cv2.line(probe_t, qa, qb, 255,
                                  max(6, int(full.shape[0] * 0.012)))
                 probe_t = cv2.bitwise_and(probe_t, pose.silhouette)
-                probe_t[mask_full > 20] = 0
-                if int(probe_t.sum()) and leg_on.any():
+                # The ref is read from the ORIGINAL base, whose forearms are bare
+                # by construction — so no need to dodge the inpaint mask. The
+                # first version wiped probe pixels under mask_full and a dress's
+                # mask covers the arms: the probe emptied and the lock silently
+                # declined, which the log below now makes impossible to miss.
+                if int((probe_t > 0).sum()) > 200 and leg_on.any():
                     arm_ref = np.array(cv2.mean(full, mask=probe_t)[:3],
                                        np.float32)
                     leg_mean = legs_bgr[leg_on].mean(axis=0).astype(np.float32)
+                    print("[tonelock] probe_px=%d arm=%s legs=%s" % (
+                        int((probe_t > 0).sum()),
+                        arm_ref.astype(int).tolist(),
+                        leg_mean.astype(int).tolist()), flush=True)
                     legs_bgr = legs_bgr.astype(np.float32)
                     legs_bgr[leg_on] = np.clip(
                         legs_bgr[leg_on] + (arm_ref - leg_mean)[None, :], 0, 255)
                     legs_bgr = legs_bgr.astype(np.uint8)
+                else:
+                    print("[tonelock] declined probe_px=%d" %
+                          int((probe_t > 0).sum()), flush=True)
                 a_leg = (cv2.GaussianBlur(flood_leg_mask, (9, 9), 0)
                          .astype(np.float32) / 255.0)[:, :, None]
                 blended = (legs_bgr[:, :, ::-1].astype(np.float32) * a_leg
