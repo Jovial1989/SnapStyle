@@ -2475,6 +2475,55 @@ class HybridVTONPipeline:
             except Exception as e:
                 print(f"[legs] pass failed: {e}", flush=True)
 
+        # SKIN HARMONISATION, source-agnostic. The tanned-legs defect turned out
+        # not to belong to the leg pass at all: a full-slot mask covers the legs,
+        # so the MAIN inpaint paints them, and it paints a complexion the person
+        # does not have (identical tan at a fixed seed, three runs in a row). Any
+        # per-pass tone lock misses that path by construction. So the correction
+        # runs once, at the end, over whatever the render produced: every
+        # skin-classified pixel below the hips — classic YCrCb skin band, which
+        # admits both the pale truth and the invented tan while excluding a white
+        # dress (Cr 128) and grey shoes — is mean-shifted onto the forearms of
+        # the PRISTINE base, the only skin in the frame that is guaranteed real.
+        try:
+            probe_s = np.zeros(full.shape[:2], np.uint8)
+            for a_i, b_i in ((3, 4), (6, 7)):
+                qa, qb = pose.pts[a_i], pose.pts[b_i]
+                if qa and qb:
+                    cv2.line(probe_s, qa, qb, 255,
+                             max(6, int(full.shape[0] * 0.012)))
+            probe_s = cv2.bitwise_and(probe_s, pose.silhouette)
+            hips = [pose.pts[i] for i in (8, 11) if pose.pts[i]]
+            if int((probe_s > 0).sum()) > 200 and hips:
+                arm_ref = np.array(cv2.mean(full, mask=probe_s)[:3],
+                                   np.float32)[::-1]          # BGR → RGB
+                b8 = np.clip(blended, 0, 255).astype(np.uint8)
+                ycc = cv2.cvtColor(b8, cv2.COLOR_RGB2YCrCb)
+                skin = ((ycc[:, :, 1] >= 135) & (ycc[:, :, 1] <= 180)
+                        & (ycc[:, :, 2] >= 77) & (ycc[:, :, 2] <= 127)
+                        & (pose.silhouette > 0))
+                skin[:int(min(q[1] for q in hips))] = False
+                n_skin = int(skin.sum())
+                if n_skin > 3000:
+                    leg_mean = blended[skin].mean(axis=0).astype(np.float32)
+                    d_e = float(np.abs(arm_ref - leg_mean).max())
+                    print("[skintone] px=%d legs=%s arms=%s dE=%.0f" % (
+                        n_skin, leg_mean.astype(int).tolist(),
+                        arm_ref.astype(int).tolist(), d_e), flush=True)
+                    if d_e > 12.0:
+                        m = cv2.erode(skin.astype(np.uint8) * 255,
+                                      np.ones((3, 3), np.uint8))
+                        a_s = (cv2.GaussianBlur(m, (7, 7), 0)
+                               .astype(np.float32) / 255.0)[:, :, None]
+                        shifted = np.clip(
+                            blended + (arm_ref - leg_mean)[None, None, :],
+                            0, 255)
+                        blended = shifted * a_s + blended * (1.0 - a_s)
+                else:
+                    print("[skintone] declined px=%d" % n_skin, flush=True)
+        except Exception as e:
+            print(f"[skintone] failed: {e}", flush=True)
+
         out_img = Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
         if not return_mask:
             return out_img
