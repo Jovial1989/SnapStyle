@@ -514,16 +514,36 @@ def inject_bare_legs(init_image: np.ndarray, keypoints, lower_mask: np.ndarray,
         q = keypoints[idx] if idx < len(keypoints) else None
         return (float(q[0]), float(q[1])) if q else None
 
-    nose = pt(0)
-    if nose is None:
-        return out
-    r = max(6, int(round(h * 0.02)))
-    y0, y1 = max(0, int(nose[1] - r)), min(h, int(nose[1] + r))
-    x0, x1 = max(0, int(nose[0] - r)), min(w, int(nose[0] + r))
-    patch = (base if base is not None else init_image)[y0:y1, x0:x1]
-    if patch.size == 0:
-        return out
-    skin = np.median(patch.reshape(-1, 3), axis=0)
+    # FOREARMS FIRST, FACE AS FALLBACK. The face is guaranteed visible, but it is
+    # the wrong reference for a limb: faces run redder than arms and legs, and the
+    # flooded legs came back with the face's ruddiness. On the minimal base the
+    # forearms are bare by construction and they ARE limb skin; the nose patch
+    # stays as the fallback for bases where sleeves cover the arms.
+    src = base if base is not None else init_image
+    skin = None
+    probe = np.zeros((h, w), np.uint8)
+    for a_i, b_i in ((3, 4), (6, 7)):
+        a, b = pt(a_i), pt(b_i)
+        if a and b:
+            cv2.line(probe, (int(a[0]), int(a[1])), (int(b[0]), int(b[1])),
+                     255, max(6, int(h * 0.012)))
+    if silhouette is not None:
+        probe = cv2.bitwise_and(probe, silhouette)
+    if int(probe.sum()) > 0:
+        vals = src[probe > 0]
+        if len(vals) > 200:
+            skin = np.median(vals, axis=0)
+    if skin is None:
+        nose = pt(0)
+        if nose is None:
+            return out
+        r = max(6, int(round(h * 0.02)))
+        y0, y1 = max(0, int(nose[1] - r)), min(h, int(nose[1] + r))
+        x0, x1 = max(0, int(nose[0] - r)), min(w, int(nose[0] + r))
+        patch = src[y0:y1, x0:x1]
+        if patch.size == 0:
+            return out
+        skin = np.median(patch.reshape(-1, 3), axis=0)
 
     # Polygons per leg, hip to ankle, as wide as the figure is down there. A line would
     # miss the calf; the silhouette knows the real width and needs no constant.
@@ -1966,8 +1986,30 @@ class HybridVTONPipeline:
                     collar_holes = holes.copy()
                     collar_holes[sh_row:] = False
                     if collar_holes.any():
-                        init[collar_holes] = fill
-                        fill_img[collar_holes] = fill
+                        # THE COLLAR'S COLOUR IS THE COLLAR'S, not the garment's
+                        # mean. A striped tee averages to MID GREY, and XL painted
+                        # that fill faithfully as a grey smear around the neck —
+                        # the sheet's recurring upper-XL defect. The flat-lay's own
+                        # top strip is where the real collar lives (rib, bias
+                        # tape), and its mean is the right answer for plain
+                        # garments too, where it just equals the fabric.
+                        collar_c = fill
+                        try:
+                            ys_g, _ = np.nonzero(sil > 0)
+                            if ys_g.size:
+                                g_top = int(ys_g.min())
+                                g_h = int(ys_g.max()) - g_top + 1
+                                strip = np.zeros(sil.shape, np.uint8)
+                                strip[g_top:g_top + max(4, int(g_h * 0.08))] = 255
+                                strip = cv2.bitwise_and(strip, sil)
+                                if int((strip > 0).sum()) > 100:
+                                    collar_c = np.array(
+                                        [int(c) for c in cv2.mean(
+                                            g_bgr, mask=strip)[:3]], np.uint8)
+                        except Exception:
+                            pass
+                        init[collar_holes] = collar_c
+                        fill_img[collar_holes] = collar_c
 
             # BELOW THE HEM IS A LEG, NOT MORE FABRIC. For 'full' and 'lower' the band
             # deliberately runs to the ankle whatever the garment measures, because the
