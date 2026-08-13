@@ -2003,9 +2003,17 @@ class HybridVTONPipeline:
                                 strip[g_top:g_top + max(4, int(g_h * 0.08))] = 255
                                 strip = cv2.bitwise_and(strip, sil)
                                 if int((strip > 0).sum()) > 100:
-                                    collar_c = np.array(
-                                        [int(c) for c in cv2.mean(
-                                            g_bgr, mask=strip)[:3]], np.uint8)
+                                    # MEDIAN, not mean. Striped fabric averages
+                                    # to grey no matter where you average it —
+                                    # the grey yoke XL painted was the mean
+                                    # doing its job. The median of a bimodal
+                                    # strip lands ON one of the fabric's real
+                                    # colours (the rib is usually the light
+                                    # one), which is a collar a garment could
+                                    # actually have.
+                                    px = g_bgr[strip > 0]
+                                    collar_c = np.median(px, axis=0
+                                                         ).astype(np.uint8)
                         except Exception:
                             pass
                         init[collar_holes] = collar_c
@@ -2425,6 +2433,29 @@ class HybridVTONPipeline:
                     "bare human legs, natural knees and calves, photorealistic "
                     "smooth skin, soft studio light",
                     seed, strength=LEG_STRENGTH)
+                # TONE LOCK. At 0.85 the pass invents its own complexion — the
+                # legs came back TANNED against pale arms (dE 67, worse than the
+                # face sampling it replaced). Text cannot carry an exact colour,
+                # but arithmetic can: shift the painted legs' per-channel mean
+                # onto the forearms' skin, keeping every fold and knee the pass
+                # just built. Deterministic, no knob to sweep.
+                leg_on = flood_leg_mask > 0
+                probe_t = np.zeros(flood_leg_mask.shape, np.uint8)
+                for a_i, b_i in ((3, 4), (6, 7)):
+                    qa, qb = pose.pts[a_i], pose.pts[b_i]
+                    if qa and qb:
+                        cv2.line(probe_t, qa, qb, 255,
+                                 max(6, int(full.shape[0] * 0.012)))
+                probe_t = cv2.bitwise_and(probe_t, pose.silhouette)
+                probe_t[mask_full > 20] = 0
+                if int(probe_t.sum()) and leg_on.any():
+                    arm_ref = np.array(cv2.mean(full, mask=probe_t)[:3],
+                                       np.float32)
+                    leg_mean = legs_bgr[leg_on].mean(axis=0).astype(np.float32)
+                    legs_bgr = legs_bgr.astype(np.float32)
+                    legs_bgr[leg_on] = np.clip(
+                        legs_bgr[leg_on] + (arm_ref - leg_mean)[None, :], 0, 255)
+                    legs_bgr = legs_bgr.astype(np.uint8)
                 a_leg = (cv2.GaussianBlur(flood_leg_mask, (9, 9), 0)
                          .astype(np.float32) / 255.0)[:, :, None]
                 blended = (legs_bgr[:, :, ::-1].astype(np.float32) * a_leg
