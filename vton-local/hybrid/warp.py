@@ -183,7 +183,8 @@ def torso_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     img = cv2.warpPerspective(garment, m, (w, h), flags=cv2.INTER_LINEAR,
                               borderMode=cv2.BORDER_REPLICATE)
     panel_mask = cv2.warpPerspective(
-        (sil > 0).astype(np.uint8) * 255, m, (w, h), flags=cv2.INTER_NEAREST)
+        (sil > 0).astype(np.uint8) * 255, m, (w, h), flags=cv2.INTER_LINEAR)
+    panel_mask = (panel_mask > 127).astype(np.uint8) * 255  # smooth, then binary
 
     # The warp may only claim pixels the slot already owns. Everything the mask
     # stage learned — hands out, the collar line, the hem, the outward allowance —
@@ -457,7 +458,8 @@ def _quad_warp(garment: np.ndarray, sil: np.ndarray, src: np.ndarray,
     part = cv2.erode(part, np.ones((er, er), np.uint8), iterations=1)
     img = cv2.warpPerspective(garment, m, (w, h), flags=cv2.INTER_LINEAR,
                               borderMode=cv2.BORDER_REPLICATE)
-    msk = cv2.warpPerspective(part, m, (w, h), flags=cv2.INTER_NEAREST)
+    msk = cv2.warpPerspective(part, m, (w, h), flags=cv2.INTER_LINEAR)
+    msk = (msk > 127).astype(np.uint8) * 255  # smooth, then binary — no staircase
     np.copyto(out, img, where=(msk > 0)[:, :, None])
     filled[msk > 0] = 255
 
@@ -900,9 +902,11 @@ def tps_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     pad_sil[:ph, :pw] = sil[:ph, :pw]
 
     out = tps.warpImage(pad, flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT)
-    msk = tps.warpImage(pad_sil, flags=cv2.INTER_NEAREST,
+    msk = tps.warpImage(pad_sil, flags=cv2.INTER_LINEAR,
                         borderMode=cv2.BORDER_CONSTANT)
-    msk = cv2.erode((msk > 0).astype(np.uint8) * 255,
+    # LINEAR + threshold — see dual_cylinder_warp: the nearest-warped mask's
+    # staircase was the composite boundary.
+    msk = cv2.erode((msk > 127).astype(np.uint8) * 255,
                     np.ones((3, 3), np.uint8))
     mask = cv2.bitwise_and(msk, (slot_mask > 20).astype(np.uint8) * 255)
     if not mask.any():
@@ -1063,9 +1067,13 @@ def dual_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose,
         one = cv2.bitwise_and(pad_sil, half)
         img = tps.warpImage(pad, flags=cv2.INTER_LINEAR,
                             borderMode=cv2.BORDER_CONSTANT)
-        msk = tps.warpImage(one, flags=cv2.INTER_NEAREST,
+        msk = tps.warpImage(one, flags=cv2.INTER_LINEAR,
                             borderMode=cv2.BORDER_CONSTANT)
-        msk = cv2.erode((msk > 0).astype(np.uint8) * 255, np.ones((3, 3), np.uint8))
+        # LINEAR + threshold, not NEAREST. The image warps smoothly but the
+        # mask used to warp nearest-neighbour, and its STAIRCASE became the
+        # composite boundary — the jagged "toddler scissors" contour the
+        # phone showed on black jeans, loudest where fabric is darkest.
+        msk = cv2.erode((msk > 127).astype(np.uint8) * 255, np.ones((3, 3), np.uint8))
         take = (msk > 0) & (filled == 0)
         out[take] = img[take]
         filled[take] = 255
@@ -1227,9 +1235,13 @@ def sleeves_cylinder_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
         one = cv2.bitwise_and(pad_sil, region)
         img = tps.warpImage(pad, flags=cv2.INTER_LINEAR,
                             borderMode=cv2.BORDER_CONSTANT)
-        msk = tps.warpImage(one, flags=cv2.INTER_NEAREST,
+        msk = tps.warpImage(one, flags=cv2.INTER_LINEAR,
                             borderMode=cv2.BORDER_CONSTANT)
-        msk = cv2.erode((msk > 0).astype(np.uint8) * 255, np.ones((3, 3), np.uint8))
+        # LINEAR + threshold, not NEAREST. The image warps smoothly but the
+        # mask used to warp nearest-neighbour, and its STAIRCASE became the
+        # composite boundary — the jagged "toddler scissors" contour the
+        # phone showed on black jeans, loudest where fabric is darkest.
+        msk = cv2.erode((msk > 127).astype(np.uint8) * 255, np.ones((3, 3), np.uint8))
         take = (msk > 0) & (filled == 0)
         out[take] = img[take]
         filled[take] = 255
