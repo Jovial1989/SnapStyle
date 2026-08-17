@@ -117,6 +117,29 @@ CORE_PROTECT = float(os.getenv("VTON_CORE_PROTECT", "0"))
 LEG_PASS = os.getenv("VTON_LEG_PASS", "1") == "1"
 LEG_STRENGTH = float(os.getenv("VTON_LEG_STRENGTH", "0.85"))
 TPS_WARP = os.getenv("VTON_TPS", "1") == "1"
+
+# Fold overlay strength (0 = off). The map is a per-pixel luminance ratio
+# photographed from a worn grey tee on the canonical body; see the block in
+# generate. Path override for non-default pods.
+_FOLDS = float(os.getenv("VTON_FOLDS", "0"))
+_FOLD_PATH = os.getenv("VTON_FOLD_MAP", "/workspace/fold_upper.npy")
+_fold_cache: dict = {}
+
+
+def _fold_map(shape):
+    key = (shape[0], shape[1])
+    if key in _fold_cache:
+        return _fold_cache[key]
+    try:
+        fm = np.load(_FOLD_PATH).astype(np.float32)
+        if fm.shape != shape:
+            fm = cv2.resize(fm, (shape[1], shape[0]),
+                            interpolation=cv2.INTER_LINEAR)
+    except Exception as e:
+        print(f"[folds] map unavailable: {e}", flush=True)
+        fm = None
+    _fold_cache[key] = fm
+    return fm
 # Two cylinders for the legs, one solver each. Off until measured on a phone: the
 # single-cylinder version of the same idea looked fine in a metric and was visibly
 # wrong at full zoom, which is the whole reason this one starts behind a flag.
@@ -2012,6 +2035,23 @@ class HybridVTONPipeline:
             warped.image[:] = apply_shading(
                 warped.image, warped.mask, full,
                 float(os.getenv("VTON_SHADING", "2.0")))
+            # REAL FOLDS ARE LIGHT, NOT DENOISE. Measured across the whole
+            # strength sweep: 0.55 refines cardboard into cardboard and 0.99
+            # loses the print — the sampler was never going to invent drape
+            # under a fidelity constraint. But drape is mostly luminance, the
+            # pose is canonical, so the folds were photographed ONCE from a
+            # grey tee our own XL rendered on this very body (seed-swept, the
+            # deepest drape kept) and are multiplied onto the warped fabric
+            # here, BEFORE the Canny read — so the sampler sees them as
+            # structure to keep, not noise to smooth. Colour untouched.
+            if _FOLDS > 0 and kind in ("upper", "full"):
+                fm = _fold_map(warped.image.shape[:2])
+                if fm is not None:
+                    f = (1.0 + (fm - 1.0) * _FOLDS)[:, :, None]
+                    mwm_f = warped.mask > 0
+                    warped.image[mwm_f] = np.clip(
+                        warped.image[mwm_f].astype(np.float32)
+                        * f[mwm_f], 0, 255).astype(np.uint8)
             if LUMA > 0:
                 Lb = cv2.cvtColor(full, cv2.COLOR_BGR2GRAY).astype(np.float32)
                 detail = Lb - cv2.GaussianBlur(Lb, (31, 31), 0)
