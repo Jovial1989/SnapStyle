@@ -1351,6 +1351,23 @@ def _garment_mask(p: Pose, kind: str,
 
     box = np.zeros((h, w), np.uint8)
     box[max(0, int(y0)):int(y1) + 1, x0:x1 + 1] = 255
+    # PER-FOOT TOPS. One rectangle serves both feet, but the canonical pose is
+    # mid-step: cut the top from the LOWER ankle and the raised heel's old
+    # collar peeks out (white cuff over every derby); cut from the HIGHER and
+    # the planted foot's zone climbs the shin, which the sampler filled as a
+    # boot shaft ("brown mass up the calf" — both directions measured today).
+    # So the rect starts at the higher ankle and each foot's half is carved
+    # back down to its OWN ankle.
+    if kind == "shoes":
+        a_r, a_l = pts[10], pts[13]
+        if a_r and a_l:
+            mid_x = (a_r[0] + a_l[0]) // 2
+            for q in (a_r, a_l):
+                top_i = max(0, int(q[1] - span * 0.03))
+                if q[0] <= mid_x:
+                    box[:top_i, :max(0, mid_x)] = 0
+                else:
+                    box[:top_i, mid_x:] = 0
 
     # REACH THE OLD GARMENT'S OWN COLLAR, wherever it happens to be. The band's top is
     # a constant — the shoulder line less 4.5% of the figure — and a constant cannot
