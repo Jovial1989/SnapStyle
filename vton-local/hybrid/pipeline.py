@@ -2047,8 +2047,23 @@ class HybridVTONPipeline:
             if _FOLDS > 0 and kind in ("upper", "full"):
                 fm = _fold_map(warped.image.shape[:2])
                 if fm is not None:
-                    f = (1.0 + (fm - 1.0) * _FOLDS)[:, :, None]
+                    # THE PRINT KEEPS ITS OWN LIGHT. At full strength the map
+                    # shifted the luminance under a chest print and the sampler
+                    # reinterpreted its colours (a teal mountain came back
+                    # salmon). A print differs from its fabric in CHROMA, and
+                    # stripes — where the folds earn their keep — do not: so
+                    # the fold weight fades with chroma distance from the
+                    # garment's own median, full on fabric and stripes, gentle
+                    # over anything printed in colour.
+                    ycc_w = cv2.cvtColor(warped.image,
+                                         cv2.COLOR_BGR2YCrCb).astype(np.int16)
                     mwm_f = warped.mask > 0
+                    med_cr = int(np.median(ycc_w[:, :, 1][mwm_f]))
+                    med_cb = int(np.median(ycc_w[:, :, 2][mwm_f]))
+                    cdist = (np.abs(ycc_w[:, :, 1] - med_cr)
+                             + np.abs(ycc_w[:, :, 2] - med_cb)).astype(np.float32)
+                    w_f = np.clip(1.0 - cdist / 45.0, 0.3, 1.0)
+                    f = (1.0 + (fm - 1.0) * _FOLDS * w_f)[:, :, None]
                     warped.image[mwm_f] = np.clip(
                         warped.image[mwm_f].astype(np.float32)
                         * f[mwm_f], 0, 255).astype(np.uint8)
