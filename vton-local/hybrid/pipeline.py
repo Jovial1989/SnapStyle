@@ -287,6 +287,13 @@ class Pose:
     silhouette: np.ndarray          # uint8 0/255, HxW
     w: int
     h: int
+    # FEET LANDMARKS, OUTSIDE COCO-18. MediaPipe knows 33 points and the heel
+    # and toe (29-32) are among them; COCO-18 truncates at the ankle, which is
+    # why every foot consumer has had to guess the foot's extent from the
+    # matte. The canonical pose is mid-step — the trailing foot is ANGLED —
+    # and heel→toe is the only honest source of that angle. Keys:
+    # heel_r, heel_l, toe_r, toe_l; None when not visible.
+    feet: dict | None = None
 
 
 class PoseReader:
@@ -335,7 +342,9 @@ class PoseReader:
             sil = cv2.morphologyEx(
                 sil, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8)
             )
-        return Pose(pts, sil, w, h)
+        feet = {"heel_r": at(30), "heel_l": at(29),
+                "toe_r": at(32), "toe_l": at(31)}
+        return Pose(pts, sil, w, h, feet)
 
 
 def _draw_openpose(p: Pose) -> np.ndarray:

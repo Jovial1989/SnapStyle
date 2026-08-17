@@ -654,7 +654,7 @@ def shoes_warp(garment: np.ndarray, sil: np.ndarray, pose,
     out = np.zeros((h, w, 3), np.uint8)
     filled = np.zeros((h, w), np.uint8)
 
-    for k, (_, ank) in enumerate(ankles):
+    for k, (ank_i, ank) in enumerate(ankles):
         # THE FOOT IS BELOW THE LAST KEYPOINT. COCO-18 stops at the ankle, so the
         # foot's extent comes from the matte: rows under the ankle, columns near it.
         pad = int(span * 0.075)
@@ -703,6 +703,38 @@ def shoes_warp(garment: np.ndarray, sil: np.ndarray, pose,
         src = np.float32([[cx_s - hw_s, cy_s - hh_s], [cx_s + hw_s, cy_s - hh_s],
                           [cx_s + hw_s, cy_s + hh_s], [cx_s - hw_s, cy_s + hh_s]])
         dst = np.float32([[fx0, fy0], [fx1, fy0], [fx1, fy1], [fx0, fy1]])
+        # THE FOOT HAS AN ANGLE, AND THE BOX DOES NOT. The canonical pose is
+        # mid-step: the trailing heel is raised and the foot's own axis
+        # (heel→toe, MediaPipe 29-32 — COCO-18 stops at the ankle) tilts well
+        # off the horizontal, but an axis-aligned quad dressed that foot as if
+        # it stood flat — the crumpled derby on every phone render. Rotating
+        # the DESTINATION quad by the measured axis angle stands the shoe on
+        # its toe. Gated to angles that matter: the planted foot measures a
+        # few degrees and stays byte-identical through the identity rotation.
+        feet = getattr(pose, "feet", None) or {}
+        # side from the JOINT INDEX, not from image order: sorted-by-x puts the
+        # person's RIGHT foot first on a frontal photo (COCO 10=R, 13=L).
+        side = "r" if ank_i == 10 else "l"
+        heel, toe = feet.get(f"heel_{side}"), feet.get(f"toe_{side}")
+        if heel and toe:
+            ang = math.atan2(toe[1] - heel[1], toe[0] - heel[0])
+            # a flat foot's heel→toe reads ±180° or 0° depending on which way
+            # the toe points; fold to the deviation from horizontal
+            dev = math.atan2(math.sin(ang), math.cos(ang))
+            if dev > math.pi / 2:
+                dev -= math.pi
+            elif dev < -math.pi / 2:
+                dev += math.pi
+            if abs(dev) > math.radians(8):
+                cd, sd = math.cos(dev), math.sin(dev)
+                rot = []
+                for qx, qy in dst:
+                    ox, oy = qx - cx_d, qy - cy_d
+                    rot.append([cx_d + ox * cd - oy * sd,
+                                cy_d + ox * sd + oy * cd])
+                dst = np.float32(rot)
+                print("[shoe] %s foot tilted %.0f°" %
+                      (side, math.degrees(dev)), flush=True)
         _quad_warp(img, one, src, dst, (h, w), out, filled)
 
     mask = cv2.bitwise_and(filled, (slot_mask > 20).astype(np.uint8) * 255)
