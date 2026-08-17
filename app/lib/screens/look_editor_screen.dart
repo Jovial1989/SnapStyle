@@ -80,13 +80,17 @@ class LookEditorScreen extends ConsumerStatefulWidget {
 }
 
 class _Alt {
-  _Alt({required this.label, required this.source, required this.instruction, this.why, this.recommended = false, this.shop});
+  _Alt({required this.label, required this.source, required this.instruction, this.why, this.recommended = false, this.shop, this.imagePath});
   final String label;
   final String source; // 'wardrobe' | 'idea'
   final String instruction;
   final String? why; // one-sentence rationale for "Why it's better"
   final bool recommended; // the stylist's top pick for this slot
   final Map<String, dynamic>? shop; // matched REAL SKU {brand, price, currency, buyUrl}
+  /// Storage path of the user's own photo of this piece (wardrobe items only).
+  /// Dropping it was the bug: the render dressed an AI re-drawing of "their
+  /// own light yellow t-shirt" while the real photo sat in the bucket.
+  final String? imagePath;
 }
 
 class _Slot {
@@ -319,7 +323,10 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
           if (RegExp(r'shorts|шорт', caseSensitive: false).hasMatch(label)) {
             continue;
           }
-          alts.add(_Alt(label: label, source: 'wardrobe', instruction: 'their own $label', why: 'A piece you already own that fits this look.'));
+          alts.add(_Alt(
+              label: label, source: 'wardrobe', instruction: 'their own $label',
+              why: 'A piece you already own that fits this look.',
+              imagePath: (w['image_path'] ?? '').toString()));
         }
         // Styling ideas (each carries its own "why it's better") — 4 per slot.
         for (final idea in ((s['ideas'] as List?) ?? const []).take(4)) {
@@ -1304,6 +1311,19 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
         zones.add(_slots![k].slot);
         hints.add(alt.label);
         continue;
+      }
+      // A WARDROBE PIECE HAS A REAL PHOTO — the same "ground truth beats an AI
+      // re-drawing" rule the SKU branch above states, finally applied to the
+      // user's own clothes. The generated cut-out fallback below produced the
+      // flat pale slab the engine then faithfully dressed (17.08, yellow tee).
+      final wPath = alt.imagePath ?? '';
+      if (alt.source == 'wardrobe' && wPath.isNotEmpty) {
+        try {
+          urls.add(await api.wardrobeImageUrl(wPath));
+          zones.add(_slots![k].slot);
+          hints.add(alt.label);
+          continue;
+        } catch (_) {/* fall through to the generated cut-out */}
       }
       try {
         // No product photo (a wardrobe piece, or an idea with no SKU match):
