@@ -2756,6 +2756,23 @@ class HybridVTONPipeline:
         # the core was zero this is zero, so compositing layers with it reproduces
         # exactly what this method would have written and nothing else.
         wrote = alpha[:, :, 0] + (1.0 - alpha[:, :, 0]) * core[:, :, 0]
+        # AN UPPER LAYER HAS NO BUSINESS BELOW ITS OWN HEM. The mask band runs
+        # to hip+3% regardless of the garment, and the strip between the
+        # painted hem and the band's end keeps fill-coloured pixels. Over the
+        # base's grey basics that strip is grey-on-grey and invisible — which
+        # is why every single-layer repro looked clean — but the phone's
+        # unified composite stacks this layer OVER the trousers layer, and the
+        # strip painted a beige card across the jeans with a guillotine edge
+        # (visible on every multi-layer phone render back to v57). The layer's
+        # claim is cut just below the warp's own hem; what the sampler drew
+        # further down was never garment.
+        if kind == "upper" and warped is not None:
+            ys_wm = np.nonzero((warped.mask > 0).any(axis=1))[0]
+            if ys_wm.size:
+                cut_row = int(ys_wm[-1]) + int(0.03 * full.shape[0])
+                if cut_row < wrote.shape[0]:
+                    wrote[cut_row:] = 0
+                    print("[hemcut] row=%d" % cut_row, flush=True)
         return out_img, (np.clip(wrote, 0.0, 1.0) * 255).astype(np.uint8)
 
     # -- base preparation ---------------------------------------------------
