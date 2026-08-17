@@ -2361,30 +2361,6 @@ class HybridVTONPipeline:
                                 ).astype(np.uint8)
                                 init[c_skin] = skin_c
                                 fill_img[c_skin] = skin_c
-                        # XL KEEPS WHAT IT IS GIVEN. SD1.5 dissolved the
-                        # fabric-coloured wings above the shoulder line; XL
-                        # renders them faithfully, so the striped tee arrived
-                        # with a pale yoke and the flat-lay's neck label across
-                        # the collarbones — and pattern routing just made XL
-                        # the engine for every striped upper. Nothing above the
-                        # shoulder line needs inventing: cut the mask there and
-                        # the person's own neck and shoulders stay.
-                        will_xl = (XL or kind in XL_KINDS
-                                   or (XL_PATTERN > 0
-                                       and kind in ("upper", "full")
-                                       and pat_freq >= XL_PATTERN))
-                        if will_xl and os.getenv("VTON_XL_COLLAR_CUT", "1") == "1":
-                            cut_n = int(((mask_full > 20)
-                                         & (np.arange(mask_full.shape[0])[:, None]
-                                            < sh_row)).sum())
-                            mask_full[:sh_row] = 0
-                            init[:sh_row] = np.where(
-                                (collar_holes[:sh_row])[:, :, None],
-                                full[:sh_row], init[:sh_row])
-                            print("[collarcut] xl upper, %d px released"
-                                  % cut_n, flush=True)
-                            c_fab = np.zeros_like(c_fab)
-                            c_skin = np.zeros_like(c_skin)
                         if c_fab.any():
                             collar_c = fill
                             try:
