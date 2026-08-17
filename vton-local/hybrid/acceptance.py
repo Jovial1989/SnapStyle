@@ -71,6 +71,11 @@ def main() -> None:
             # engines, so for the sheet the per-slot default is suspended.
             P.XL = (e == "xl")
             P.XL_KINDS = set() if e == "sd15" else {"upper", "lower", "full", "shoes"}
+            # ...and so does pattern routing, for the same reason: with it live
+            # the striped case rendered XL in BOTH columns and the sheet showed
+            # two identical tiles, exactly the trap the line above exists to
+            # close. The sd15 column must mean sd15.
+            P.XL_PATTERN = 0.0 if e == "sd15" else P.XL_PATTERN
             t0 = time.time()
             img, _ = eng.generate(cur, Image.open("/workspace/" + fname), kind,
                                   hint, seed=7, pose=pose, return_mask=True)
