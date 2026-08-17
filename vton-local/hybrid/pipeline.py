@@ -2561,10 +2561,19 @@ class HybridVTONPipeline:
                             dec = dec / 2 + 0.5
                         arr = (dec.clamp(0, 1).permute(1, 2, 0).float()
                                .cpu().numpy() * 255).astype(np.uint8)
-                        small = cv2.resize(arr[:, :, ::-1], (128, 192),
+                        # 256x384 at q55, not 128x192 at q40. The preview is
+                        # shown FULL-BLEED on a phone, so a 128px frame is a
+                        # 3x upscale of a TAESD approximation and it reads as a
+                        # broken render, not as one forming: an off-white tee
+                        # arrived as a flat white slab and a pair of shoes as a
+                        # dark smear, both reported as engine defects while the
+                        # actual renders of those looks were clean. Still ~12 KB
+                        # a frame, three frames a layer — a rounding error next
+                        # to the render itself.
+                        small = cv2.resize(arr[:, :, ::-1], (256, 384),
                                            interpolation=cv2.INTER_AREA)
                         okj, buf_j = cv2.imencode(
-                            ".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 40])
+                            ".jpg", small, [cv2.IMWRITE_JPEG_QUALITY, 55])
                         if okj:
                             on_preview(step_i, buf_j.tobytes())
                     except Exception:
