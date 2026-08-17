@@ -132,6 +132,11 @@ def _fold_map(shape):
         return _fold_cache[key]
     try:
         fm = np.load(_FOLD_PATH).astype(np.float32)
+        # The donor's own hem is the map's darkest structure, and on a garment
+        # whose hem lands near the same row it printed as a grey band (caught
+        # by the sheet on the wardrobe tee). Drape lives in the gentle range;
+        # the band lives in the peaks — clip the peaks, keep the drape.
+        fm = np.clip(fm, 0.88, 1.12)
         if fm.shape != shape:
             fm = cv2.resize(fm, (shape[1], shape[0]),
                             interpolation=cv2.INTER_LINEAR)
