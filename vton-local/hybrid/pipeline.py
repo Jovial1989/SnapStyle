@@ -1179,6 +1179,15 @@ def _garment_mask(p: Pose, kind: str,
         # occupied row can — it already contains the feet, whatever their pose.
         rows = np.flatnonzero(p.silhouette.any(axis=1))
         foot_bottom = int(rows[-1]) if rows.size else bot_body
+        # THE ZONE'S TOP TRACKS THE HIGHER ANKLE. `ankle` above is the LOWER of
+        # the two (it defines bottoms correctly — the planted foot), but the
+        # canonical pose is mid-step: the trailing heel is RAISED, its old
+        # shoe's collar sits above the planted foot's ankle, and a zone cut
+        # from the lower ankle leaves that collar to nobody — the white
+        # sneaker cuff peeking over every rendered derby on the phone. The
+        # ORPHAN BAND between the trouser hem and the shoe zone was base
+        # pixels by construction.
+        ankle = min(y_of(10, bot_body), y_of(13, bot_body))
         # Start above the ankle so a boot shaft has room to exist; a mask that
         # begins at the ankle can only ever produce a low-top.
         # 0.03, not 0.075. The taller zone existed so a boot shaft could grow into
