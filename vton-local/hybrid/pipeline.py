@@ -399,7 +399,7 @@ def _flatlay_silhouette_flood(garment: np.ndarray) -> np.ndarray | None:
 # Semantic segmentation of the flat-lay (rembg / isnet-general-use). Lazy:
 # the session costs ~1s to build and lives for the worker's lifetime. Behind
 # an env flag so the sheet can arbitrate before it becomes load-bearing.
-_SEG_ON = os.getenv("VTON_SEG", "1") == "1"
+_SEG_ON = os.getenv("VTON_SEG", "0") == "1"
 _seg_session = None
 
 
@@ -491,16 +491,16 @@ def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
         # segmenter's answer while the segmenter found substantially more of
         # the same object. A garbage seg blob never contains the flood, so
         # the superset rule cannot fire on the segmenter's own failures.
-        pick = sil
-        why = "flood"
-        if ss > sf + 0.15:
-            pick, why = seg, "seg"
-        elif sil is not None and ss >= sf - 0.1:
-            fl_px = int((sil > 0).sum())
-            inter = int(((sil > 0) & (seg > 0)).sum())
-            sg_px = int((seg > 0).sum())
-            if fl_px and inter / fl_px > 0.9 and sg_px > fl_px * 1.3:
-                pick, why = seg, "seg-superset"
+        # VERDICT OF THE FIRST INTEGRATION ATTEMPT (13.08): the superset rule
+        # correctly picked the segmenter's FULLER dress mask — and the render
+        # got WORSE. The dress's sheer sleeves widened the silhouette, the
+        # bbox-driven quad compressed its length in response, the hem rose
+        # above the waist and the base's shorts showed. Silhouette truth is
+        # not render quality while the warp reasons in bounding boxes: a
+        # better mask can only land TOGETHER with a landmark-aware warp.
+        # Until that exists, the chooser stays margin-only and the flag stays
+        # off by default; the infrastructure is paid for and waiting.
+        pick, why = (seg, "seg") if ss > sf + 0.15 else (sil, "flood")
         print("[silhouette] flood=%.2f seg=%.2f -> %s" % (sf, ss, why),
               flush=True)
         return pick
