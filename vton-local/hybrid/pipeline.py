@@ -2030,6 +2030,31 @@ class HybridVTONPipeline:
                 warped.image[mwm] = np.clip(
                     warped.image[mwm].astype(np.float32)
                     * mod[mwm][:, None], 0, 255).astype(np.uint8)
+            # MASK V2 (spike, upper only, off by default): the band mask exists
+            # to cover the OLD garment, and on the canonical base the old
+            # garment is KNOWN — the grey basics are the only zero-chroma
+            # fabric inside the silhouette, extractable deterministically. So
+            # the honest mask is (old garment ∪ dilated warp) ∩ band: it still
+            # reaches past the basics wherever they are (the measured grey-cuff
+            # class stays covered), but stops inventing fill in band corners
+            # that hold neither garment — above the neckline the base's own
+            # bare shoulders simply stay, no skin fill to guess.
+            if (os.getenv("VTON_MASK_V2", "0") == "1") and kind == "upper":
+                ycc_b = cv2.cvtColor(full, cv2.COLOR_BGR2YCrCb).astype(np.int16)
+                chroma_b = (np.abs(ycc_b[:, :, 1] - 128)
+                            + np.abs(ycc_b[:, :, 2] - 128))
+                worn = ((chroma_b < 10) & (ycc_b[:, :, 0] > 60)
+                        & (ycc_b[:, :, 0] < 190)
+                        & (pose.silhouette > 0)).astype(np.uint8) * 255
+                worn = cv2.morphologyEx(worn, cv2.MORPH_CLOSE,
+                                        np.ones((9, 9), np.uint8))
+                keep = ((worn > 0)
+                        | (cv2.dilate(warped.mask,
+                                      np.ones((31, 31), np.uint8)) > 0))
+                cut = int(((mask_full > 20) & ~keep).sum())
+                mask_full = np.where(keep, mask_full, 0).astype(mask_full.dtype)
+                print("[maskv2] worn_px=%d cut_px=%d" %
+                      (int((worn > 0).sum()), cut), flush=True)
             wm = (cv2.GaussianBlur(warped.mask, (9, 9), 0).astype(np.float32) / 255.0)
             init = np.clip(warped.image * wm[:, :, None] +
                            init * (1.0 - wm[:, :, None]), 0, 255).astype(np.uint8)
