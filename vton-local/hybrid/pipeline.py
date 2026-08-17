@@ -2627,17 +2627,7 @@ class HybridVTONPipeline:
 
         # C — reverse composite at full resolution. See the module docstring:
         # this is what makes identity a guarantee instead of a hope.
-        # UPSCALE FILTER IS A DEFECT SURFACE. The sampler works at 512x768 and
-        # its output is enlarged to the base's resolution here; Lanczos has
-        # negative lobes, so at a high-contrast boundary — black trousers
-        # against a white studio backdrop — it OVERSHOOTS and prints a bright
-        # ring. That is the white halo tracing every dark garment on the
-        # phone. Switchable so the three candidates can be measured rather
-        # than argued about.
-        _filt = {"lanczos": Image.LANCZOS, "bicubic": Image.BICUBIC,
-                 "bilinear": Image.BILINEAR}.get(
-                     os.getenv("VTON_UPSCALE", "lanczos"), Image.LANCZOS)
-        gen_full = np.array(out.resize(avatar.size, _filt)).astype(np.float32)
+        gen_full = np.array(out.resize(avatar.size, Image.LANCZOS)).astype(np.float32)
         base = np.array(avatar).astype(np.float32)
 
         # COMPOSITE WHERE THE MODEL ACTUALLY DREW, not across the whole mask.
