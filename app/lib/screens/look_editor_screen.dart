@@ -1319,7 +1319,7 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
       final wPath = alt.imagePath ?? '';
       if (alt.source == 'wardrobe' && wPath.isNotEmpty) {
         try {
-          urls.add(await api.wardrobeImageUrl(wPath));
+          urls.add(await ref.read(looktokApiProvider).wardrobeImageUrl(wPath));
           zones.add(_slots![k].slot);
           hints.add(alt.label);
           continue;
