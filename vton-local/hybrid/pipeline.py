@@ -1920,6 +1920,7 @@ class HybridVTONPipeline:
         # collar — so the sampler still has a neutral start there.
         warped = None
         if WARP:
+            wmode = "none"
             try:
                 g_bgr = np.array(garment)[:, :, ::-1]
                 sil = _flatlay_silhouette(g_bgr)
@@ -1932,11 +1933,13 @@ class HybridVTONPipeline:
                         # nearly rigid and both feet are frontal, so a quad per
                         # foot carries the real product: laces, sole, shape.
                         warped = shoes_warp(g_bgr, sil, pose, mask_full)
+                        wmode = "shoes" if warped is not None else wmode
                     elif PARTS_WARP:
                         g_met = _garment_metrics(g_bgr, kind) or {}
                         warped = parts_warp(
                             g_bgr, sil, pose, kind, mask_full,
                             g_met.get("sleeve_ratio"), _split)
+                        wmode = "parts" if warped is not None else wmode
                     if SHOE_SEMANTIC and kind == "shoes":
                         # DELIBERATELY NO WARP. Leaving `warped` as None is the whole
                         # branch: the fill path then floods the foot zone with the
@@ -1955,10 +1958,13 @@ class HybridVTONPipeline:
                         # been weighed against the quad on the phone, the way the torso's
                         # cylinder was — the single-cylinder version of this shipped and
                         # had to be pulled the same hour.
-                        warped = dual_cylinder_warp(
+                        _w2 = dual_cylinder_warp(
                             g_bgr, sil, pose, mask_full,
                             len_ratio=(_garment_metrics(g_bgr, kind)
-                                       or {}).get("len_ratio")) or warped
+                                       or {}).get("len_ratio"))
+                        if _w2 is not None:
+                            warped, wmode = _w2, "dualcyl"
+
                     if TPS_WARP and kind in ("upper", "full"):
                         # UPPER BODY ONLY. A torso is one cylinder and the model fits it;
                         # a pair of legs is TWO, and fitting one cylinder across the whole
@@ -1970,15 +1976,19 @@ class HybridVTONPipeline:
                         #
                         # The flag still takes precedence where it applies, and keeps the
                         # quad if tps declines.
-                        warped = tps_warp(g_bgr, sil, pose, kind, mask_full,
-                                          wrap=float(os.getenv("VTON_TPS_WRAP", "1.0"))) or warped
+                        _w3 = tps_warp(g_bgr, sil, pose, kind, mask_full,
+                                       wrap=float(os.getenv("VTON_TPS_WRAP", "1.0")))
+                        if _w3 is not None:
+                            warped, wmode = _w3, "tps"
                     if warped is None and MESH_WARP:
                         g_met = _garment_metrics(g_bgr, kind) or {}
                         warped = mesh_warp(
                             g_bgr, sil, pose, kind, mask_full,
                             g_met.get("sleeve_ratio"), _split)
+                        wmode = "mesh" if warped is not None else wmode
                     if warped is None:
                         warped = torso_warp(g_bgr, sil, pose, kind, mask_full)
+                        wmode = "quad" if warped is not None else wmode
             except Exception as e:  # noqa: BLE001 — a failed warp must not fail a render
                 print(f"[warp] skipped: {type(e).__name__}: {e}", flush=True)
                 warped = None
@@ -2335,8 +2345,7 @@ class HybridVTONPipeline:
                   kind, (prompt_hint or "")[:40], int(mm_.sum()) // 1000,
                   int(xs_.min()) if xs_.size else -1, int(ys_.min()) if ys_.size else -1,
                   int(xs_.max()) if xs_.size else -1, int(ys_.max()) if ys_.size else -1,
-                  ("shoes" if kind == "shoes" and warped is not None else
-                   "quad" if warped is not None else "none"),
+                  (wmode if warped is not None else "none"),
                   ("%.0f%%" % (warped.coverage * 100)) if warped is not None else "-",
                   fill.tolist() if hasattr(fill, "tolist") else fill,
                   edges_wiped, os.getenv("VTON_SHADING", "2.0")), flush=True)
