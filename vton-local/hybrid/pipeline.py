@@ -484,10 +484,26 @@ def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
     if seg is not None:
         sf = _sil_score(sil, garment.shape[:2])
         ss = _sil_score(seg, garment.shape[:2])
-        print("[silhouette] flood=%.2f seg=%.2f -> %s"
-              % (sf, ss, "seg" if ss > sf + 0.15 else "flood"), flush=True)
+        # THE SCORE IS BLIND TO WHAT IS MISSING. The flood's half-dress is
+        # compact and solid, so it out-scored the full dress by 0.01 — a
+        # smaller lie is tidier than a bigger truth. Undersegmentation has its
+        # own signature though: the flood sits almost entirely INSIDE the
+        # segmenter's answer while the segmenter found substantially more of
+        # the same object. A garbage seg blob never contains the flood, so
+        # the superset rule cannot fire on the segmenter's own failures.
+        pick = sil
+        why = "flood"
         if ss > sf + 0.15:
-            return seg
+            pick, why = seg, "seg"
+        elif sil is not None and ss >= sf - 0.1:
+            fl_px = int((sil > 0).sum())
+            inter = int(((sil > 0) & (seg > 0)).sum())
+            sg_px = int((seg > 0).sum())
+            if fl_px and inter / fl_px > 0.9 and sg_px > fl_px * 1.3:
+                pick, why = seg, "seg-superset"
+        print("[silhouette] flood=%.2f seg=%.2f -> %s" % (sf, ss, why),
+              flush=True)
+        return pick
     return sil
 
 def _nearest_fill(img: np.ndarray, have: np.ndarray) -> np.ndarray:
