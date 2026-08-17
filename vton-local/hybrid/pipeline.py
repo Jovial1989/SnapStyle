@@ -162,6 +162,16 @@ XL = os.getenv("VTON_XL", "0") == "1"
 # the sheet says so, not before.
 XL_KINDS = set((os.getenv("VTON_XL_KINDS", "lower") or "").split(","))
 XL_STRENGTH = float(os.getenv("VTON_XL_STRENGTH", "0.55"))
+# HIGH-FREQUENCY PATTERNS GO TO THE BIGGER ENGINE. SD1.5 samples at 512x768,
+# i.e. a 64x96 latent, so a stripe whose pitch on the body is a handful of
+# pixels sits BELOW one latent cell — the sampler cannot represent it and
+# reinvents it as a wave. That is the melted striped tee, and no strength
+# helps (measured 0.55 and 0.35, both wavy); XL's 1024 ROI has four times the
+# latent area for the same fabric and rendered the same stripes straight and
+# sharp. Threshold in luminance sign flips per 100 px of garment height:
+# stripes measure 13.2, every other test garment (prints, plain, dots, denim)
+# measures 0.6 or less, so the gate is wide.
+XL_PATTERN = float(os.getenv("VTON_XL_PATTERN", "4.0"))
 # SHOES BY SEMANTICS ONLY: no spatial warp, the adapter carries the identity, the pose
 # carries the orientation. A shoe is the one garment whose flat-lay and worn appearance
 # differ by a rotation in depth rather than by drape, and no 2D map can supply that.
@@ -492,6 +502,42 @@ def _sil_score(sil: np.ndarray | None, shape: tuple[int, int]) -> float:
         if ha > 0:
             score -= 0.4 * (1.0 - min(1.0, cv2.contourArea(c) / ha))
     return max(0.0, score)
+
+
+def _pattern_freq(garment: np.ndarray, sil: np.ndarray | None) -> float:
+    """Luminance sign flips per 100 px of garment height — how striped is it.
+
+    Read down three columns of the garment and count how often the fabric
+    crosses its own local mean; the median of the three keeps a single seam or
+    a print's edge from reading as a pattern. High-pass first (subtract a long
+    vertical blur) so a fold's gradient does not count, and ignore crossings
+    shallower than 6 levels so JPEG noise does not.
+    """
+    if sil is None or not (sil > 0).any():
+        return 0.0
+    ys, xs = np.nonzero(sil)
+    y0, y1, x0, x1 = int(ys.min()), int(ys.max()), int(xs.min()), int(xs.max())
+    H = y1 - y0 + 1
+    if H < 40:
+        return 0.0
+    gray = cv2.GaussianBlur(cv2.cvtColor(garment, cv2.COLOR_BGR2GRAY),
+                            (3, 3), 0).astype(np.float32)
+    counts = []
+    for fx in (0.35, 0.5, 0.65):
+        cx = int(x0 + (x1 - x0) * fx)
+        col = gray[y0:y1 + 1, cx]
+        on = sil[y0:y1 + 1, cx] > 0
+        if int(on.sum()) < 50:
+            continue
+        v = col[on]
+        v = v - cv2.GaussianBlur(v.reshape(-1, 1), (1, 31), 0).ravel()
+        sg = np.sign(v)
+        sg[np.abs(v) < 6] = 0
+        nz = sg[sg != 0]
+        counts.append(int((np.diff(nz) != 0).sum()) if nz.size > 1 else 0)
+    if not counts:
+        return 0.0
+    return float(np.median(counts)) * 100.0 / H
 
 
 def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
@@ -1982,11 +2028,13 @@ class HybridVTONPipeline:
         # The flat fill stays everywhere the warp does not reach — sleeves, the
         # collar — so the sampler still has a neutral start there.
         warped = None
+        pat_freq = 0.0
         if WARP:
             wmode = "none"
             try:
                 g_bgr = np.array(garment)[:, :, ::-1]
                 sil = _flatlay_silhouette(g_bgr)
+                pat_freq = _pattern_freq(g_bgr, sil)
                 if sil is not None:
                     if kind == "shoes":
                         # Footwear is in every look and was the weakest slot: the
@@ -2436,14 +2484,19 @@ class HybridVTONPipeline:
         mm_ = mask_full > 20
         ys_, xs_ = np.nonzero(mm_)
         print("[diag] kind=%s hint=%r mask_px=%dk bbox=(%d,%d..%d,%d) "
-              "warp=%s wcov=%s fill=%s edges_wiped=%d shading=%s" % (
+              "warp=%s wcov=%s fill=%s edges_wiped=%d shading=%s "
+              "pat=%.1f%s" % (
                   kind, (prompt_hint or "")[:40], int(mm_.sum()) // 1000,
                   int(xs_.min()) if xs_.size else -1, int(ys_.min()) if ys_.size else -1,
                   int(xs_.max()) if xs_.size else -1, int(ys_.max()) if ys_.size else -1,
                   (wmode if warped is not None else "none"),
                   ("%.0f%%" % (warped.coverage * 100)) if warped is not None else "-",
                   fill.tolist() if hasattr(fill, "tolist") else fill,
-                  edges_wiped, os.getenv("VTON_SHADING", "2.0")), flush=True)
+                  edges_wiped, os.getenv("VTON_SHADING", "2.0"),
+                  pat_freq,
+                  " XL(pattern)" if (XL_PATTERN > 0 and kind in ("upper", "full")
+                                     and pat_freq >= XL_PATTERN) else ""),
+              flush=True)
 
         # TENSOR DUMP, at the last moment before the sampler sees anything. Every
         # question about "what did we actually feed it" has been answered here by
@@ -2527,7 +2580,9 @@ class HybridVTONPipeline:
             except Exception:
                 cb = None
 
-        if XL or kind in XL_KINDS:
+        pattern_xl = (XL_PATTERN > 0 and kind in ("upper", "full")
+                      and pat_freq >= XL_PATTERN)
+        if XL or kind in XL_KINDS or pattern_xl:
             # Same init, same mask, a different engine: everything downstream —
             # the reverse composite, the drew test, the identity guarantee —
             # treats this exactly like the SD1.5 output.
