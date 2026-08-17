@@ -772,8 +772,32 @@ def apply_shading(warped: np.ndarray, mask: np.ndarray, base: np.ndarray,
     # residual structure in the field stamp itself onto flat fabric.
     ratio = np.clip(field / rows[:, None], 0.88, 1.12)
     ratio = 1.0 + (ratio - 1.0) * float(np.clip(strength, 0.0, 2.0))
-    out = warped.astype(np.float32) * ratio[:, :, None]
-    return np.where(m[:, :, None], np.clip(out, 0, 255), warped).astype(np.uint8)
+    out = _gain(warped, ratio)
+    return np.where(m[:, :, None], out, warped).astype(np.uint8)
+
+
+def _gain(img: np.ndarray, ratio: np.ndarray) -> np.ndarray:
+    """Multiply by a luminance field WITHOUT clipping the highlights.
+
+    A plain multiply is fine on mid-tones and catastrophic on near-white
+    fabric: an off-white tee sits at 236, this stage brightens by up to 12%
+    and the fold overlay by another 8%, so 236 becomes 286, clips to 255 —
+    and clipping is not a subtle loss, it is the whole highlight collapsing
+    into one flat value with a hard boundary where it starts. That is the
+    white slab the phone showed instead of a t-shirt.
+
+    Darkening is left alone (no floor to hit at these ranges). Brightening is
+    scaled by the headroom that actually exists, (255 - v) / 255, so a
+    mid-tone gets nearly the full effect and something already at 250 gets
+    almost none — which is correct anyway: there is no such thing as a
+    highlight on fabric that is already at the top of the range."""
+    v = img.astype(np.float32)
+    r = ratio[:, :, None] if ratio.ndim == 2 else ratio
+    up = r > 1.0
+    out = np.where(up,
+                   v + (r - 1.0) * v * ((255.0 - v) / 255.0),
+                   v * r)
+    return np.clip(out, 0, 255)
 
 
 def tps_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,

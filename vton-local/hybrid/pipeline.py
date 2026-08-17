@@ -36,7 +36,7 @@ import torch
 from PIL import Image
 
 from kinematic import apply_kinematic_shield, arm_shield
-from warp import (apply_shading, dual_cylinder_warp, harmonise_poisson, mesh_warp,
+from warp import (_gain, apply_shading, dual_cylinder_warp, harmonise_poisson, mesh_warp,
                   parts_warp, shoes_warp, sigmoid_merge, sleeves_cylinder_warp,
                   torso_warp, tps_warp)
 
@@ -2151,10 +2151,12 @@ class HybridVTONPipeline:
                     cdist = (np.abs(ycc_w[:, :, 1] - med_cr)
                              + np.abs(ycc_w[:, :, 2] - med_cb)).astype(np.float32)
                     w_f = np.clip(1.0 - cdist / 45.0, 0.3, 1.0)
-                    f = (1.0 + (fm - 1.0) * _FOLDS * w_f)[:, :, None]
-                    warped.image[mwm_f] = np.clip(
-                        warped.image[mwm_f].astype(np.float32)
-                        * f[mwm_f], 0, 255).astype(np.uint8)
+                    f = 1.0 + (fm - 1.0) * _FOLDS * w_f
+                    # HEADROOM-AWARE, like apply_shading: a plain multiply blew
+                    # an off-white tee (236) past 255 and printed a flat white
+                    # slab where the fabric should be.
+                    lit = _gain(warped.image, f)
+                    warped.image[mwm_f] = lit[mwm_f].astype(np.uint8)
             if LUMA > 0:
                 Lb = cv2.cvtColor(full, cv2.COLOR_BGR2GRAY).astype(np.float32)
                 detail = Lb - cv2.GaussianBlur(Lb, (31, 31), 0)
