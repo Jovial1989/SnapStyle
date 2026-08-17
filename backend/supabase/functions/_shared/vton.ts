@@ -114,6 +114,19 @@ export async function hybridDress(
       .maybeSingle();
     if (!row) continue;
     if (row.status === "queued" && Date.now() > claimBy) {
+      // A BUSY WORKER IS NOT A DEAD ONE. The worker is single-threaded: while
+      // it renders a three-layer look (~10-30s) the next job sits unclaimed,
+      // and "unclaimed after 6s" read that as engine-offline — the phone
+      // showed the error BETWEEN two successful renders. Recently finished or
+      // running jobs ARE the worker's heartbeat: if it moved anything in the
+      // last 90s it exists and is merely busy, so this job waits its turn to
+      // the full timeout. A cold pod has no recent rows and still fails fast.
+      const since = new Date(Date.now() - 90_000).toISOString();
+      const { count } = await db.from("vton_jobs")
+        .select("id", { count: "exact", head: true })
+        .in("status", ["running", "done"])
+        .gte("claimed_at", since);
+      if ((count ?? 0) > 0) continue;
       await db.from("vton_jobs")
         .update({ status: "failed", error: "no worker" })
         .eq("id", job.id).eq("status", "queued");
