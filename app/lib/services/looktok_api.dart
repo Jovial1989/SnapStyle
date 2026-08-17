@@ -581,7 +581,7 @@ class LooktokApi {
           // v16: render from the clean base, never chained. v17: garment-colour
           // fallback bounded by the silhouette. v18: wrist protection keeps skin,
           // not a disc of the old trousers. v19: deterministic seed. v20: upper painted after lower (untucked hem).
-          'fix:v57', base64Image, instruction,
+          'fix:v58', base64Image, instruction,
           targetZones.join(','), lockedZones.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,
@@ -657,7 +657,7 @@ class LooktokApi {
           // personPath REPLACES base64Image when the source is already in
           // Storage, so it has to be in the key — otherwise a chained swap and a
           // pixel-carrying one would collide on the same fingerprint.
-          'fix:v57', personPath ?? base64Image, instr,
+          'fix:v58', personPath ?? base64Image, instr,
           tz.join(','), lz.join(','),
           for (final r in refs) r['data']!,
           ...referenceUrls,
