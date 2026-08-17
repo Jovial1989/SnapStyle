@@ -504,6 +504,48 @@ def _sil_score(sil: np.ndarray | None, shape: tuple[int, int]) -> float:
     return max(0.0, score)
 
 
+def check_a_pose(pose) -> dict:
+    """Is this base a clean frontal A-pose, or is it caught mid-stride?
+
+    Pure telemetry — it changes no pixel. Every geometric compromise in this
+    file exists because the canonical base WALKS: one heel is raised, so the
+    shoe zone cannot be one rectangle and the old sneaker peeks between the
+    legs; the hands hang at hip height, so the trouser mask has to carve skin
+    out by chroma. An A-pose base (feet level, wrists clear of the hips) makes
+    all of that unnecessary, and the first step to getting one is measuring
+    how far the current base is from it.
+
+    heel_dy   ankle height difference over figure span — 0 is flat-footed
+    wrist_gap wrist-to-hip horizontal distance over shoulder width — wants > ~0.3
+    """
+    pts = pose.pts
+    ys = [q[1] for q in pts if q]
+    if not ys:
+        return {}
+    span = max(1.0, max(ys) - min(ys))
+    out = {}
+    a_r, a_l = pts[10], pts[13]
+    if a_r and a_l:
+        out["heel_dy"] = abs(a_r[1] - a_l[1]) / span
+    ls, rs = pts[5], pts[2]
+    if ls and rs:
+        sw = max(1.0, abs(ls[0] - rs[0]))
+        gaps = []
+        for wi, hi in ((4, 8), (7, 11)):
+            wq, hq = pts[wi], pts[hi]
+            if wq and hq:
+                gaps.append(abs(wq[0] - hq[0]) / sw)
+        if gaps:
+            out["wrist_gap"] = min(gaps)
+    viol = []
+    if out.get("heel_dy", 0.0) > 0.02:
+        viol.append("mid_step")
+    if out.get("wrist_gap", 1.0) < 0.30:
+        viol.append("arms_at_hips")
+    out["violations"] = viol
+    return out
+
+
 def _pattern_freq(garment: np.ndarray, sil: np.ndarray | None) -> float:
     """Luminance sign flips per 100 px of garment height — how striped is it.
 
@@ -1946,6 +1988,12 @@ class HybridVTONPipeline:
         # the pixels we composite back onto later.
         if pose is None:
             pose = self.reader.read(full)
+        if os.getenv("VTON_APOSE_CHECK", "1") == "1":
+            ap = check_a_pose(pose)
+            if ap:
+                print("[apose] heel_dy=%.3f wrist_gap=%.2f %s" % (
+                    ap.get("heel_dy", -1), ap.get("wrist_gap", -1),
+                    ",".join(ap["violations"]) or "clean"), flush=True)
         # The flat-lay goes in as well: the mask is trimmed to THIS garment's cut
         # (hem, sleeve, width) rather than the whole slot band.
         mask_full = _garment_mask(pose, kind, np.array(garment)[:, :, ::-1], full)
@@ -2848,6 +2896,36 @@ class HybridVTONPipeline:
                     print("[skintone] declined px=%d" % n_skin, flush=True)
         except Exception as e:
             print(f"[skintone] failed: {e}", flush=True)
+
+        # THE GREY LINE IS A STRIP OF BASE, not a soft edge. The warp's mask is
+        # eroded (the flat-lay's own background would otherwise bleed in) and
+        # then intersected with the body matte, so along a garment's outline
+        # two or three pixels of the ORIGINAL base survive between the painted
+        # fabric and the silhouette's edge. On denim over skin nobody notices;
+        # on black trousers against a white studio backdrop that strip is the
+        # halo tracing every leg. Nothing needs to be invented to close it —
+        # the fabric right beside it is the answer, so the strip takes the
+        # nearest painted colour.
+        if os.getenv("VTON_RIM_CLOSE", "1") == "1" and kind != "shoes":
+            try:
+                drew_r = (alpha[:, :, 0]
+                          + (1.0 - alpha[:, :, 0]) * core[:, :, 0]) > 0.5
+                band_r = (mask_full > 20) & (pose.silhouette > 0)
+                near_r = cv2.dilate(drew_r.astype(np.uint8),
+                                    np.ones((9, 9), np.uint8)) > 0
+                rim = band_r & ~drew_r & near_r
+                n_rim = int(rim.sum())
+                if n_rim > 200:
+                    b8 = np.clip(blended, 0, 255).astype(np.uint8)
+                    filled_r = _nearest_fill(b8, drew_r)
+                    lum_b = cv2.cvtColor(b8, cv2.COLOR_BGR2GRAY)
+                    lum_a = cv2.cvtColor(filled_r, cv2.COLOR_BGR2GRAY)
+                    print("[rim] px=%d lum %d->%d" % (
+                        n_rim, int(lum_b[rim].mean()),
+                        int(lum_a[rim].mean())), flush=True)
+                    blended[rim] = filled_r[rim].astype(np.float32)
+            except Exception as e:
+                print(f"[rim] failed: {e}", flush=True)
 
         out_img = Image.fromarray(np.clip(blended, 0, 255).astype(np.uint8))
         if not return_mask:
