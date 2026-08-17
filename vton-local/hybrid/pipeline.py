@@ -396,25 +396,98 @@ def _flatlay_silhouette_flood(garment: np.ndarray) -> np.ndarray | None:
 
 
 
+# Semantic segmentation of the flat-lay (rembg / isnet-general-use). Lazy:
+# the session costs ~1s to build and lives for the worker's lifetime. Behind
+# an env flag so the sheet can arbitrate before it becomes load-bearing.
+_SEG_ON = os.getenv("VTON_SEG", "1") == "1"
+_seg_session = None
+
+
+def _seg_silhouette(garment: np.ndarray) -> np.ndarray | None:
+    global _seg_session
+    if not _SEG_ON:
+        return None
+    try:
+        if _seg_session is None:
+            from rembg import new_session
+            _seg_session = new_session("isnet-general-use")
+        from rembg import remove
+        out = remove(garment[:, :, ::-1], session=_seg_session,
+                     only_mask=True, post_process_mask=True)
+        return (np.array(out) > 127).astype(np.uint8) * 255
+    except Exception as e:
+        print(f"[silhouette] seg failed: {e}", flush=True)
+        return None
+
+
+def _sil_score(sil: np.ndarray | None, shape: tuple[int, int]) -> float:
+    """How much does this mask look like ONE garment on a card?
+
+    Measured on the seven acceptance garments before wiring: the flood and the
+    segmenter each fail on different inputs (flood undersegments a white dress
+    to half its area, the segmenter shreds a full-frame flat-lay to a blob),
+    and every failure mode shows up in the same four cheap numbers — area
+    fraction, frame-edge contact, component scatter, solidity. Score both
+    candidates, keep the better one; no single method has to be right always.
+    """
+    if sil is None or not (sil > 0).any():
+        return 0.0
+    h, w = shape
+    frac = float((sil > 0).sum()) / (h * w)
+    if frac < 0.02 or frac > 0.75:
+        return 0.0
+    score = 1.0
+    # touching the frame is what cards' backgrounds do, garments do not
+    edges = sum(1 for e in (sil[0], sil[-1], sil[:, 0], sil[:, -1])
+                if (e > 0).any())
+    score -= 0.25 * edges
+    n, lab, stats, _ = cv2.connectedComponentsWithStats(
+        (sil > 0).astype(np.uint8))
+    if n > 2:
+        main = stats[1:, cv2.CC_STAT_AREA].max()
+        score -= 0.5 * (1.0 - main / max(1, (sil > 0).sum()))
+    cnts, _ = cv2.findContours((sil > 0).astype(np.uint8),
+                               cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if cnts:
+        c = max(cnts, key=cv2.contourArea)
+        hull = cv2.convexHull(c)
+        ha = cv2.contourArea(hull)
+        if ha > 0:
+            score -= 0.4 * (1.0 - min(1.0, cv2.contourArea(c) / ha))
+    return max(0.0, score)
+
+
 def _flatlay_silhouette(garment: np.ndarray) -> np.ndarray | None:
-    """Flood fill first; when its answer is insane, rescue by segmentation.
+    """Two candidate silhouettes, one plausibility score, best one wins.
 
     Sanity is checked HERE, not left to callers: every consumer of a silhouette
     (metrics, panel, warp, colour) assumed it was a garment, and a whole-frame
     "silhouette" walked through all of them producing four different symptoms
-    with one cause."""
+    with one cause. The flood keeps a small incumbency bonus — it has years of
+    sheet history behind it — so the segmenter only takes over where it is
+    clearly better (the white dress the flood cut in half), not on noise."""
     sil = _flatlay_silhouette_flood(garment)
-    if _silhouette_sane(sil, garment.shape[:2]):
+    if sil is not None and _silhouette_sane(sil, garment.shape[:2]):
         # The tails are trimmed HERE, not only on the rescue path: the flood
         # happily succeeds on a card whose shadow is darker than its background,
         # and that silhouette passes every sanity test while carrying a shadow
         # ellipse WIDER than the garment under its hem. That slice, warped, was
         # the apron — and it rode in through the sane branch.
-        return _trim_weak_tails(sil, garment)
-    rescued = _rescue_silhouette(garment)
-    if rescued is not None:
-        print("[silhouette] flood failed, rescued by segmentation", flush=True)
-        return rescued
+        sil = _trim_weak_tails(sil, garment)
+    else:
+        rescued = _rescue_silhouette(garment)
+        if rescued is not None:
+            print("[silhouette] flood failed, rescued by segmentation",
+                  flush=True)
+            sil = rescued
+    seg = _seg_silhouette(garment)
+    if seg is not None:
+        sf = _sil_score(sil, garment.shape[:2])
+        ss = _sil_score(seg, garment.shape[:2])
+        print("[silhouette] flood=%.2f seg=%.2f -> %s"
+              % (sf, ss, "seg" if ss > sf + 0.15 else "flood"), flush=True)
+        if ss > sf + 0.15:
+            return seg
     return sil
 
 def _nearest_fill(img: np.ndarray, have: np.ndarray) -> np.ndarray:
