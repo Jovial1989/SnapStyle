@@ -803,7 +803,7 @@ def _gain(img: np.ndarray, ratio: np.ndarray) -> np.ndarray:
 
 def tps_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
              slot_mask: np.ndarray, rows: int = 9, cols: int = 7,
-             wrap: float = 1.0) -> Warped | None:
+             wrap: float = 1.0, top_frac: float | None = None) -> Warped | None:
     """Thin-plate spline onto the body, with the torso treated as a CYLINDER.
 
     A quad maps a plane to a plane. A body is not a plane, and the tell is the print:
@@ -880,8 +880,18 @@ def tps_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
         # Reaching higher is the other direction: the garment's own collar
         # covers the tank, and the fill zone shrinks to nothing. Measured, not
         # guessed — the risk is a mock-neck if it reaches too far.
-        ty0 = min(ls[1], rs[1]) - span * float(
-            os.getenv("VTON_TPS_TOP", "0.02"))
+        # 0.08 ONLY WHERE THE FILL IS RENDERED FAITHFULLY. Swept 0.02/0.05/0.08
+        # on four garments: at 0.08 the striped tee's pale yoke and the
+        # flat-lay's neck label disappear (the fabric itself now covers the
+        # tank's neckline) and the dress's collar reads rounder — but a V-neck
+        # comes back with a DARK notch instead of chest, because the reach
+        # pushes fabric over skin the neckline is supposed to expose. SD1.5
+        # dissolves the invented fill anyway, so it keeps the conservative
+        # reach and stays byte-identical; the caller raises this only for the
+        # XL route, where the fill survives to the render.
+        ty0 = min(ls[1], rs[1]) - span * (
+            float(os.getenv("VTON_TPS_TOP", "0.02"))
+            if top_frac is None else top_frac)
         ty1 = (max(lh[1], rh[1]) + span * 0.03) if (lh and rh) else ty0 + span * 0.35
     else:
         if not (lh and rh):

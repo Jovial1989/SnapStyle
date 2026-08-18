@@ -2135,8 +2135,18 @@ class HybridVTONPipeline:
                         #
                         # The flag still takes precedence where it applies, and keeps the
                         # quad if tps declines.
+                        # The XL route renders the collar fill faithfully, so
+                        # for it the fabric has to reach the tank's neckline
+                        # itself; SD1.5 dissolves that fill and keeps the
+                        # conservative reach (a V-neck needs its notch).
+                        _xl_route = (XL or kind in XL_KINDS
+                                     or (XL_PATTERN > 0
+                                         and kind in ("upper", "full")
+                                         and pat_freq >= XL_PATTERN))
                         _w3 = tps_warp(g_bgr, sil, pose, kind, mask_full,
-                                       wrap=float(os.getenv("VTON_TPS_WRAP", "1.0")))
+                                       wrap=float(os.getenv("VTON_TPS_WRAP", "1.0")),
+                                       top_frac=(float(os.getenv("VTON_TPS_TOP_XL", "0.08"))
+                                                 if _xl_route else None))
                         if _w3 is not None:
                             warped, wmode = _w3, "tps"
                     if warped is None and MESH_WARP:
