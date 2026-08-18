@@ -252,6 +252,9 @@ def render(job: dict) -> str:
     # overwrite the base — that is how the sliver of old tank at the flank and
     # the pale gap at the waist disappear.
     layers: list[tuple[np.ndarray, np.ndarray, bool]] = []
+    # One-element box so the lower layer can tell the upper layer where the
+    # waistband landed; Z order guarantees the lower runs first.
+    waist_top: list[int | None] = [None]
     for i, (st, garment) in enumerate(zip(steps, garments)):
         # NO DEFAULT SLOT. A step without a usable `kind` used to be painted onto
         # the torso — jeans came back as a denim jacket in a test that had misnamed
@@ -294,6 +297,17 @@ def render(job: dict) -> str:
             # base's disagree at the band's edge.
             zone = _garment_mask(base_pose, kind,
                                  np.array(garment)[:, :, ::-1], base_bgr)
+            # WHERE THE TROUSERS ACTUALLY START, from the render that drew them.
+            # Our band begins at hip less 6% — well above any waistband — so
+            # clipping the shirt there would cut it off mid-back. The waistband's
+            # real row is the topmost one FASHN changed inside the lower zone.
+            if kind == "lower":
+                diff_rows = np.flatnonzero(
+                    (((np.abs(full.astype(np.float32)
+                              - base_bgr.astype(np.float32)).max(axis=2) > 12)
+                      & (zone > 20)).sum(axis=1)) > 24)
+                if diff_rows.size:
+                    waist_top[0] = int(diff_rows[0])
             grow = max(9, int(round(h_b * 0.012))) | 1
             zone = cv2.dilate(zone, np.ones((grow, grow), np.uint8))
             # AND THE WAIST BELONGS TO WHOEVER DRESSES THE LEGS. FASHN's tops
@@ -305,14 +319,24 @@ def render(job: dict) -> str:
             # or the base's if nothing dresses it.
             if kind == "upper":
                 pts_b = base_pose.pts
-                hips_b = [pts_b[j][1] for j in (8, 11) if pts_b[j]]
                 ys_b = [q[1] for q in pts_b if q]
-                if hips_b and ys_b:
-                    span_b = max(1, max(ys_b) - min(ys_b))
-                    cut_y = int(max(hips_b) + span_b
-                                * float(os.getenv("VTON_FASHN_UPPER_CLIP", "0.04")))
-                    if 0 < cut_y < h_b:
-                        zone[cut_y:] = 0
+                span_b = max(1, (max(ys_b) - min(ys_b)) if ys_b else h_b)
+                # Prefer the waistband the trousers' own render put down, and
+                # let the shirt overlap it by 3% so the hem sits ON the band
+                # rather than beside it. Falling back to the hip line keeps a
+                # top-only job sane, where nothing else claims the waist.
+                if waist_top[0] is not None:
+                    cut_y = int(waist_top[0] + span_b * 0.03)
+                else:
+                    hips_b = [pts_b[j][1] for j in (8, 11) if pts_b[j]]
+                    cut_y = int((max(hips_b) if hips_b else h_b)
+                                + span_b * float(
+                                    os.getenv("VTON_FASHN_UPPER_CLIP", "0.04")))
+                if 0 < cut_y < h_b:
+                    zone[cut_y:] = 0
+                    print(f"  upper zone clipped at y={cut_y}"
+                          f"{' (waistband)' if waist_top[0] is not None else ''}",
+                          flush=True)
             zone = cv2.GaussianBlur(zone, (15, 15), 0)
             layers.append((full, zone, False))
             print(f"  step {i + 1}/{len(steps)} {kind} via fashn/{fashn_cat} "
