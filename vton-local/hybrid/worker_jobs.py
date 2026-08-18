@@ -296,6 +296,23 @@ def render(job: dict) -> str:
                                  np.array(garment)[:, :, ::-1], base_bgr)
             grow = max(9, int(round(h_b * 0.012))) | 1
             zone = cv2.dilate(zone, np.ones((grow, grow), np.uint8))
+            # AND THE WAIST BELONGS TO WHOEVER DRESSES THE LEGS. FASHN's tops
+            # render RECOLOURS the bottoms it was not asked about — the base's
+            # grey shorts came back white — and with its outline winning inside
+            # the zone, those pixels landed over the jeans as a pale band across
+            # the waist (seen on the phone). The upper's claim therefore stops
+            # just below the hip line; everything under it is the lower slot's,
+            # or the base's if nothing dresses it.
+            if kind == "upper":
+                pts_b = base_pose.pts
+                hips_b = [pts_b[j][1] for j in (8, 11) if pts_b[j]]
+                ys_b = [q[1] for q in pts_b if q]
+                if hips_b and ys_b:
+                    span_b = max(1, max(ys_b) - min(ys_b))
+                    cut_y = int(max(hips_b) + span_b
+                                * float(os.getenv("VTON_FASHN_UPPER_CLIP", "0.04")))
+                    if 0 < cut_y < h_b:
+                        zone[cut_y:] = 0
             zone = cv2.GaussianBlur(zone, (15, 15), 0)
             layers.append((full, zone, False))
             print(f"  step {i + 1}/{len(steps)} {kind} via fashn/{fashn_cat} "
