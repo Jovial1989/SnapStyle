@@ -311,6 +311,36 @@ def render(job: dict) -> str:
     path = f"{job['user_id']}/vton/{job['id']}.jpg"
     _req("POST", f"/storage/v1/object/{BUCKET}/{path}", buf.getvalue(),
          ctype="image/jpeg", extra={"x-upsert": "true"})
+
+    # A SWAP-ONLY JOB IS A BASE BEING PREPARED, so it has to land where the
+    # renderer looks. Without this the swapped canvas would sit in the render
+    # bucket as a one-off image and every dressing job would either re-run the
+    # swap or quietly keep using the mid-stride photograph — the exact thing the
+    # A-pose library exists to replace. PNG, because this is a source asset that
+    # will be re-encoded by every render that starts from it.
+    if not steps and face_url:
+        pbuf = io.BytesIO()
+        current.convert("RGB").save(pbuf, "PNG")
+        base_path = f"{job['user_id']}/studio.png"
+        _req("POST", f"/storage/v1/object/body-photos/{base_path}", pbuf.getvalue(),
+             ctype="image/png", extra={"x-upsert": "true"})
+        # The selfie's OWN measurements, taken here because this is the only
+        # place with a face pipeline: the client's number was a courtesy gate,
+        # this is the record. skin Lab also lets a later pass re-pick a closer
+        # base without asking the user for another photo.
+        adv = {}
+        try:
+            adv = face_swapper().advise_base(selfie)
+        except Exception as e:
+            print(f"  advise failed: {e}", flush=True)
+        fields = {"studio_base_path": base_path, "updated_at": "now()"}
+        io_px = adv.get("interocular_px")
+        if isinstance(io_px, int):
+            fields["face_interocular"] = io_px
+        _req("PATCH", f"/rest/v1/style_profiles?user_id=eq.{job['user_id']}",
+             json.dumps(fields).encode(), ctype="application/json",
+             extra={"Prefer": "return=minimal"})
+        print(f"  studio base → {base_path} (selfie io={io_px})", flush=True)
     return path
 
 

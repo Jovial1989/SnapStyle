@@ -185,7 +185,8 @@ Deno.serve(async (req) => {
         if (!personPath) {
           try {
             const { data: sp } = await db.from("style_profiles")
-              .select("source_photo_path").eq("user_id", row.user_id).maybeSingle();
+              .select("source_photo_path, studio_base_path")
+              .eq("user_id", row.user_id).maybeSingle();
             const src = sp?.source_photo_path as string | undefined;
             // PREFER THE BARE-ARM BASE. The engine's masks must reach past the
             // base garment to cover it, and the sampler ends a sleeve where its
@@ -194,8 +195,22 @@ Deno.serve(async (req) => {
             // tops. The `.bare.png` sibling has nothing to cover, so a short
             // sleeve resolves to a bare arm. Falls back to `.avatar.png` for any
             // avatar that predates it.
-            if (src) {
-              for (const cand of [`${src}.bare.png`, `${src}.avatar.png`]) {
+            // STUDIO BASE FIRST, when the user has one. It is an A-pose body
+            // wearing the same grey basics, with their face transferred onto
+            // it — so it satisfies the same contract as `.bare.png` and fixes
+            // what no mask work could: the photograph those siblings are built
+            // from is mid-stride (heel_dy 0.056 of the figure's span against
+            // 0.02 for the library), which is where the per-foot shoe zones,
+            // the sneaker between the legs and the chroma-carved hands all
+            // come from. Behind a flag until the sheet has weighed it.
+            const studio = (Deno.env.get("VTON_STUDIO_BASE") ?? "0") === "1"
+              ? (sp as { studio_base_path?: string } | null)?.studio_base_path
+              : undefined;
+            if (src || studio) {
+              for (const cand of [
+                ...(studio ? [studio] : []),
+                `${src}.bare.png`, `${src}.avatar.png`,
+              ]) {
                 const { data: t } = await db.storage.from("body-photos")
                   .createSignedUrl(cand, 900, { transform: { width: 768, quality: 85 } });
                 if (t?.signedUrl) { avatarPath = t.signedUrl; break; }
