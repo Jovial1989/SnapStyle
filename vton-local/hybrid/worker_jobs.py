@@ -81,6 +81,24 @@ _fashn = None
 _fashn_lock = threading.Lock()
 
 
+_parser = None
+_parser_lock = threading.Lock()
+
+
+def human_parser():
+    """FASHN's own human parser — the mask this composite should have used all
+    along. It labels top/pants/dress/skirt/belt, which is exactly the question
+    "which pixels are the garment we just asked for", and it answers with the
+    garment's real outline instead of a row number. ~2s on CPU."""
+    global _parser
+    if _parser is None:
+        with _parser_lock:
+            if _parser is None:
+                from fashn_human_parser import FashnHumanParser
+                _parser = FashnHumanParser()
+    return _parser
+
+
 def fashn():
     global _fashn
     if _fashn is None:
@@ -253,9 +271,6 @@ def render(job: dict) -> str:
     # overwrite the base — that is how the sliver of old tank at the flank and
     # the pale gap at the waist disappear.
     layers: list[tuple[np.ndarray, np.ndarray, bool]] = []
-    # One-element box so the lower layer can tell the upper layer where the
-    # waistband landed; Z order guarantees the lower runs first.
-    waist_top: list[int | None] = [None]
     for i, (st, garment) in enumerate(zip(steps, garments)):
         # NO DEFAULT SLOT. A step without a usable `kind` used to be painted onto
         # the torso — jeans came back as a denim jacket in a test that had misnamed
@@ -288,105 +303,35 @@ def render(job: dict) -> str:
             full = cv2.resize(
                 np.array(out_img.convert("RGB"))[:, :, ::-1], (w_b, h_b),
                 interpolation=cv2.INTER_LANCZOS4)
-            # The zone is ours, the pixels are FASHN's — ALL of them inside it.
+            # THE GARMENT'S OWN OUTLINE, FROM FASHN'S OWN PARSER.
             #
-            # Taking only the pixels that CHANGED (which is right for our own
-            # layers, where the body is untouched) left two seams on the phone: a
-            # white strip down the flank and a pale band at the waist. FASHN
-            # regenerates the person as well as the garment, so its body is not
-            # pixel-identical to the base — a little narrower here, wider there.
-            # Where it is narrower the base's own tank survived as a sliver;
-            # where the zones met, neither layer claimed the gap.
+            # Everything before this was a row number pretending to be a hem:
+            # a fixed offset below the hips, a palette veto, a hard edge, the
+            # base's elastic band. Each removed one seam and left the render
+            # looking pasted — a straight horizontal cut across the waist, and
+            # a grey sliver under a V-neck whose hem sits higher than any line
+            # I could pick. The question was never "which rows" but "which
+            # pixels are the garment", and the parser that ships with this model
+            # answers it: it labels top / dress / skirt / pants / belt, so the
+            # alpha becomes the garment's true contour, hem curve included.
             #
-            # So inside the zone the outline becomes FASHN's outline: its
-            # background pixels overwrite the base's sliver, and the zone is
-            # dilated past the body so a wider render has somewhere to land. The
-            # 15 px feather hides the step where FASHN's silhouette and the
-            # base's disagree at the band's edge.
-            zone = _garment_mask(base_pose, kind,
-                                 np.array(garment)[:, :, ::-1], base_bgr)
-            # WHERE THE TROUSERS ACTUALLY START, from the render that drew them.
-            # Our band begins at hip less 6% — well above any waistband — so
-            # clipping the shirt there would cut it off mid-back. The waistband's
-            # real row is the topmost one FASHN changed inside the lower zone.
-            if kind == "lower":
-                diff_rows = np.flatnonzero(
-                    (((np.abs(full.astype(np.float32)
-                              - base_bgr.astype(np.float32)).max(axis=2) > 12)
-                      & (zone > 20)).sum(axis=1)) > 24)
-                if diff_rows.size:
-                    waist_top[0] = int(diff_rows[0])
-            grow = max(9, int(round(h_b * 0.012))) | 1
-            zone = cv2.dilate(zone, np.ones((grow, grow), np.uint8))
-            # AND THE WAIST BELONGS TO WHOEVER DRESSES THE LEGS. FASHN's tops
-            # render RECOLOURS the bottoms it was not asked about — the base's
-            # grey shorts came back white — and with its outline winning inside
-            # the zone, those pixels landed over the jeans as a pale band across
-            # the waist (seen on the phone). The upper's claim therefore stops
-            # just below the hip line; everything under it is the lower slot's,
-            # or the base's if nothing dresses it.
-            if kind == "upper":
-                pts_b = base_pose.pts
-                ys_b = [q[1] for q in pts_b if q]
-                span_b = max(1, (max(ys_b) - min(ys_b)) if ys_b else h_b)
-                # Prefer the waistband the trousers' own render put down, and
-                # let the shirt overlap it by 3% so the hem sits ON the band
-                # rather than beside it. Falling back to the hip line keeps a
-                # top-only job sane, where nothing else claims the waist.
-                if waist_top[0] is not None:
-                    cut_y = int(waist_top[0] + span_b * 0.03)
-                elif True:
-                    # NOBODY IS DRESSING THE LEGS, so the base's own waistband is
-                    # the boundary — and on the canonical base it is a DARK
-                    # elastic band, which is a measurement rather than a guess.
-                    # This matters because FASHN recolours those shorts white,
-                    # and every pixel the shirt's zone takes below the real hem
-                    # is that white: the sliver survived a fixed offset, a
-                    # palette veto and a hard edge, because all three were
-                    # looking below the line instead of finding the line.
-                    hips_b = [pts_b[j][1] for j in (8, 11) if pts_b[j]]
-                    hip_y = int(max(hips_b)) if hips_b else int(h_b * 0.55)
-                    lo = max(0, int(hip_y - span_b * 0.08))
-                    hi = min(h_b - 1, int(hip_y + span_b * 0.10))
-                    sil_b = base_pose.silhouette > 0
-                    rows = []
-                    for y in range(lo, hi):
-                        on = sil_b[y]
-                        if int(on.sum()) > 40:
-                            rows.append((float(base_bgr[y][on].mean()), y))
-                    cut_y = None
-                    if rows:
-                        med = float(np.median([r[0] for r in rows]))
-                        dark = [y for lum, y in rows if lum < med - 25]
-                        if dark:
-                            cut_y = int(min(dark))
-                            print(f"  base waistband found at y={cut_y}",
-                                  flush=True)
-                    if cut_y is None:
-                        cut_y = int(hip_y + span_b * float(
-                            os.getenv("VTON_FASHN_UPPER_CLIP", "0.04")))
-                else:
-                    hips_b = [pts_b[j][1] for j in (8, 11) if pts_b[j]]
-                    cut_y = int((max(hips_b) if hips_b else h_b)
-                                + span_b * float(
-                                    os.getenv("VTON_FASHN_UPPER_CLIP", "0.04")))
-                if 0 < cut_y < h_b:
-                    zone[cut_y:] = 0
-                    print(f"  upper zone clipped at y={cut_y}"
-                          f"{' (waistband)' if waist_top[0] is not None else ''}"
-                          , flush=True)
-            # A HARD BOTTOM EDGE. The feather is what let the pale sliver in:
-            # FASHN's tops render puts WHITE where the base wears grey shorts,
-            # and a 15 px ramp across the hem mixes that white into the base.
-            # Sides and shoulders still need the soft edge (that is where the
-            # body outlines disagree), so the blur is undone on the last rows —
-            # a clean cut at the hem line, nothing to bleed.
-            hard = None
-            if kind == "upper":
-                hard = max(0, cut_y - 2) if 0 < cut_y < h_b else None
-            zone_soft = cv2.GaussianBlur(zone, (15, 15), 0)
-            if hard is not None:
-                zone_soft[hard:] = zone[hard:]
+            # It also cannot make the old mistakes: for a tops swap the
+            # recoloured bottoms are labelled `pants` and simply not taken, so
+            # the pale band has no way back in.
+            from fashn_human_parser import BODY_COVERAGE_TO_LABELS, LABELS_TO_IDS
+            cover_name = {"upper": "upper", "lower": "lower",
+                          "full": "full"}[kind]
+            want = {LABELS_TO_IDS[n]
+                    for n in BODY_COVERAGE_TO_LABELS[cover_name]}
+            lab = human_parser().predict(out_img.convert("RGB"))
+            lab = np.asarray(lab)
+            sem = np.isin(lab, list(want)).astype(np.uint8) * 255
+            sem = cv2.resize(sem, (w_b, h_b), interpolation=cv2.INTER_NEAREST)
+            # A garment sits ON the body, so its own mask is the whole claim;
+            # 3 px of feather is for antialiasing, not for reaching.
+            zone_soft = cv2.GaussianBlur(sem, (7, 7), 0)
+            print(f"  {kind}: parser claimed {int((sem > 127).sum()) // 1000}k px",
+                  flush=True)
             layers.append((full, zone_soft, False))
             print(f"  step {i + 1}/{len(steps)} {kind} via fashn/{fashn_cat} "
                   f"in {time.time() - t_f:.1f}s", flush=True)
