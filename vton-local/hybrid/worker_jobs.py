@@ -245,7 +245,13 @@ def render(job: dict) -> str:
     # The cost of independence is that garments cannot see each other. At the one
     # place that matters — the waist — the Z order still puts the top's hem over
     # the waistband, which is exactly what the sequential ordering bought.
-    layers: list[tuple[np.ndarray, np.ndarray]] = []
+    # (image, coverage, gate_on_change). The third field is what tells the
+    # composite whose outline wins: our own layers are deltas on an untouched
+    # body, so gating on "did this pixel change" is exactly right; a FASHN layer
+    # regenerates the person too, so its background pixels must be allowed to
+    # overwrite the base — that is how the sliver of old tank at the flank and
+    # the pale gap at the waist disappear.
+    layers: list[tuple[np.ndarray, np.ndarray, bool]] = []
     for i, (st, garment) in enumerate(zip(steps, garments)):
         # NO DEFAULT SLOT. A step without a usable `kind` used to be painted onto
         # the torso — jeans came back as a denim jacket in a test that had misnamed
@@ -271,12 +277,27 @@ def render(job: dict) -> str:
             full = cv2.resize(
                 np.array(out_img.convert("RGB"))[:, :, ::-1], (w_b, h_b),
                 interpolation=cv2.INTER_LANCZOS4)
-            # The zone is ours, the pixels are FASHN's. Its own output covers the
-            # whole body, so without this the shorts of the base would come back
-            # recoloured and a second layer would undo the first.
+            # The zone is ours, the pixels are FASHN's — ALL of them inside it.
+            #
+            # Taking only the pixels that CHANGED (which is right for our own
+            # layers, where the body is untouched) left two seams on the phone: a
+            # white strip down the flank and a pale band at the waist. FASHN
+            # regenerates the person as well as the garment, so its body is not
+            # pixel-identical to the base — a little narrower here, wider there.
+            # Where it is narrower the base's own tank survived as a sliver;
+            # where the zones met, neither layer claimed the gap.
+            #
+            # So inside the zone the outline becomes FASHN's outline: its
+            # background pixels overwrite the base's sliver, and the zone is
+            # dilated past the body so a wider render has somewhere to land. The
+            # 15 px feather hides the step where FASHN's silhouette and the
+            # base's disagree at the band's edge.
             zone = _garment_mask(base_pose, kind,
                                  np.array(garment)[:, :, ::-1], base_bgr)
-            layers.append((full, zone))
+            grow = max(9, int(round(h_b * 0.012))) | 1
+            zone = cv2.dilate(zone, np.ones((grow, grow), np.uint8))
+            zone = cv2.GaussianBlur(zone, (15, 15), 0)
+            layers.append((full, zone, False))
             print(f"  step {i + 1}/{len(steps)} {kind} via fashn/{fashn_cat} "
                   f"in {time.time() - t_f:.1f}s", flush=True)
             continue
@@ -302,7 +323,7 @@ def render(job: dict) -> str:
               f"canny={st.get('canny_scale') or 'env'} "
               f"core={st.get('core_protect') or 'env'} seed={st.get('seed', 7)}",
               flush=True)
-        layers.append((np.array(img.convert("RGB"))[:, :, ::-1].copy(), cover))
+        layers.append((np.array(img.convert("RGB"))[:, :, ::-1].copy(), cover, True))
         print(f"  step {i + 1}/{len(steps)} {kind}"
               + (f" previews={sent['n']}" if stream_key else ""), flush=True)
 
@@ -328,10 +349,12 @@ def render(job: dict) -> str:
         # overlap the later layer still wins outright, which is what Z order means.
         base_f = np.array(current.convert("RGB"))[:, :, ::-1].astype(np.float32)
         out = base_f.copy()
-        for img, cover in layers:
+        for img, cover, gate in layers:
             f = img.astype(np.float32)
-            touched = np.abs(f - base_f).max(axis=2) > 6.0
-            a = ((cover.astype(np.float32) / 255.0) * touched)[:, :, None]
+            a = cover.astype(np.float32) / 255.0
+            if gate:
+                a = a * (np.abs(f - base_f).max(axis=2) > 6.0)
+            a = a[:, :, None]
             out = f * a + out * (1.0 - a)
         current = Image.fromarray(
             np.clip(out, 0, 255).astype(np.uint8)[:, :, ::-1])
