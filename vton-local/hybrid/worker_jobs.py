@@ -412,6 +412,46 @@ def render(job: dict) -> str:
         current = Image.fromarray(
             np.clip(out, 0, 255).astype(np.uint8)[:, :, ::-1])
 
+        # ONE LIGHT PASS OVER THE SEAM THE COLLAGE SHOWS AT.
+        #
+        # With tops and bottoms now coming from a diffusion model and shoes from
+        # the warp, the look reads as two eras stitched together: soft folds and
+        # real light above, a flat glossy cut-out with a drawn outline below, and
+        # the trouser hem mechanically clipped where the shoe's zone begins. That
+        # is not a mask problem — the two layers were rendered by different
+        # renderers and never saw each other's light.
+        #
+        # So the ankle band gets a short img2img at LOW strength: enough to
+        # relight the shoe and dissolve the cut, not enough to invent a shoe
+        # (its structure is pinned by the Canny of what is already there). This
+        # is the one place a harmonisation pass belongs — a hand-sized region
+        # where two renderers meet.
+        if (fashn_ran and os.getenv("VTON_SHOE_HARMONISE", "1") == "1"
+                and any(k == "shoes" for *_, k in layers)):
+            try:
+                t_h = time.time()
+                frame = np.array(current.convert("RGB"))[:, :, ::-1]
+                shoe_cover = np.zeros(frame.shape[:2], np.uint8)
+                for _, cov, _, k in layers:
+                    if k == "shoes":
+                        shoe_cover = np.maximum(shoe_cover, cov)
+                band = cv2.dilate(shoe_cover,
+                                  np.ones((31, 31), np.uint8), iterations=1)
+                fixed = engine._sdxl_roi(
+                    frame, band,
+                    "leather shoes on feet, natural contact shadow on the floor, "
+                    "trouser hem falling over the shoe, soft studio light",
+                    7, strength=float(os.getenv("VTON_SHOE_HARM_STR", "0.3")))
+                a_h = (cv2.GaussianBlur(band, (21, 21), 0)
+                       .astype(np.float32) / 255.0)[:, :, None]
+                blend = (fixed.astype(np.float32) * a_h
+                         + frame.astype(np.float32) * (1.0 - a_h))
+                current = Image.fromarray(
+                    np.clip(blend, 0, 255).astype(np.uint8)[:, :, ::-1])
+                print(f"  ankle harmonised in {time.time() - t_h:.1f}s", flush=True)
+            except Exception as e:
+                print(f"  ankle harmonise skipped: {e}", flush=True)
+
     # OSD BURNED INTO THE UPLOADED FRAME, on demand. Normally the telemetry goes only
     # to the dump, because a watermark on somebody's try-on is worse than the bug it
     # diagnoses. But "the fix did not apply" and "the fix applied and did not help" look
