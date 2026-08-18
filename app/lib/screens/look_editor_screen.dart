@@ -334,7 +334,15 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
           // same map the library uses fixes both with no new code path.
           if (wPath.isNotEmpty) {
             try {
-              _libImg[label] = await api.wardrobeImageUrl(wPath);
+              final wUrl = await api.wardrobeImageUrl(wPath);
+              // KEYED BY WHAT THE LOOKUP ASKS FOR. _itemImage is called with the
+              // alt's INSTRUCTION ("their own light yellow t-shirt"), not its
+              // label — for an idea the two strings are identical, which is why
+              // the library path never needed to care, and for a wardrobe piece
+              // they differ. Storing under the label alone left every lookup
+              // missing and the rail still generating the user's own clothes.
+              _libImg['their own $label'] = wUrl;
+              _libImg[label] = wUrl;
             } catch (_) {/* the generated cut-out remains the fallback */}
           }
           alts.add(_Alt(
