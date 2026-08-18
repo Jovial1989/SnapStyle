@@ -273,9 +273,16 @@ def render(job: dict) -> str:
             t_f = time.time()
             base_bgr = np.array(current.convert("RGB"))[:, :, ::-1]
             h_b, w_b = base_bgr.shape[:2]
+            # 14 STEPS, NOT 30. Swept on the yellow tee at a fixed prompt:
+            # 30 → 10.3s, 20 → 7.7s, 14 → 5.9s, 8 → 4.2s, and the crops are
+            # indistinguishable down to 14 (at 8 the fabric goes soft). The
+            # fixed 2.2s underneath is DWPose and the parser on CPU — the CUDA
+            # build of onnxruntime wants a newer CUDA 12 than torch ships, so
+            # that stays for now and this is where the time actually was.
             res = fashn()(person_image=current.convert("RGB"),
                           garment_image=garment.convert("RGB"),
-                          category=fashn_cat)
+                          category=fashn_cat,
+                          num_timesteps=int(os.getenv("VTON_FASHN_STEPS", "14")))
             out_img = res.images[0] if hasattr(res, "images") else res
             full = cv2.resize(
                 np.array(out_img.convert("RGB"))[:, :, ::-1], (w_b, h_b),
@@ -334,9 +341,38 @@ def render(job: dict) -> str:
                                     os.getenv("VTON_FASHN_UPPER_CLIP", "0.04")))
                 if 0 < cut_y < h_b:
                     zone[cut_y:] = 0
+                    # AND ABOVE THE CUT, ONLY THE GARMENT'S OWN COLOURS. The
+                    # band survived every fixed offset because it lives BETWEEN
+                    # the shirt's hem and the cut: FASHN recolours the bottoms
+                    # it was not asked about (the base's grey shorts came back
+                    # white), and the zone happily claimed them. A hem is the
+                    # garment's colour; the recoloured shorts are not — so from
+                    # the hip down, a pixel is only taken when it is close to
+                    # one of the flat-lay's own dominant colours.
+                    hip_top = int(cut_y - span_b * 0.10)
+                    if hip_top > 0:
+                        g_bgr_f = np.array(garment)[:, :, ::-1]
+                        gs = g_bgr_f.reshape(-1, 3).astype(np.float32)
+                        keep = gs.mean(axis=1) < 245          # drop the backdrop
+                        gs = gs[keep] if keep.any() else gs
+                        k = min(3, max(1, len(gs) // 1000))
+                        idx = np.random.RandomState(7).choice(
+                            len(gs), size=min(4000, len(gs)), replace=False)
+                        _, _, centres = cv2.kmeans(
+                            gs[idx], k, None,
+                            (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
+                             10, 1.0), 3, cv2.KMEANS_PP_CENTERS)
+                        strip = full[hip_top:cut_y].astype(np.float32)
+                        d = np.min(np.stack(
+                            [np.abs(strip - c[None, None, :]).sum(axis=2)
+                             for c in centres]), axis=0)
+                        near = (d < float(os.getenv("VTON_FASHN_PAL", "90"))
+                                ).astype(np.uint8) * 255
+                        zone[hip_top:cut_y] = cv2.bitwise_and(
+                            zone[hip_top:cut_y], near)
                     print(f"  upper zone clipped at y={cut_y}"
-                          f"{' (waistband)' if waist_top[0] is not None else ''}",
-                          flush=True)
+                          f"{' (waistband)' if waist_top[0] is not None else ''}"
+                          f", palette-gated from y={hip_top}", flush=True)
             zone = cv2.GaussianBlur(zone, (15, 15), 0)
             layers.append((full, zone, False))
             print(f"  step {i + 1}/{len(steps)} {kind} via fashn/{fashn_cat} "
