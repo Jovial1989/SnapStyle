@@ -163,6 +163,19 @@ def _fetch_image(url: str) -> Image.Image:
 
 def render(job: dict) -> str:
     steps = (job.get("steps") or [])[:MAX_STEPS]
+    if FASHN_ON:
+        # UPPER BEFORE LOWER — the opposite of the warp's Z order, and measured.
+        # The Edge Function sorts lower first because our own compositing needs
+        # the shirt's hem to land ON the waistband. Chaining a generative model
+        # has the opposite constraint: its TOPS pass, run on a person already
+        # wearing dark trousers, repaints the upper legs WHITE (reproduced on the
+        # phone's exact job — white thighs, black shins, and step 1 alone was a
+        # clean pair of black jeans). Its BOTTOMS pass over a dressed torso is
+        # safe, and the trousers drawn last still leave the hem reading untucked.
+        rank = {"full": 0, "upper": 1, "lower": 2, "shoes": 3}
+        steps = sorted(steps, key=lambda st: rank.get(st.get("kind"), 9))
+        print("  fashn order: " + ",".join(str(st.get("kind")) for st in steps),
+              flush=True)
     face_url = job.get("face_url")
     # A job with neither a garment nor a face has nothing to do; one with a face
     # and no garments is the "prepare this user's base" job, which is how the
