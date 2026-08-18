@@ -41,7 +41,8 @@ from PIL import Image
 
 import cv2
 
-from pipeline import DEVICE, HybridVTONPipeline, _garment_mask
+from pipeline import (DEVICE, HybridVTONPipeline, _flatlay_silhouette,
+                      _garment_mask)
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -345,9 +346,19 @@ def render(job: dict) -> str:
                     hip_top = int(cut_y - span_b * 0.10)
                     if hip_top > 0:
                         g_bgr_f = np.array(garment)[:, :, ::-1]
-                        gs = g_bgr_f.reshape(-1, 3).astype(np.float32)
-                        keep = gs.mean(axis=1) < 245          # drop the backdrop
-                        gs = gs[keep] if keep.any() else gs
+                        # PALETTE FROM THE GARMENT, NOT FROM ITS PHOTO. A
+                        # brightness filter was not enough: a wardrobe shot's
+                        # backdrop sits around 235-245, so one k-means centre
+                        # landed on near-white and the recoloured shorts passed
+                        # the veto as "garment colour" — which is why the sliver
+                        # survived. The flat-lay's silhouette is already solved
+                        # elsewhere in this engine; use it.
+                        sil_f = _flatlay_silhouette(g_bgr_f)
+                        if sil_f is not None and (sil_f > 0).any():
+                            gs = g_bgr_f[sil_f > 0].astype(np.float32)
+                        else:
+                            gs = g_bgr_f.reshape(-1, 3).astype(np.float32)
+                            gs = gs[gs.mean(axis=1) < 235]
                         k = min(3, max(1, len(gs) // 1000))
                         idx = np.random.RandomState(7).choice(
                             len(gs), size=min(4000, len(gs)), replace=False)
