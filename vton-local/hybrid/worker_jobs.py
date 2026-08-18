@@ -286,6 +286,7 @@ def render(job: dict) -> str:
     layers: list[tuple[np.ndarray, np.ndarray, bool]] = []
     base_size = current.size          # the frame every layer must come back to
     fashn_ran = False
+    shoe_hint = [""]                  # what the footwear step asked for
     for i, (st, garment) in enumerate(zip(steps, garments)):
         # NO DEFAULT SLOT. A step without a usable `kind` used to be painted onto
         # the torso — jeans came back as a denim jacket in a test that had misnamed
@@ -366,6 +367,8 @@ def render(job: dict) -> str:
               f"canny={st.get('canny_scale') or 'env'} "
               f"core={st.get('core_protect') or 'env'} seed={st.get('seed', 7)}",
               flush=True)
+        if kind == "shoes":
+            shoe_hint[0] = str(st.get("hint") or "leather shoes")
         layers.append((np.array(img.convert("RGB"))[:, :, ::-1].copy(), cover,
                        True, kind))
         print(f"  step {i + 1}/{len(steps)} {kind}"
@@ -412,45 +415,67 @@ def render(job: dict) -> str:
         current = Image.fromarray(
             np.clip(out, 0, 255).astype(np.uint8)[:, :, ::-1])
 
-        # ONE LIGHT PASS OVER THE SEAM THE COLLAGE SHOWS AT.
+        # DRAW THE SHOE, DO NOT PASTE IT.
         #
-        # With tops and bottoms now coming from a diffusion model and shoes from
-        # the warp, the look reads as two eras stitched together: soft folds and
-        # real light above, a flat glossy cut-out with a drawn outline below, and
-        # the trouser hem mechanically clipped where the shoe's zone begins. That
-        # is not a mask problem — the two layers were rendered by different
-        # renderers and never saw each other's light.
+        # The warp maps a catalogue photo onto the foot, and catalogue shoes are
+        # shot from the SIDE while our feet are frontal — no amount of relighting
+        # fixes a wrong viewpoint, which is why a low-strength harmonisation pass
+        # changed almost nothing (swept 0.30/0.45/0.60: still brown blobs) and why
+        # the A-pose base did not help either (measured on both).
         #
-        # So the ankle band gets a short img2img at LOW strength: enough to
-        # relight the shoe and dissolve the cut, not enough to invent a shoe
-        # (its structure is pinned by the Canny of what is already there). This
-        # is the one place a harmonisation pass belongs — a hand-sized region
-        # where two renderers meet.
-        if (fashn_ran and os.getenv("VTON_SHOE_HARMONISE", "1") == "1"
+        # At 0.75 the same region comes back as an actual pair of shoes: real
+        # leather, correct perspective, laces, welt, a contact shadow, and the
+        # trouser hem falling over the upper. The pasted warp stays underneath as
+        # the INIT, so the product's colour and character survive — what gets
+        # reinvented is the stitching, not the shoe. That is the trade, and it is
+        # the right way round: a believable shoe of the right colour beats an
+        # exact shoe that reads as a prosthesis.
+        if (os.getenv("VTON_SHOE_DRAW", "1") == "1"
                 and any(k == "shoes" for *_, k in layers)):
             try:
                 t_h = time.time()
                 frame = np.array(current.convert("RGB"))[:, :, ::-1]
-                shoe_cover = np.zeros(frame.shape[:2], np.uint8)
-                for _, cov, _, k in layers:
-                    if k == "shoes":
-                        shoe_cover = np.maximum(shoe_cover, cov)
-                band = cv2.dilate(shoe_cover,
-                                  np.ones((31, 31), np.uint8), iterations=1)
-                fixed = engine._sdxl_roi(
-                    frame, band,
-                    "leather shoes on feet, natural contact shadow on the floor, "
-                    "trouser hem falling over the shoe, soft studio light",
-                    7, strength=float(os.getenv("VTON_SHOE_HARM_STR", "0.3")))
-                a_h = (cv2.GaussianBlur(band, (21, 21), 0)
-                       .astype(np.float32) / 255.0)[:, :, None]
-                blend = (fixed.astype(np.float32) * a_h
-                         + frame.astype(np.float32) * (1.0 - a_h))
-                current = Image.fromarray(
-                    np.clip(blend, 0, 255).astype(np.uint8)[:, :, ::-1])
-                print(f"  ankle harmonised in {time.time() - t_h:.1f}s", flush=True)
+                fp_pose = base_pose
+                if fashn_ran:
+                    try:
+                        fp_pose = engine.reader.read(frame)
+                    except Exception:
+                        pass
+                pts_s = fp_pose.pts
+                ys_s = [q[1] for q in pts_s if q]
+                span_s = max(1, (max(ys_s) - min(ys_s)) if ys_s else frame.shape[0])
+                rows_s = np.flatnonzero(fp_pose.silhouette.any(axis=1))
+                foot_bottom = int(rows_s[-1]) if rows_s.size else frame.shape[0] - 1
+                zone_s = np.zeros(frame.shape[:2], np.uint8)
+                for j in (10, 13):
+                    q = pts_s[j]
+                    if not q:
+                        continue
+                    y0 = max(0, int(q[1] - span_s * 0.02))
+                    y1 = min(frame.shape[0] - 1, foot_bottom + int(span_s * 0.02))
+                    x0 = max(0, int(q[0] - span_s * 0.10))
+                    x1 = min(frame.shape[1] - 1, int(q[0] + span_s * 0.10))
+                    zone_s[y0:y1, x0:x1] = 255
+                zone_s = cv2.bitwise_and(zone_s, cv2.dilate(
+                    fp_pose.silhouette, np.ones((25, 25), np.uint8)))
+                if int((zone_s > 0).sum()) > 500:
+                    drawn = engine._sdxl_roi(
+                        frame, zone_s,
+                        f"a pair of {shoe_hint[0]} worn on the feet, laces and "
+                        "sole visible, feet planted on the floor, soft contact "
+                        "shadow, trouser hems falling naturally over the shoes, "
+                        "photorealistic studio photo",
+                        7, strength=float(os.getenv("VTON_SHOE_DRAW_STR", "0.75")))
+                    a_s = (cv2.GaussianBlur(zone_s, (15, 15), 0)
+                           .astype(np.float32) / 255.0)[:, :, None]
+                    blend = (drawn.astype(np.float32) * a_s
+                             + frame.astype(np.float32) * (1.0 - a_s))
+                    current = Image.fromarray(
+                        np.clip(blend, 0, 255).astype(np.uint8)[:, :, ::-1])
+                    print(f"  shoes redrawn ({shoe_hint[0][:28]}) in "
+                          f"{time.time() - t_h:.1f}s", flush=True)
             except Exception as e:
-                print(f"  ankle harmonise skipped: {e}", flush=True)
+                print(f"  shoe redraw skipped: {e}", flush=True)
 
     # OSD BURNED INTO THE UPLOADED FRAME, on demand. Normally the telemetry goes only
     # to the dump, because a watermark on somebody's try-on is worse than the bug it
