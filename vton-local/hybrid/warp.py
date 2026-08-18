@@ -30,6 +30,7 @@ runs on a laptop, which is how it gets developed without paying for a GPU.
 from __future__ import annotations
 
 import math
+import os
 from dataclasses import dataclass
 
 import cv2
@@ -872,7 +873,15 @@ def tps_warp(garment: np.ndarray, sil: np.ndarray, pose, kind: str,
     ys_all = [q[1] for q in pts_p if q]
     span = max(1.0, max(ys_all) - min(ys_all))
     if kind in ("upper", "full"):
-        ty0 = min(ls[1], rs[1]) - span * 0.02
+        # HOW FAR ABOVE THE SHOULDER LINE THE FABRIC REACHES. The base wears a
+        # tank whose neckline sits ABOVE that line, so everything the warp does
+        # not reach has to be invented as fill — and last night's attempt to
+        # simply stop inventing (cut the mask there) exposed the tank instead.
+        # Reaching higher is the other direction: the garment's own collar
+        # covers the tank, and the fill zone shrinks to nothing. Measured, not
+        # guessed — the risk is a mock-neck if it reaches too far.
+        ty0 = min(ls[1], rs[1]) - span * float(
+            os.getenv("VTON_TPS_TOP", "0.02"))
         ty1 = (max(lh[1], rh[1]) + span * 0.03) if (lh and rh) else ty0 + span * 0.35
     else:
         if not (lh and rh):
