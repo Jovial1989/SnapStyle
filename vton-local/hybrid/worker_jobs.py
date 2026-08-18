@@ -271,6 +271,8 @@ def render(job: dict) -> str:
     # overwrite the base — that is how the sliver of old tank at the flank and
     # the pale gap at the waist disappear.
     layers: list[tuple[np.ndarray, np.ndarray, bool]] = []
+    base_size = current.size          # the frame every layer must come back to
+    fashn_ran = False
     for i, (st, garment) in enumerate(zip(steps, garments)):
         # NO DEFAULT SLOT. A step without a usable `kind` used to be painted onto
         # the torso — jeans came back as a denim jacket in a test that had misnamed
@@ -286,56 +288,49 @@ def render(job: dict) -> str:
         # to the engine's env defaults, so an unchanged job renders unchanged.
         fashn_cat = FASHN_KINDS.get(kind) if FASHN_ON else None
         if fashn_cat:
+            # CHAIN THE MODEL, DO NOT COMPOSITE IT. Measured side by side on the
+            # same base and garments: taking FASHN's frame whole — and feeding it
+            # to the next slot as the person — comes back clean, while every mask
+            # we laid over it left something. The row clips left a straight cut at
+            # the waist, the palette veto shredded a striped hem, and its own
+            # parser's mask left a pale rim tracing every edge, because the mask
+            # is a hair off the pixels it is cutting. This model is trained to
+            # return the finished photograph; the composite was us disagreeing
+            # with that and losing.
+            #
+            # An earlier chain DID break (bottoms then tops came back as white
+            # shorts with black shins) — at 30 steps with a different pair. It
+            # does not reproduce at 14 on either order, so the honest note is
+            # that chaining is sound and that failure needs its own repro before
+            # it earns a workaround.
+            #
+            # THE COST, stated plainly: FASHN re-renders the whole person, so a
+            # garment nobody asked about can change shade — swap only a top and
+            # the base's grey shorts come back white. On a neutral studio base
+            # that is a shade, not a garment, and the seams it buys us back were
+            # the thing the phone kept showing.
             t_f = time.time()
-            base_bgr = np.array(current.convert("RGB"))[:, :, ::-1]
-            h_b, w_b = base_bgr.shape[:2]
-            # 14 STEPS, NOT 30. Swept on the yellow tee at a fixed prompt:
-            # 30 → 10.3s, 20 → 7.7s, 14 → 5.9s, 8 → 4.2s, and the crops are
-            # indistinguishable down to 14 (at 8 the fabric goes soft). The
-            # fixed 2.2s underneath is DWPose and the parser on CPU — the CUDA
-            # build of onnxruntime wants a newer CUDA 12 than torch ships, so
-            # that stays for now and this is where the time actually was.
             res = fashn()(person_image=current.convert("RGB"),
                           garment_image=garment.convert("RGB"),
                           category=fashn_cat,
                           num_timesteps=int(os.getenv("VTON_FASHN_STEPS", "14")))
             out_img = res.images[0] if hasattr(res, "images") else res
-            full = cv2.resize(
-                np.array(out_img.convert("RGB"))[:, :, ::-1], (w_b, h_b),
-                interpolation=cv2.INTER_LANCZOS4)
-            # THE GARMENT'S OWN OUTLINE, FROM FASHN'S OWN PARSER.
-            #
-            # Everything before this was a row number pretending to be a hem:
-            # a fixed offset below the hips, a palette veto, a hard edge, the
-            # base's elastic band. Each removed one seam and left the render
-            # looking pasted — a straight horizontal cut across the waist, and
-            # a grey sliver under a V-neck whose hem sits higher than any line
-            # I could pick. The question was never "which rows" but "which
-            # pixels are the garment", and the parser that ships with this model
-            # answers it: it labels top / dress / skirt / pants / belt, so the
-            # alpha becomes the garment's true contour, hem curve included.
-            #
-            # It also cannot make the old mistakes: for a tops swap the
-            # recoloured bottoms are labelled `pants` and simply not taken, so
-            # the pale band has no way back in.
-            from fashn_human_parser import BODY_COVERAGE_TO_LABELS, LABELS_TO_IDS
-            cover_name = {"upper": "upper", "lower": "lower",
-                          "full": "full"}[kind]
-            want = {LABELS_TO_IDS[n]
-                    for n in BODY_COVERAGE_TO_LABELS[cover_name]}
-            lab = human_parser().predict(out_img.convert("RGB"))
-            lab = np.asarray(lab)
-            sem = np.isin(lab, list(want)).astype(np.uint8) * 255
-            sem = cv2.resize(sem, (w_b, h_b), interpolation=cv2.INTER_NEAREST)
-            # A garment sits ON the body, so its own mask is the whole claim;
-            # 3 px of feather is for antialiasing, not for reaching.
-            zone_soft = cv2.GaussianBlur(sem, (7, 7), 0)
-            print(f"  {kind}: parser claimed {int((sem > 127).sum()) // 1000}k px",
-                  flush=True)
-            layers.append((full, zone_soft, False))
+            current = out_img.resize(base_size, Image.LANCZOS)
+            fashn_ran = True
             print(f"  step {i + 1}/{len(steps)} {kind} via fashn/{fashn_cat} "
-                  f"in {time.time() - t_f:.1f}s", flush=True)
+                  f"in {time.time() - t_f:.1f}s (chained, no composite)",
+                  flush=True)
             continue
+        # POSE FROM WHAT IS ON SCREEN NOW. Our own layers are deltas on the
+        # base, but once FASHN has re-rendered the person the body has moved a
+        # little — a shoe placed by the old pose lands beside the new foot.
+        step_pose = base_pose
+        if fashn_ran:
+            try:
+                step_pose = engine.reader.read(
+                    np.array(current.convert("RGB"))[:, :, ::-1])
+            except Exception as e:
+                print(f"  pose re-read failed ({e}); using base pose", flush=True)
         img, cover = engine.generate(
             current, garment,
             kind=kind,
@@ -345,7 +340,7 @@ def render(job: dict) -> str:
             pose_scale=st.get("pose_scale"),
             canny_scale=st.get("canny_scale"),
             core_protect=st.get("core_protect"),
-            pose=base_pose,
+            pose=step_pose,
             return_mask=True,
             tuck=bool(st.get("tuck")),
             on_preview=(None if stream_key is None else
