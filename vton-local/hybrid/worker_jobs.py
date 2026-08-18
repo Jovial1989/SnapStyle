@@ -335,6 +335,36 @@ def render(job: dict) -> str:
                 # top-only job sane, where nothing else claims the waist.
                 if waist_top[0] is not None:
                     cut_y = int(waist_top[0] + span_b * 0.03)
+                elif True:
+                    # NOBODY IS DRESSING THE LEGS, so the base's own waistband is
+                    # the boundary — and on the canonical base it is a DARK
+                    # elastic band, which is a measurement rather than a guess.
+                    # This matters because FASHN recolours those shorts white,
+                    # and every pixel the shirt's zone takes below the real hem
+                    # is that white: the sliver survived a fixed offset, a
+                    # palette veto and a hard edge, because all three were
+                    # looking below the line instead of finding the line.
+                    hips_b = [pts_b[j][1] for j in (8, 11) if pts_b[j]]
+                    hip_y = int(max(hips_b)) if hips_b else int(h_b * 0.55)
+                    lo = max(0, int(hip_y - span_b * 0.08))
+                    hi = min(h_b - 1, int(hip_y + span_b * 0.10))
+                    sil_b = base_pose.silhouette > 0
+                    rows = []
+                    for y in range(lo, hi):
+                        on = sil_b[y]
+                        if int(on.sum()) > 40:
+                            rows.append((float(base_bgr[y][on].mean()), y))
+                    cut_y = None
+                    if rows:
+                        med = float(np.median([r[0] for r in rows]))
+                        dark = [y for lum, y in rows if lum < med - 25]
+                        if dark:
+                            cut_y = int(min(dark))
+                            print(f"  base waistband found at y={cut_y}",
+                                  flush=True)
+                    if cut_y is None:
+                        cut_y = int(hip_y + span_b * float(
+                            os.getenv("VTON_FASHN_UPPER_CLIP", "0.04")))
                 else:
                     hips_b = [pts_b[j][1] for j in (8, 11) if pts_b[j]]
                     cut_y = int((max(hips_b) if hips_b else h_b)
