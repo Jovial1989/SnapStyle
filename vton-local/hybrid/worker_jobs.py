@@ -39,7 +39,9 @@ import urllib.request
 import numpy as np
 from PIL import Image
 
-from pipeline import DEVICE, HybridVTONPipeline
+import cv2
+
+from pipeline import DEVICE, HybridVTONPipeline, _garment_mask
 
 SUPABASE_URL = os.environ["SUPABASE_URL"].rstrip("/")
 SERVICE_KEY = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
@@ -55,6 +57,38 @@ MAX_STEPS = int(os.getenv("VTON_MAX_STEPS_PER_JOB", "4"))
 IDLE_EXIT = float(os.getenv("VTON_IDLE_EXIT_SEC", "0"))
 
 engine = HybridVTONPipeline()
+
+# FASHN VTON 1.5 — a TRAINED try-on model, next to our warp stack rather than
+# instead of it. Apache-2.0 code and weights, 972M MMDiT, and crucially it
+# generates in PIXEL space (12x12 patches, 576x864): the wavy-stripe defect this
+# engine spent a day on was a latent-resolution limit, and a model with no VAE
+# does not have it. Measured on our own cases: stripes come back with a real
+# crew collar and straight lines, black jeans clean, blue jeans a draw; 10-11s
+# and 3.9 GB VRAM (peak 14.4 GB with our stack loaded beside it, on a 24 GB card).
+#
+# WHY IT DOES NOT REPLACE THE STACK. It regenerates the WHOLE frame, so chaining
+# passes destroys the previous garment — measured: dressing the bottoms then the
+# tops returned white shorts with black shins. And it has three categories only,
+# no footwear or accessories. So each slot renders from the SAME clean base and
+# OUR zone masks decide what is taken, which is exactly what the unified-batch
+# composite below already does for our own layers. Shoes stay on the warp.
+FASHN_ON = os.getenv("VTON_FASHN", "0") == "1"
+FASHN_KINDS = {
+    "upper": "tops", "lower": "bottoms", "full": "one-pieces",
+}
+_fashn = None
+_fashn_lock = threading.Lock()
+
+
+def fashn():
+    global _fashn
+    if _fashn is None:
+        with _fashn_lock:
+            if _fashn is None:
+                from fashn_vton import TryOnPipeline
+                _fashn = TryOnPipeline(
+                    weights_dir=os.getenv("FASHN_WEIGHTS", "/root/fashn_weights"))
+    return _fashn
 
 _swapper = None
 _swapper_lock = threading.Lock()
@@ -225,6 +259,27 @@ def render(job: dict) -> str:
         # global colour lead less — and until now those were literals inside the
         # engine, so trying a balance meant editing the pod. Omitted keys fall back
         # to the engine's env defaults, so an unchanged job renders unchanged.
+        fashn_cat = FASHN_KINDS.get(kind) if FASHN_ON else None
+        if fashn_cat:
+            t_f = time.time()
+            base_bgr = np.array(current.convert("RGB"))[:, :, ::-1]
+            h_b, w_b = base_bgr.shape[:2]
+            res = fashn()(person_image=current.convert("RGB"),
+                          garment_image=garment.convert("RGB"),
+                          category=fashn_cat)
+            out_img = res.images[0] if hasattr(res, "images") else res
+            full = cv2.resize(
+                np.array(out_img.convert("RGB"))[:, :, ::-1], (w_b, h_b),
+                interpolation=cv2.INTER_LANCZOS4)
+            # The zone is ours, the pixels are FASHN's. Its own output covers the
+            # whole body, so without this the shorts of the base would come back
+            # recoloured and a second layer would undo the first.
+            zone = _garment_mask(base_pose, kind,
+                                 np.array(garment)[:, :, ::-1], base_bgr)
+            layers.append((full, zone))
+            print(f"  step {i + 1}/{len(steps)} {kind} via fashn/{fashn_cat} "
+                  f"in {time.time() - t_f:.1f}s", flush=True)
+            continue
         img, cover = engine.generate(
             current, garment,
             kind=kind,
