@@ -147,8 +147,20 @@ def render(job: dict) -> str:
     # it is what lets the rest of the pipeline assume an ideal body.
     if selfie is not None:
         t = time.time()
-        res = face_swapper().swap(current, selfie)
-        current = res.image
+        # SWAP ON A DOUBLED CANVAS, THEN COME BACK DOWN. Measured on the
+        # A-pose library: a full-body 848x1264 frame puts only 53-60 px between
+        # the model's eyes, and the migration's own note says a target under
+        # ~90 px reads as a smudge whatever the code does. Nothing about the
+        # base needs to change — the face is being REPLACED, so what matters is
+        # having room to place the selfie's pixels. At 2x the target measures
+        # 111 px and the same transfer went from unusable to trustworthy
+        # (rms 0.009, upsampled 0.66), and the downscale afterwards costs
+        # nothing because the render works at 512x768 internally anyway.
+        big = current.resize((current.width * 2, current.height * 2),
+                             Image.LANCZOS)
+        res = face_swapper().swap(big, selfie)
+        current = res.image.resize((big.width // 2, big.height // 2),
+                                   Image.LANCZOS)
         # Report rather than gate. A poor alignment is a caller problem — the
         # selfie was not frontal — and the caller has the user to ask; failing the
         # job here would spend the render and then throw it away.
