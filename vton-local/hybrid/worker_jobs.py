@@ -366,7 +366,8 @@ def render(job: dict) -> str:
               f"canny={st.get('canny_scale') or 'env'} "
               f"core={st.get('core_protect') or 'env'} seed={st.get('seed', 7)}",
               flush=True)
-        layers.append((np.array(img.convert("RGB"))[:, :, ::-1].copy(), cover, True))
+        layers.append((np.array(img.convert("RGB"))[:, :, ::-1].copy(), cover,
+                       True, kind))
         print(f"  step {i + 1}/{len(steps)} {kind}"
               + (f" previews={sent['n']}" if stream_key else ""), flush=True)
 
@@ -392,9 +393,18 @@ def render(job: dict) -> str:
         # overlap the later layer still wins outright, which is what Z order means.
         base_f = np.array(current.convert("RGB"))[:, :, ::-1].astype(np.float32)
         out = base_f.copy()
-        for img, cover, gate in layers:
+        for img, cover, gate, lkind in layers:
             f = img.astype(np.float32)
             a = cover.astype(np.float32) / 255.0
+            if lkind == "shoes":
+                # A SHOE'S EDGE IS HARD, and this is the layer where a soft one
+                # shows: the flat-lay's own white backdrop survives a pixel or
+                # two past the leather, and a wide ramp smears it into the leg as
+                # the pale halo and pink gradient over the toe box the phone kept
+                # showing. Bite 3 px back and let the edge be an edge.
+                m = (a > 0.5).astype(np.uint8)
+                m = cv2.erode(m, np.ones((3, 3), np.uint8), iterations=1)
+                a = cv2.GaussianBlur(m.astype(np.float32) * 255.0, (3, 3), 0) / 255.0
             if gate:
                 a = a * (np.abs(f - base_f).max(axis=2) > 6.0)
             a = a[:, :, None]
