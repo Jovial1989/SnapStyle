@@ -323,10 +323,24 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
           if (RegExp(r'shorts|шорт', caseSensitive: false).hasMatch(label)) {
             continue;
           }
+          final wPath = (w['image_path'] ?? '').toString();
+          // THE RAIL THUMB IS THEIR OWN PHOTO TOO. _itemImage has a fast path
+          // for library/SKU photos and otherwise GENERATES a cut-out from the
+          // description — so a wardrobe piece, whose real photo is sitting in
+          // the bucket, was drawn by a model. Two costs: the thumb showed an
+          // invented garment instead of theirs, and with the hosted providers
+          // down the call fails outright, which is why the rail rendered blank
+          // tee icons for their own clothes. Registering the photo under the
+          // same map the library uses fixes both with no new code path.
+          if (wPath.isNotEmpty) {
+            try {
+              _libImg[label] = await api.wardrobeImageUrl(wPath);
+            } catch (_) {/* the generated cut-out remains the fallback */}
+          }
           alts.add(_Alt(
               label: label, source: 'wardrobe', instruction: 'their own $label',
               why: 'A piece you already own that fits this look.',
-              imagePath: (w['image_path'] ?? '').toString()));
+              imagePath: wPath));
         }
         // Styling ideas (each carries its own "why it's better") — 4 per slot.
         for (final idea in ((s['ideas'] as List?) ?? const []).take(4)) {
@@ -1656,8 +1670,13 @@ class _LookEditorScreenState extends ConsumerState<LookEditorScreen> {
     if (libUrl != null) {
       return _items[desc] = () async {
         try {
+          // SIGNED URLS TRANSFORM TOO, on their own route. Wardrobe photos are
+          // private, so they arrive as /object/sign/… and the public-only
+          // rewrite left them untransformed — a 1 MB original decoded behind
+          // every 60 px thumb.
           final thumb = libUrl
-              .replaceFirst('/object/public/', '/render/image/public/');
+              .replaceFirst('/object/public/', '/render/image/public/')
+              .replaceFirst('/object/sign/', '/render/image/sign/');
           final u = '$thumb${thumb.contains('?') ? '&' : '?'}width=400&quality=70';
           final r = await http.get(Uri.parse(u)).timeout(const Duration(seconds: 8));
           if (r.statusCode == 200 && r.bodyBytes.isNotEmpty) return _normThumb(r.bodyBytes);
