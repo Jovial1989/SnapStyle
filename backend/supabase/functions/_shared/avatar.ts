@@ -22,7 +22,15 @@ const AVATAR_PROMPT = [
   "a plain fitted heather-grey SHORT-SLEEVE crew-neck t-shirt (short set-in sleeves clearly covering the shoulders, hem worn loose),",
   "plain mid-grey straight-leg FULL-LENGTH trousers reaching down to the ankle,",
   "and plain white low-top sneakers. No prints, no logos, no pockets, no accessories added or removed.",
-  "IDENTITY LOCK (absolute): the SAME person — same face, same hair, same skin tone, same body proportions, same pose. Rendering a different or generic model is a FAILED generation.",
+  "IDENTITY LOCK (absolute): the SAME person — same face, same hair, same skin tone, same body proportions. The POSE may be corrected to the standing pose described below; nothing else about the person may change. Rendering a different or generic model is a FAILED generation.",
+  // A-POSE, AND THE ENGINE CAN NOW PROVE IT. Measured on the base in use
+  // (check_a_pose on the pod): ankle height difference 0.056 of the figure's
+  // span against a 0.02 threshold — the person is caught MID-STRIDE, and the
+  // footwear compromises all follow from it: the raised heel's old shoe collar
+  // peeked over every rendered shoe until the zone was split per foot, and its
+  // sneaker still shows between the legs under long trousers. Level feet cost
+  // nothing to ask for here and remove the cause upstream of the engine.
+  "POSE: standing still and square to the camera, weight even on BOTH feet, both feet flat on the ground and level with each other, feet about shoulder-width apart, arms hanging relaxed and slightly away from the body. Not walking, not mid-step, no raised heel, no crossed legs.",
   "FRAMING: photorealistic, full body head-to-toe, feet and shoes fully visible with clear margin below, centered.",
   "BACKGROUND: the ENTIRE frame is ONE flat, uniform, seamless PURE-WHITE (#FFFFFF) — no leftover scene, no halos, no grey patches.",
   "No text, no watermarks.",
@@ -140,7 +148,15 @@ const BARE_PROMPT = [
   "a plain fitted heather-grey SLEEVELESS tank top,",
   "plain mid-grey knee-length ATHLETIC SHORTS (loose gym shorts, hem at the knee),",
   "and plain white low-top sneakers. No prints, no logos, no accessories added or removed.",
-  "IDENTITY LOCK (absolute): the SAME person — same face, same hair, same skin tone, same body proportions, same pose. Rendering a different or generic model is a FAILED generation.",
+  "IDENTITY LOCK (absolute): the SAME person — same face, same hair, same skin tone, same body proportions. The POSE may be corrected to the standing pose described below; nothing else about the person may change. Rendering a different or generic model is a FAILED generation.",
+  // A-POSE, AND THE ENGINE CAN NOW PROVE IT. Measured on the base in use
+  // (check_a_pose on the pod): ankle height difference 0.056 of the figure's
+  // span against a 0.02 threshold — the person is caught MID-STRIDE, and the
+  // footwear compromises all follow from it: the raised heel's old shoe collar
+  // peeked over every rendered shoe until the zone was split per foot, and its
+  // sneaker still shows between the legs under long trousers. Level feet cost
+  // nothing to ask for here and remove the cause upstream of the engine.
+  "POSE: standing still and square to the camera, weight even on BOTH feet, both feet flat on the ground and level with each other, feet about shoulder-width apart, arms hanging relaxed and slightly away from the body. Not walking, not mid-step, no raised heel, no crossed legs.",
   "FRAMING: photorealistic, full body head-to-toe, feet and shoes fully visible with clear margin below, centered.",
   "BACKGROUND: the ENTIRE frame is ONE flat, uniform, seamless PURE-WHITE (#FFFFFF) — no leftover scene, no halos, no grey patches.",
   "No text, no watermarks.",

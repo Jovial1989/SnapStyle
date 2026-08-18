@@ -87,6 +87,76 @@ function logUsage(usage: unknown) {
   }
 }
 
+/** Draw/edit an image through FAL. THE THIRD PROVIDER, and as of 18.08 the
+ * only live one: the OpenAI key ran out of credit and the Gemini key was
+ * rejected outright, which took the avatar build, the item cut-outs and the
+ * tucked twin down with them. FAL already holds a working key here (the Kolors
+ * try-on runs on it), so one provider covers the whole image seam again.
+ *
+ * The model id is a secret, not a constant: FAL renames edit endpoints often,
+ * and a rename must be one secret away rather than a deploy. Default is the
+ * Gemini-image edit endpoint FAL proxies, which is the same model family the
+ * gemini.ts path used to call directly — so prompts written for that path keep
+ * behaving. Candidates are tried in order so a dead id costs one 4xx, not the
+ * feature. */
+async function falLookImage(
+  person: Inline,
+  prompt: string,
+  extra: Inline[] = [],
+): Promise<Inline> {
+  const key = Deno.env.get("FAL_KEY");
+  if (!key) throw new Error("FAL_KEY missing");
+  const models = (Deno.env.get("FAL_IMAGE_MODELS") ??
+    "fal-ai/nano-banana/edit,fal-ai/gemini-25-flash-image/edit,fal-ai/flux-pro/kontext")
+    .split(",").map((m) => m.trim()).filter(Boolean);
+  const urls = [person, ...extra].map((i) =>
+    `data:${i.mimeType || "image/png"};base64,${i.data}`);
+  const errs: string[] = [];
+  for (const model of models) {
+    try {
+      const res = await fetch(`https://fal.run/${model}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Key ${key}` },
+        // image_urls covers the multi-image editors, image_url the single-image
+        // ones; sending both lets one body serve either shape.
+        body: JSON.stringify({
+          prompt,
+          image_urls: urls,
+          image_url: urls[0],
+          num_images: 1,
+          output_format: "png",
+        }),
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+      });
+      if (!res.ok) {
+        errs.push(`${model} ${res.status}: ${(await res.text()).slice(0, 160)}`);
+        continue;
+      }
+      const j = await res.json();
+      const url = j?.images?.[0]?.url ?? j?.image?.url;
+      if (!url) {
+        errs.push(`${model}: no image in response`);
+        continue;
+      }
+      const img = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+      if (!img.ok) {
+        errs.push(`${model}: download ${img.status}`);
+        continue;
+      }
+      const buf = new Uint8Array(await img.arrayBuffer());
+      let bin = "";
+      for (let i = 0; i < buf.length; i += 0x8000) {
+        bin += String.fromCharCode(...buf.subarray(i, i + 0x8000));
+      }
+      console.log("[imagegen] fal ok via", model);
+      return { data: btoa(bin), mimeType: img.headers.get("content-type") ?? "image/png" };
+    } catch (e) {
+      errs.push(`${model}: ${(e as Error).message.slice(0, 120)}`);
+    }
+  }
+  throw new Error(`fal: ${errs.join(" | ").slice(0, 400)}`);
+}
+
 /** Drop-in replacement for gemini.ts#generateLookImage. */
 export async function generateLookImage(
   person: Inline,
@@ -94,6 +164,9 @@ export async function generateLookImage(
   extra: Inline[] = [],
   opts: GenOpts = {},
 ): Promise<Inline> {
+  if (provider() === "fal") {
+    return await falLookImage(person, prompt, extra);
+  }
   if (provider() === "gemini") {
     return await gemImage(person, prompt, extra, { fallbackPrompt: opts.fallbackPrompt });
   }
@@ -108,7 +181,17 @@ export async function generateLookImage(
       // the fallback's error sent a debugging session at the dead Gemini key
       // while the primary's failure — the actual question — stayed in logs
       // nobody was reading.
-      throw new Error(`openai: ${(e as Error).message} || gemini: ${(e2 as Error).message.slice(0, 160)}`);
+      // THIRD CHANCE, then give up with all three reasons. Two-provider
+      // silence is what made "the avatar never built" look like a bug in the
+      // gate rather than an empty wallet.
+      try {
+        return await falLookImage(person, prompt, extra);
+      } catch (e3) {
+        throw new Error(
+          `openai: ${(e as Error).message.slice(0, 120)} || gemini: ${
+            (e2 as Error).message.slice(0, 120)} || ${(e3 as Error).message.slice(0, 200)}`,
+        );
+      }
     }
   }
 }
