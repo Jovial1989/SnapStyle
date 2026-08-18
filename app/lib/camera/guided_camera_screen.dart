@@ -32,6 +32,22 @@ class GuidedCaptureConfig {
     lens: CameraLensDirection.back,
   );
 
+  /// FACE, CLOSE. The render base is an A-pose studio body with the user's face
+  /// transferred onto it, and that transfer is bounded by one number: the pixels
+  /// between the eyes in this photo. Measured on the founder account, the
+  /// existing full-body shot gives 34 px — smaller than the base's own face, so
+  /// the swap upsamples and smudges. A phone selfie at arm's length gives
+  /// several hundred, which is why this is its own capture and not a crop of the
+  /// body photo.
+  static const face = GuidedCaptureConfig(
+    title: 'Your face',
+    silhouette: SilhouetteKind.fullBody,
+    instruction:
+        'Fill the frame with your face — look straight at the camera, even light, '
+        'no cap, no sunglasses, hair off your face.',
+    lens: CameraLensDirection.front,
+  );
+
   static const mirrorSelfie = GuidedCaptureConfig(
     title: 'Mirror selfie',
     silhouette: SilhouetteKind.fullBody,

@@ -319,24 +319,33 @@ def render(job: dict) -> str:
     # A-pose library exists to replace. PNG, because this is a source asset that
     # will be re-encoded by every render that starts from it.
     if not steps and face_url:
-        pbuf = io.BytesIO()
-        current.convert("RGB").save(pbuf, "PNG")
-        base_path = f"{job['user_id']}/studio.png"
-        _req("POST", f"/storage/v1/object/body-photos/{base_path}", pbuf.getvalue(),
-             ctype="image/png", extra={"x-upsert": "true"})
-        # The selfie's OWN measurements, taken here because this is the only
-        # place with a face pipeline: the client's number was a courtesy gate,
-        # this is the record. skin Lab also lets a later pass re-pick a closer
-        # base without asking the user for another photo.
+        # THE GATE LIVES WHERE THE MEASUREMENT IS. The endpoint can only ask the
+        # client how big the face was; this is the only place that can check.
+        # Below the doubled target's own face size the transfer upsamples and
+        # the result is a smudge — measured at 34 px against a 111 px target,
+        # rms fine (0.038) but upsampled 1.62x — so a too-small selfie must FAIL
+        # with a reason the user can act on, not quietly become their avatar.
         adv = {}
         try:
             adv = face_swapper().advise_base(selfie)
         except Exception as e:
             print(f"  advise failed: {e}", flush=True)
-        fields = {"studio_base_path": base_path, "updated_at": "now()"}
         io_px = adv.get("interocular_px")
         if isinstance(io_px, int):
-            fields["face_interocular"] = io_px
+            _req("PATCH", f"/rest/v1/style_profiles?user_id=eq.{job['user_id']}",
+                 json.dumps({"face_interocular": io_px}).encode(),
+                 ctype="application/json", extra={"Prefer": "return=minimal"})
+            if io_px < int(os.getenv("VTON_FACE_MIN", "120")):
+                raise ValueError(
+                    f"face_too_small: {io_px}px between the eyes, need "
+                    f"{os.getenv('VTON_FACE_MIN', '120')}px — hold the phone "
+                    f"closer and fill the frame with your face")
+        pbuf = io.BytesIO()
+        current.convert("RGB").save(pbuf, "PNG")
+        base_path = f"{job['user_id']}/studio.png"
+        _req("POST", f"/storage/v1/object/body-photos/{base_path}", pbuf.getvalue(),
+             ctype="image/png", extra={"x-upsert": "true"})
+        fields = {"studio_base_path": base_path, "updated_at": "now()"}
         _req("PATCH", f"/rest/v1/style_profiles?user_id=eq.{job['user_id']}",
              json.dumps(fields).encode(), ctype="application/json",
              extra={"Prefer": "return=minimal"})

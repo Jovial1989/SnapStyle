@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../camera/guided_camera_screen.dart';
 import '../providers.dart';
+import '../services/api_client.dart' show ApiException;
 import '../services/auth.dart' as auth;
 import 'package:url_launcher/url_launcher.dart';
 
@@ -26,6 +27,7 @@ class ProfileScreen extends ConsumerStatefulWidget {
 
 class _ProfileScreenState extends ConsumerState<ProfileScreen> {
   bool _changingPhoto = false; // show a loader in the photo tile while updating
+  bool _buildingBase = false;  // …and in the face tile while the swap runs
 
   Future<void> _openAccount({bool signIn = false}) async {
     final ok = await Navigator.of(context).push<bool>(
@@ -133,6 +135,49 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
     }
   }
 
+  /// FACE PHOTO → STUDIO BASE. The render no longer has to dress whatever pose
+  /// the body photo happened to catch: it dresses an A-pose studio body wearing
+  /// this face. The gate is a measurement, not a guess — the GPU box reports the
+  /// pixels between the eyes and refuses a face too small to survive the
+  /// transfer, so a bad photo comes back as a sentence the user can act on
+  /// instead of a blurred avatar.
+  Future<void> _captureFace() async {
+    final file = await Navigator.of(context).push<XFile?>(MaterialPageRoute(
+        builder: (_) => const GuidedCameraScreen(config: GuidedCaptureConfig.face)));
+    if (file == null || !mounted) return;
+    setState(() => _buildingBase = true);
+    final api = ref.read(looktokApiProvider);
+    try {
+      final jobId = await api.setFacePhoto(await file.readAsBytes());
+      // The swap is a few seconds on a warm box; poll rather than block a
+      // spinner forever, and surface the worker's own refusal verbatim.
+      for (var i = 0; i < 40; i++) {
+        await Future<void>.delayed(const Duration(seconds: 2));
+        if (!mounted) return;
+        final st = await api.studioBaseStatus(jobId);
+        if (st.error != null) {
+          final m = st.error!.contains('face_too_small')
+              ? 'Your face came out too small in that photo — hold the phone closer.'
+              : 'Could not build your studio base.';
+          _snack(m);
+          return;
+        }
+        if (st.ready) {
+          ref.invalidate(bodyProfileProvider);
+          _snack('Studio base ready${st.interocular != null ? " · face ${st.interocular}px" : ""}');
+          return;
+        }
+      }
+      _snack('Still building — it will be ready shortly.');
+    } on ApiException catch (e) {
+      if (mounted) _snack(e.message);
+    } catch (_) {
+      if (mounted) _snack('Couldn’t save the face photo');
+    } finally {
+      if (mounted) setState(() => _buildingBase = false);
+    }
+  }
+
   /// Open the default photo full-screen (view your figure at full length).
   Future<void> _viewPhoto(String path) async {
     final url = await ref.read(looktokApiProvider).bodyPhotoUrl(path);
@@ -179,6 +224,30 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
             loading: _changingPhoto,
             onChange: _changePhoto,
             onView: _viewPhoto,
+          ),
+          const SizedBox(height: 12),
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(AppRadius.card),
+              boxShadow: AppShadows.soft,
+            ),
+            child: ListTile(
+              leading: _buildingBase
+                  ? const SizedBox(
+                      width: 22, height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.face_outlined, color: AppColors.ink),
+              title: const Text('Face for try-on',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(
+                (profile?['studio_base_path'] ?? '').toString().isNotEmpty
+                    ? 'Studio base ready — try-ons use it'
+                    : 'A close selfie — try-ons get built on a studio body wearing your face',
+              ),
+              trailing: const Icon(Icons.chevron_right, color: AppColors.muted),
+              onTap: _buildingBase ? null : _captureFace,
+            ),
           ),
           const SizedBox(height: 12),
           _BodyProfileCard(row: profile, onAction: _buildOrRemeasure),

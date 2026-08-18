@@ -224,6 +224,57 @@ class LooktokApi {
     return path;
   }
 
+  /// Send the face photo that the studio base is built from, and wait for the
+  /// swap the queue runs for it.
+  ///
+  /// Not a variant of setBodyPhoto: this photograph is never dressed and never
+  /// shown as the user's figure. It exists so the A-pose studio body can wear
+  /// their face — which is what removes the mid-stride geometry the engine has
+  /// been fighting (heel_dy 0.056 of the figure's span in the body photo against
+  /// 0.000-0.009 in the library). Returns the queued job id; the base is ready
+  /// when `studioBaseReady()` says so.
+  Future<String> setFacePhoto(Uint8List bytes) async {
+    final res = await _post('set-face-photo', {
+      'data': base64Encode(bytes),
+      'mimeType': imageMime(bytes),
+    });
+    if (res.statusCode == 422) {
+      final body = jsonDecode(res.body) as Map<String, dynamic>;
+      throw ApiException((body['message'] ?? 'That photo will not work.').toString());
+    }
+    if (res.statusCode == 503) {
+      throw ApiException('No studio bodies available yet — try again later.');
+    }
+    if (res.statusCode != 200) {
+      throw ApiException('Could not save the face photo (${res.statusCode})');
+    }
+    return (jsonDecode(res.body)['jobId'] ?? '').toString();
+  }
+
+  /// Has the studio base finished building, and what did the face measure?
+  /// `error` carries the worker's own reason when the swap was refused — the
+  /// gate lives on the GPU box because that is the only place that can measure
+  /// a face, so its message is the one worth showing.
+  Future<({bool ready, int? interocular, String? error})> studioBaseStatus(
+      String jobId) async {
+    final prof = await _sb.from('style_profiles')
+        .select('studio_base_path, face_interocular')
+        .eq('user_id', _sb.auth.currentUser!.id).maybeSingle();
+    String? err;
+    if (jobId.isNotEmpty) {
+      final job = await _sb.from('vton_jobs')
+          .select('status, error').eq('id', jobId).maybeSingle();
+      if ((job?['status'] ?? '') == 'failed') {
+        err = (job?['error'] ?? 'The swap failed').toString();
+      }
+    }
+    return (
+      ready: (prof?['studio_base_path'] ?? '').toString().isNotEmpty,
+      interocular: prof?['face_interocular'] as int?,
+      error: err,
+    );
+  }
+
   /// "Vibe Check" — decode a Style DNA from 1–3 reference images, or seed the
   /// smart fallback anchor when skipped (SDD §14.12). Returns the saved DNA.
   Future<Map<String, dynamic>> vibeCheck({
