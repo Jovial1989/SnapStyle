@@ -325,7 +325,6 @@ def render(job: dict) -> str:
             # the waist (seen on the phone). The upper's claim therefore stops
             # just below the hip line; everything under it is the lower slot's,
             # or the base's if nothing dresses it.
-            pal_gate = None
             if kind == "upper":
                 pts_b = base_pose.pts
                 ys_b = [q[1] for q in pts_b if q]
@@ -343,57 +342,22 @@ def render(job: dict) -> str:
                                     os.getenv("VTON_FASHN_UPPER_CLIP", "0.04")))
                 if 0 < cut_y < h_b:
                     zone[cut_y:] = 0
-                    hip_top = int(cut_y - span_b * 0.10)
-                    if hip_top > 0:
-                        g_bgr_f = np.array(garment)[:, :, ::-1]
-                        # PALETTE FROM THE GARMENT, NOT FROM ITS PHOTO. A
-                        # brightness filter was not enough: a wardrobe shot's
-                        # backdrop sits around 235-245, so one k-means centre
-                        # landed on near-white and the recoloured shorts passed
-                        # the veto as "garment colour" — which is why the sliver
-                        # survived. The flat-lay's silhouette is already solved
-                        # elsewhere in this engine; use it.
-                        sil_f = _flatlay_silhouette(g_bgr_f)
-                        if sil_f is not None and (sil_f > 0).any():
-                            gs = g_bgr_f[sil_f > 0].astype(np.float32)
-                        else:
-                            gs = g_bgr_f.reshape(-1, 3).astype(np.float32)
-                            gs = gs[gs.mean(axis=1) < 235]
-                        k = min(3, max(1, len(gs) // 1000))
-                        idx = np.random.RandomState(7).choice(
-                            len(gs), size=min(4000, len(gs)), replace=False)
-                        _, _, centres = cv2.kmeans(
-                            gs[idx], k, None,
-                            (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER,
-                             10, 1.0), 3, cv2.KMEANS_PP_CENTERS)
-                        strip = full[hip_top:cut_y].astype(np.float32)
-                        d = np.min(np.stack(
-                            [np.abs(strip - c[None, None, :]).sum(axis=2)
-                             for c in centres]), axis=0)
-                        near = (d < float(os.getenv("VTON_FASHN_PAL", "90"))
-                                ).astype(np.uint8) * 255
-                        pal_gate = (hip_top, cut_y, near)
-                    # AND ABOVE THE CUT, ONLY THE GARMENT'S OWN COLOURS. The
-                    # band survived every fixed offset because it lives BETWEEN
-                    # the shirt's hem and the cut: FASHN recolours the bottoms
-                    # it was not asked about (the base's grey shorts came back
-                    # white), and the zone happily claimed them. A hem is the
-                    # garment's colour; the recoloured shorts are not — so from
-                    # the hip down, a pixel is only taken when it is close to
-                    # one of the flat-lay's own dominant colours.
                     print(f"  upper zone clipped at y={cut_y}"
                           f"{' (waistband)' if waist_top[0] is not None else ''}"
-                          f", palette-gated from y="
-                          f"{pal_gate[0] if pal_gate else -1}", flush=True)
-            zone = cv2.GaussianBlur(zone, (15, 15), 0)
-            # THE VETO GOES LAST. Gating the palette before the feather left a
-            # pale residue: the blur smeared the holes the gate had punched, so
-            # half-alpha white shorts still landed over the base. Soft edge
-            # first, hard veto second.
-            if kind == "upper" and pal_gate is not None:
-                y0g, y1g, near = pal_gate
-                zone[y0g:y1g] = cv2.bitwise_and(zone[y0g:y1g], near)
-            layers.append((full, zone, False))
+                          , flush=True)
+            # A HARD BOTTOM EDGE. The feather is what let the pale sliver in:
+            # FASHN's tops render puts WHITE where the base wears grey shorts,
+            # and a 15 px ramp across the hem mixes that white into the base.
+            # Sides and shoulders still need the soft edge (that is where the
+            # body outlines disagree), so the blur is undone on the last rows —
+            # a clean cut at the hem line, nothing to bleed.
+            hard = None
+            if kind == "upper":
+                hard = max(0, cut_y - 2) if 0 < cut_y < h_b else None
+            zone_soft = cv2.GaussianBlur(zone, (15, 15), 0)
+            if hard is not None:
+                zone_soft[hard:] = zone[hard:]
+            layers.append((full, zone_soft, False))
             print(f"  step {i + 1}/{len(steps)} {kind} via fashn/{fashn_cat} "
                   f"in {time.time() - t_f:.1f}s", flush=True)
             continue
