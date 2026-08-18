@@ -324,6 +324,7 @@ def render(job: dict) -> str:
             # the waist (seen on the phone). The upper's claim therefore stops
             # just below the hip line; everything under it is the lower slot's,
             # or the base's if nothing dresses it.
+            pal_gate = None
             if kind == "upper":
                 pts_b = base_pose.pts
                 ys_b = [q[1] for q in pts_b if q]
@@ -341,14 +342,6 @@ def render(job: dict) -> str:
                                     os.getenv("VTON_FASHN_UPPER_CLIP", "0.04")))
                 if 0 < cut_y < h_b:
                     zone[cut_y:] = 0
-                    # AND ABOVE THE CUT, ONLY THE GARMENT'S OWN COLOURS. The
-                    # band survived every fixed offset because it lives BETWEEN
-                    # the shirt's hem and the cut: FASHN recolours the bottoms
-                    # it was not asked about (the base's grey shorts came back
-                    # white), and the zone happily claimed them. A hem is the
-                    # garment's colour; the recoloured shorts are not — so from
-                    # the hip down, a pixel is only taken when it is close to
-                    # one of the flat-lay's own dominant colours.
                     hip_top = int(cut_y - span_b * 0.10)
                     if hip_top > 0:
                         g_bgr_f = np.array(garment)[:, :, ::-1]
@@ -368,12 +361,27 @@ def render(job: dict) -> str:
                              for c in centres]), axis=0)
                         near = (d < float(os.getenv("VTON_FASHN_PAL", "90"))
                                 ).astype(np.uint8) * 255
-                        zone[hip_top:cut_y] = cv2.bitwise_and(
-                            zone[hip_top:cut_y], near)
+                        pal_gate = (hip_top, cut_y, near)
+                    # AND ABOVE THE CUT, ONLY THE GARMENT'S OWN COLOURS. The
+                    # band survived every fixed offset because it lives BETWEEN
+                    # the shirt's hem and the cut: FASHN recolours the bottoms
+                    # it was not asked about (the base's grey shorts came back
+                    # white), and the zone happily claimed them. A hem is the
+                    # garment's colour; the recoloured shorts are not — so from
+                    # the hip down, a pixel is only taken when it is close to
+                    # one of the flat-lay's own dominant colours.
                     print(f"  upper zone clipped at y={cut_y}"
                           f"{' (waistband)' if waist_top[0] is not None else ''}"
-                          f", palette-gated from y={hip_top}", flush=True)
+                          f", palette-gated from y="
+                          f"{pal_gate[0] if pal_gate else -1}", flush=True)
             zone = cv2.GaussianBlur(zone, (15, 15), 0)
+            # THE VETO GOES LAST. Gating the palette before the feather left a
+            # pale residue: the blur smeared the holes the gate had punched, so
+            # half-alpha white shorts still landed over the base. Soft edge
+            # first, hard veto second.
+            if kind == "upper" and pal_gate is not None:
+                y0g, y1g, near = pal_gate
+                zone[y0g:y1g] = cv2.bitwise_and(zone[y0g:y1g], near)
             layers.append((full, zone, False))
             print(f"  step {i + 1}/{len(steps)} {kind} via fashn/{fashn_cat} "
                   f"in {time.time() - t_f:.1f}s", flush=True)
